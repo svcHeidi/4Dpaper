@@ -1,0 +1,31 @@
+data_extraction_task:
+  description: >
+    Analyze the provided directory of {file_type} files. Identify the time-steps 
+    and the key scalar/vector fields available. Create a Python script using 
+    PyVista to load these files efficiently.
+  expected_output: >
+    A Python module `data_loader.py` that contains a class for iterating 
+    through 4D simulation states.
+  agent: data_architect
+
+viz_logic_task:
+  description: >
+    Using the `data_loader.py`, write the visualization logic. 
+    1. Create a PyVista Plotter. 
+    2. Add an interactive slider for 'Time'.
+    3. Add a toggle for the {scalar_field} visualization.
+    4. Ensure the backend is set to 'panel' for Quarto compatibility.
+  expected_output: >
+    A Python snippet `interactive_viz.py` that renders the 4D state in a browser.
+  agent: visualization_engineer
+
+report_assembly_task:
+  description: >
+    Create the final `analysis_report.qmd`. 
+    1. Define the YAML header for a self-contained HTML.
+    2. Write the executive summary.
+    3. Embed the code from `interactive_viz.py` into a Quarto code cell.
+    4. Add a section explaining the physics of the {simulation_goal}.
+  expected_output: >
+    A complete `analysis_report.qmd` file ready to be rendered.
+  agent: technical_writer
