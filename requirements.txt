@@ -1,0 +1,18 @@
+# Core Quarto + Jupyter integration
+jupyter
+ipykernel
+ipywidgets
+
+# 3D Visualization stack
+pyvista[jupyter]
+panel
+trame
+trame-vtk
+trame-vuetify
+
+# Data handling
+numpy
+matplotlib
+
+# OpenFOAM file reading
+pyvista   # includes VTK bindings for .foam / .vtk / .vtu / .pvd
