@@ -16,3 +16,5 @@ matplotlib
 
 # OpenFOAM file reading
 pyvista   # includes VTK bindings for .foam / .vtk / .vtu / .pvd
+
+pyyaml>=6.0
