@@ -94,6 +94,12 @@ def generate_html_figure(
 
     sim = SimulationData(str(src_path)).load()
 
+    if sim.n_steps == 0:
+        raise RuntimeError(
+            f"[4dpaper] Simulation at {src_path} has no time steps. "
+            "Ensure the case has been solved and time directories exist."
+        )
+
     # Resolve time step index
     n = sim.n_steps
     if time_spec == "first":
@@ -132,12 +138,17 @@ def generate_html_figure(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pl.export_html(str(output_path))
+    pl.close()
     print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 def main() -> None:
+    if os.environ.get("QUARTO_NO_EXECUTE"):
+        print("[4dpaper] --no-execute mode: skipping figure generation.", file=sys.stderr)
+        return
+
     qmd_path = os.environ.get("QUARTO_DOCUMENT_PATH", "")
     output_format = os.environ.get("QUARTO_OUTPUT_FORMAT", "html")
 
@@ -167,7 +178,14 @@ def main() -> None:
                 print(f"[4dpaper] {fig_id}.html is up to date — skipping.", file=sys.stderr)
                 continue
             print(f"[4dpaper] Generating {fig_id}.html …", file=sys.stderr)
-            generate_html_figure(src, field, time_spec, out)
+            try:
+                generate_html_figure(src, field, time_spec, out)
+            except Exception as exc:
+                print(
+                    f"[4dpaper] ERROR generating {fig_id}.html: {exc}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
 
         elif output_format in ("pdf", "latex"):
             out = figures_dir / f"{fig_id}.png"
