@@ -61,7 +61,29 @@ class TestParseShortcodes:
         mod = _load_4dpaper()
         text = '{{< 4d-image src="case.foam" field="Vm" id="fig-vm" >}}'
         result = mod.parse_shortcodes(text)
-        assert result[0].get("time", "mid") == "mid"
+        assert result[0]["time"] == "mid"
+
+    def test_ignores_shortcode_in_fenced_code_block(self):
+        mod = _load_4dpaper()
+        text = (
+            "Here is an example:\n\n"
+            "```\n"
+            '{{< 4d-image src="case.foam" field="Vm" id="fig-example" >}}\n'
+            "```\n\n"
+            "The real figure:\n"
+            '{{< 4d-image src="real.foam" field="Vm" id="fig-real" >}}'
+        )
+        result = mod.parse_shortcodes(text)
+        assert len(result) == 1
+        assert result[0]["id"] == "fig-real"
+
+    def test_handles_single_quoted_attributes(self):
+        mod = _load_4dpaper()
+        text = "{{< 4d-image src='case.foam' field='Vm' id='fig-vm' >}}"
+        result = mod.parse_shortcodes(text)
+        assert len(result) == 1
+        assert result[0]["src"] == "case.foam"
+        assert result[0]["id"] == "fig-vm"
 
 
 class TestIsCacheValid:
