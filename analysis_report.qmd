@@ -23,6 +23,7 @@ params:
   simulation_goal: "Cardiac Activation Benchmark"
   scalar_field: "Vm"
   case_path: "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/case.foam"
+  reports_dir: "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/postProcessing"
 jupyter: python3
 ---
 
@@ -608,6 +609,52 @@ technical documents** that are simultaneously:
 
 5. **PDF/LaTeX export** — dual-format output: interactive HTML for
    exploration, static PDF for journal submission.
+
+---
+
+## Generated Post-Processing Results {#sec-postprocessing}
+
+```{python}
+#| label: load-postproc-results
+#| output: asis
+import json
+from pathlib import Path
+from IPython.display import display, Markdown, Image
+
+try:
+    reports_dir = Path(params.get("reports_dir", ""))
+except NameError:
+    reports_dir = Path("/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/postProcessing")
+
+manifest_path = reports_dir / "plots.json"
+
+if not manifest_path.exists():
+    display(Markdown(
+        "> **No post-processing outputs found.**  \n"
+        "> Run the dashboard (`panel serve dashboard/app.py`) and click **Run Post-Processing**."
+    ))
+else:
+    manifest = json.loads(manifest_path.read_text())
+    artifacts = manifest.get("artifacts", [])
+    generated_at = manifest.get("generated_at_utc", "unknown")
+    display(Markdown(f"*{len(artifacts)} artifact(s) generated at {generated_at}*"))
+
+    for artifact in artifacts:
+        label = artifact.get("label", artifact.get("path", "Output"))
+        fmt = artifact.get("format", "").lower()
+        rel_path = artifact.get("path", "")
+        abs_path = reports_dir / rel_path if not Path(rel_path).is_absolute() else Path(rel_path)
+
+        display(Markdown(f"### {label}"))
+
+        if fmt == "html" and abs_path.exists():
+            # For Quarto, embed by reference
+            display(Markdown(f"[Open {label}]({abs_path})"))
+        elif fmt in ("png", "jpg", "jpeg") and abs_path.exists():
+            display(Image(str(abs_path)))
+        else:
+            display(Markdown(f"*File: `{abs_path}`*"))
+```
 
 ---
 
