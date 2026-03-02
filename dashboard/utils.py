@@ -109,8 +109,14 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str]) -> int:
     Run `quarto render <qmd_path>`.  Streams output to *log_lines*.
     Returns the process exit code.
     """
+    import os
     import subprocess
     import threading
+
+    # Tell Quarto to use the same Python that is running this dashboard,
+    # so it picks up jupyter/nbformat from the active venv.
+    env = os.environ.copy()
+    env["QUARTO_PYTHON"] = sys.executable
 
     proc = subprocess.Popen(
         ["quarto", "render", str(qmd_path)],
@@ -118,6 +124,7 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str]) -> int:
         stderr=subprocess.STDOUT,
         text=True,
         cwd=str(qmd_path.parent),
+        env=env,
     )
 
     def _read():
