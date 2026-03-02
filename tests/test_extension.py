@@ -118,3 +118,26 @@ class TestIsCacheValid:
         fig.write_text("<html></html>")
         src = tmp_path / "no_such_file.foam"
         assert mod.is_cache_valid(fig, src) is True
+
+
+class TestGenerateHtmlFigure:
+    def test_creates_html_file(self, tmp_path):
+        """Smoke test: verify generate_html_figure creates a non-empty .html file."""
+        mod = _load_4dpaper()
+        case_path = Path(
+            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+        )
+        if not case_path.exists():
+            pytest.skip("Niederer case not available")
+
+        out = tmp_path / "fig-vm.html"
+        mod.generate_html_figure(
+            src_path=case_path,
+            field="Vm",
+            time_spec="mid",
+            output_path=out,
+        )
+        assert out.exists(), "Output HTML file was not created"
+        assert out.stat().st_size > 1000, "Output HTML is suspiciously small"
+        content = out.read_text()
+        assert "<html" in content.lower() or "<!DOCTYPE" in content.lower() or "vtk" in content.lower() or "script" in content.lower()
