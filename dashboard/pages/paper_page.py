@@ -8,7 +8,7 @@ from typing import Any
 import panel as pn
 import param
 
-from dashboard.utils import run_quarto_render
+from dashboard.utils import run_pvpython_render, run_quarto_render
 
 
 class PaperPage(param.Parameterized):
@@ -18,6 +18,7 @@ class PaperPage(param.Parameterized):
 
     def __init__(self, config: dict[str, Any], **params):
         super().__init__(**params)
+        self._config = config
         self._qmd_path = Path(config["quarto_paper_path"])
         self._log_lines: list[str] = []
 
@@ -50,13 +51,50 @@ class PaperPage(param.Parameterized):
         self.is_building = True
         self._rebuild_btn.disabled = True
         self._log_lines.clear()
-        self._status_badge.object = "Building…"
+        self._status_badge.object = "Checking for camera state…"
         self._status_badge.alert_type = "warning"
         self._open_link.object = ""
 
-        def _run():
-            code = run_quarto_render(self._qmd_path, self._log_lines)
-            pn.state.execute(lambda: self._finish(code))
+        cfg = self._config
+        camera_path = Path(cfg.get("camera_state", ""))
+        render_output = Path(cfg.get("render_output", ""))
+        pv_cfg = cfg.get("paraview", {})
+
+        def _run() -> None:
+            # ── Step 1: headless render (only if camera state exists) ──────────
+            if camera_path and camera_path.exists() and pv_cfg:
+                self._log_lines.append(
+                    "[INFO] Camera state found — running pvpython headless render…"
+                )
+                pn.state.execute(self._refresh_log)
+
+                exit_code = run_pvpython_render(
+                    pvpython_path=pv_cfg.get(
+                        "pvpython_path", "pvpython"
+                    ),
+                    pvsm_path=pv_cfg.get("pvsm_path", ""),
+                    foam_path=pv_cfg.get("foam_path", ""),
+                    camera_state_path=camera_path,
+                    output_path=render_output,
+                    resolution=pv_cfg.get("render_resolution", [1920, 1080]),
+                    log_lines=self._log_lines,
+                )
+                if exit_code != 0:
+                    pn.state.execute(lambda: self._finish(exit_code))
+                    return
+                self._log_lines.append(
+                    f"[INFO] Render complete → {render_output}"
+                )
+            else:
+                self._log_lines.append(
+                    "[INFO] No camera state found — skipping pvpython render."
+                )
+
+            # ── Step 2: quarto render ────────────────────────────────────────
+            self._log_lines.append("[INFO] Running quarto render…")
+            pn.state.execute(self._refresh_log)
+            exit_code = run_quarto_render(self._qmd_path, self._log_lines)
+            pn.state.execute(lambda: self._finish(exit_code))
 
         threading.Thread(target=_run, daemon=True).start()
         pn.state.add_periodic_callback(self._refresh_log, period=500, count=120)
