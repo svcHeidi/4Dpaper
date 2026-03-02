@@ -24,3 +24,15 @@ tutorials:
           show: false
     # plots.json written by run_postprocessing, relative to cardiacfoam_root
     plots_manifest: "tutorials/NiedererEtAl2012/postProcessing/plots.json"
+
+# ── ParaView headless render ────────────────────────────────────────────────
+paraview:
+  pvsm_path: "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/example_state.pvsm"
+  foam_path: "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+  pvpython_path: "/Applications/ParaView-5.13.3.app/Contents/bin/pvpython"
+  render_resolution: [3840, 2160]
+
+# ── Shared state paths ───────────────────────────────────────────────────────
+state_dir: "/Users/simaocastro/4Dpapers/state"
+render_output: "/Users/simaocastro/4Dpapers/state/render_output.png"
+camera_state: "/Users/simaocastro/4Dpapers/state/camera_state.json"

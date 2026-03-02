@@ -3,3 +3,10 @@ __pycache__/
 *.pyo
 .pytest_cache/
 .venv/
+
+/.quarto/
+**/*.quarto_ipynb
+
+# Machine-local visualization state
+state/camera_state.json
+state/render_output.png
