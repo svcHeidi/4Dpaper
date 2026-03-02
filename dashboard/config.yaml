@@ -29,7 +29,7 @@ tutorials:
 paraview:
   pvsm_path: "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/example_state.pvsm"
   foam_path: "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
-  pvpython_path: "/Applications/ParaView-5.13.3.app/Contents/bin/pvpython"
+  pvpython_path: "/Applications/ParaView-6.0.1.app/Contents/bin/pvpython"
   render_resolution: [3840, 2160]
 
 # ── Shared state paths ───────────────────────────────────────────────────────
