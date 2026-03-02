@@ -351,6 +351,8 @@ This section provides a unified viewer for the simulation results. We split the 
 
 ## Pass 1: Volumetric Activation
 
+{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" id="fig-vm" caption="Transmembrane potential Vm at mid-activation" >}}
+
 The tabs below allow selection of specific electrophysiology fields from the **Coded List** (standardised EP metrics). Each field presents an interactive 3D state and a smooth temporal animation.
 
 ```{python}
