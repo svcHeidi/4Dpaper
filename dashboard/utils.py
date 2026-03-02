@@ -136,3 +136,86 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str]) -> int:
     proc.wait()
     thread.join()
     return proc.returncode
+
+
+# ── Camera state helpers ──────────────────────────────────────────────────────
+
+def save_camera_state(
+    position: list[float],
+    focal_point: list[float],
+    view_up: list[float],
+    parallel_scale: float | None,
+    *,
+    output_path: Path,
+) -> None:
+    """Serialize PyVista camera state to JSON for use by paraview_render.py."""
+    payload: dict = {
+        "position":    list(position),
+        "focal_point": list(focal_point),
+        "view_up":     list(view_up),
+    }
+    if parallel_scale is not None:
+        payload["parallel_scale"] = float(parallel_scale)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2))
+
+
+def load_camera_state(path: Path) -> dict | None:
+    """Return camera dict from JSON, or None if file does not exist."""
+    if not path.exists():
+        return None
+    return json.loads(path.read_text())
+
+
+def run_pvpython_render(
+    *,
+    pvpython_path: str,
+    pvsm_path: str,
+    foam_path: str,
+    camera_state_path: Path,
+    output_path: Path,
+    resolution: list[int],
+    log_lines: list[str],
+) -> int:
+    """
+    Invoke pvpython to run dashboard/paraview_render.py as a subprocess.
+    Streams stdout+stderr to log_lines line by line.
+    Returns the process exit code (0 = success).
+    """
+    import subprocess
+    import threading
+
+    render_script = Path(__file__).parent / "paraview_render.py"
+    cmd = [
+        pvpython_path,
+        str(render_script),
+        str(pvsm_path),
+        str(foam_path),
+        str(camera_state_path),
+        str(output_path),
+        str(resolution[0]),
+        str(resolution[1]),
+    ]
+    log_lines.append(f"[INFO] Running: {' '.join(cmd)}")
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    def _read_output() -> None:
+        for line in proc.stdout:
+            log_lines.append(line.rstrip("\n"))
+
+    thread = threading.Thread(target=_read_output, daemon=True)
+    thread.start()
+    proc.wait()
+    thread.join()
+
+    if proc.returncode != 0:
+        log_lines.append(
+            f"[ERROR] pvpython exited with code {proc.returncode}"
+        )
+    return proc.returncode
