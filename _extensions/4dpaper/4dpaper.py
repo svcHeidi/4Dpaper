@@ -83,8 +83,56 @@ def generate_html_figure(
     time_spec: str,
     output_path: Path,
 ) -> None:
-    """Generate a self-contained vtk.js HTML figure using PyVista."""
-    raise NotImplementedError("HTML figure generation: implemented in Task 3")
+    """
+    Generate a self-contained vtk.js HTML figure using PyVista.
+
+    Uses PyVista's Plotter.export_html() which produces a standalone
+    file powered by panel + trame — no server required to view.
+    """
+    import pyvista as pv
+    from scripts.data_loader import SimulationData
+
+    sim = SimulationData(str(src_path)).load()
+
+    # Resolve time step index
+    n = sim.n_steps
+    if time_spec == "first":
+        idx = 0
+    elif time_spec == "last":
+        idx = max(0, n - 1)
+    else:  # "mid" or numeric string
+        try:
+            idx = int(time_spec)
+        except ValueError:
+            idx = n // 2
+
+    mesh = sim.get_mesh(idx)
+    if mesh is None:
+        raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
+
+    surface = mesh.extract_surface()
+
+    pl = pv.Plotter(off_screen=True, window_size=(900, 600))
+    pl.background_color = "#1a1a2e"
+
+    if field and (field in surface.point_data or field in surface.cell_data):
+        pl.add_mesh(
+            surface,
+            scalars=field,
+            cmap="coolwarm",
+            smooth_shading=True,
+            scalar_bar_args={"title": field},
+        )
+    else:
+        pl.add_mesh(surface, color="#aaaaaa", opacity=0.9)
+        print(
+            f"[4dpaper] Warning: field '{field}' not found in mesh — rendering geometry only.",
+            file=sys.stderr,
+        )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    pl.export_html(str(output_path))
+    print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
