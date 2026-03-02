@@ -1,0 +1,26 @@
+# Paths to the two repos. Adjust if your layout differs.
+cardiacfoam_root: "/Users/simaocastro/cardiacFoamEP"
+quarto_paper_path: "/Users/simaocastro/4Dpapers/analysis_report.qmd"
+
+tutorials:
+  NiedererEtAl2012:
+    display_name: "Niederer Et Al. 2012"
+    scripts:
+      - name: "Line Post-Processing"
+        # Path relative to cardiacfoam_root
+        module_relpath: "tutorials/NiedererEtAl2012/setupNiedererEtAl2012/postProcessing/line_postProcessing.py"
+        function: "run_postprocessing"
+        params:
+          output_dir: "tutorials/NiedererEtAl2012/postProcessing"
+          setup_root: "tutorials/NiedererEtAl2012/setupNiedererEtAl2012"
+          excel_path: "tutorials/NiedererEtAl2012/setupNiedererEtAl2012/postProcessing/Niederer_graphs_webplotdigitilizer_points_slab/WebPlotDigitilizerdata.xlsx"
+          show: false
+      - name: "Points Post-Processing"
+        module_relpath: "tutorials/NiedererEtAl2012/setupNiedererEtAl2012/postProcessing/points_postProcessing.py"
+        function: "run_postprocessing"
+        params:
+          output_dir: "tutorials/NiedererEtAl2012/postProcessing"
+          setup_root: "tutorials/NiedererEtAl2012/setupNiedererEtAl2012"
+          show: false
+    # plots.json written by run_postprocessing, relative to cardiacfoam_root
+    plots_manifest: "tutorials/NiedererEtAl2012/postProcessing/plots.json"
