@@ -1,0 +1,6 @@
+title: 4DPaper
+author: 4DPaper
+version: 1.0.0
+contributes:
+  shortcodes:
+    - shortcodes.lua

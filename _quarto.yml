@@ -2,6 +2,7 @@ project:
   title: "4D Paper — OpenFOAM Analysis"
   type: default
   output-dir: _output
+  pre-render: _extensions/4dpaper/4dpaper.py
 
 format:
   html:

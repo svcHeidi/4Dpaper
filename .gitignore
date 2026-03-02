@@ -10,3 +10,7 @@ __pycache__/
 # Machine-local visualization state
 state/camera_state.json
 state/render_output.png
+
+# Extension-generated figure cache
+state/figures/*.html
+state/figures/*.png
