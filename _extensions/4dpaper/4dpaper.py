@@ -19,7 +19,12 @@ from pathlib import Path
 _here = Path(__file__).resolve()
 _project_root = _here.parent.parent.parent  # _extensions/4dpaper/ → project root
 _venv_python = _project_root / ".venv" / "bin" / "python"
-if _venv_python.exists() and Path(sys.executable).resolve() != _venv_python.resolve():
+_under_pytest = "pytest" in sys.modules or any("pytest" in a for a in sys.argv)
+if (
+    _venv_python.exists()
+    and not _under_pytest
+    and Path(sys.executable).resolve() != _venv_python.resolve()
+):
     os.execv(str(_venv_python), [str(_venv_python)] + sys.argv)
 
 # Add project root to path for scripts/
@@ -37,12 +42,16 @@ def parse_shortcodes(text: str) -> list[dict]:
     Shortcodes missing 'id' or 'src' are silently skipped.
     'time' defaults to 'mid' if not specified.
     """
+    # Strip fenced code blocks (``` ... ```) before scanning for shortcodes
+    # so that shortcodes shown as examples in code blocks are not processed.
+    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+
     pattern = r'\{\{<\s*4d-image\s+(.*?)\s*>\}\}'
     results = []
-    for match in re.finditer(pattern, text, re.DOTALL):
+    for match in re.finditer(pattern, stripped, re.DOTALL):
         raw = match.group(1)
         kwargs: dict[str, str] = {}
-        for key, val in re.findall(r'(\w+)="([^"]*)"', raw):
+        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
             kwargs[key] = val
         if "id" not in kwargs or "src" not in kwargs:
             continue
