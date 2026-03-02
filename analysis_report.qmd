@@ -354,6 +354,31 @@ This section provides a unified viewer for the simulation results. We split the 
 The tabs below allow selection of specific electrophysiology fields from the **Coded List** (standardised EP metrics). Each field presents an interactive 3D state and a smooth temporal animation.
 
 ```{python}
+#| label: check-render-output
+#| output: asis
+#| echo: false
+from pathlib import Path
+from IPython.display import display, Markdown, Image as IPImage
+import time
+
+_render_output = Path(__file__).parent / "state" / "render_output.png"
+
+if _render_output.exists():
+    _mtime = time.strftime(
+        "%Y-%m-%d %H:%M", time.localtime(_render_output.stat().st_mtime)
+    )
+    display(Markdown(
+        f"> **High-res ParaView render available** — generated {_mtime}  \n"
+        f"> *To regenerate: adjust view in browser → Save Camera → Rebuild Paper.*"
+    ))
+    display(IPImage(str(_render_output), width=900))
+    display(Markdown(
+        "---\n"
+        "*The interactive viewer below is active in `quarto preview` mode.*"
+    ))
+```
+
+```{python}
 #| label: generate-tabs-vol
 #| output: asis
 #| echo: false
@@ -408,6 +433,60 @@ if case_path != "demo":
     print("\n:::\n")
 else:
     print("\n⚠️ No simulation data loaded.\n")
+```
+
+```{python}
+#| label: camera-capture-btn
+#| output: asis
+#| echo: false
+"""
+Camera-save button — only functional in `quarto preview` / live kernel mode.
+In frozen Quarto renders this renders as a static (non-functional) button.
+"""
+import json
+import panel as pn
+from pathlib import Path
+
+_STATE_DIR = Path(__file__).parent / "state"
+
+# pl_int is the last PyVista plotter created in the loop above.
+# In quarto preview (live kernel), its .camera properties reflect the
+# user's current browser view via PyVista's Trame sync.
+try:
+    _plotter = pl_int  # noqa: F821  (defined in previous cell)
+except NameError:
+    _plotter = None
+
+
+def _on_save_camera(event) -> None:
+    if _plotter is None:
+        _save_btn.name = "⚠ No plotter available"
+        _save_btn.button_type = "warning"
+        return
+
+    cam_data: dict = {
+        "position":    list(_plotter.camera.position),
+        "focal_point": list(_plotter.camera.focal_point),
+        "view_up":     list(_plotter.camera.view_up),
+    }
+    if _plotter.camera.is_parallel_projection:
+        cam_data["parallel_scale"] = float(_plotter.camera.parallel_scale)
+
+    _STATE_DIR.mkdir(exist_ok=True)
+    out = _STATE_DIR / "camera_state.json"
+    out.write_text(json.dumps(cam_data, indent=2))
+
+    _save_btn.name = "✓ Camera saved → state/camera_state.json"
+    _save_btn.button_type = "success"
+
+
+_save_btn = pn.widgets.Button(
+    name="📷  Save Camera State for High-Res Render",
+    button_type="primary",
+    width=380,
+)
+_save_btn.on_click(_on_save_camera)
+display(_save_btn)
 ```
 
 ## Pass 2: Boundary Patch Inspection
