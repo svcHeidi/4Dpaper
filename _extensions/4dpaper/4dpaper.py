@@ -77,6 +77,69 @@ def is_cache_valid(fig_path: Path, src_path: Path) -> bool:
 
 # ── Figure generation (Task 3) ────────────────────────────────────────────────
 
+def generate_png_figure(
+    src_path: Path,
+    field: str,
+    time_spec: str,
+    output_path: Path,
+) -> None:
+    """
+    Generate a static PNG figure using PyVista (default camera angle).
+
+    Used as a fallback for PDF export when no pvpython camera state exists.
+    """
+    import pyvista as pv
+    from scripts.data_loader import SimulationData
+
+    sim = SimulationData(str(src_path)).load()
+
+    if sim.n_steps == 0:
+        raise RuntimeError(
+            f"[4dpaper] Simulation at {src_path} has no time steps."
+        )
+
+    n = sim.n_steps
+    if time_spec == "first":
+        idx = 0
+    elif time_spec == "last":
+        idx = max(0, n - 1)
+    else:
+        try:
+            idx = max(0, min(int(time_spec), n - 1))
+        except ValueError:
+            idx = n // 2
+
+    mesh = sim.get_mesh(idx)
+    if mesh is None:
+        raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
+
+    surface = mesh.extract_surface()
+
+    pl = pv.Plotter(off_screen=True, window_size=(1920, 1080))
+    pl.background_color = "#1a1a2e"
+
+    if field and (field in surface.point_data or field in surface.cell_data):
+        pl.add_mesh(
+            surface,
+            scalars=field,
+            cmap="coolwarm",
+            smooth_shading=True,
+            scalar_bar_args={"title": field},
+        )
+    else:
+        pl.add_mesh(surface, color="#aaaaaa", opacity=0.9)
+        print(
+            f"[4dpaper] Warning: field '{field}' not found — rendering geometry only.",
+            file=sys.stderr,
+        )
+
+    pl.isometric_view()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    pl.screenshot(str(output_path))
+    pl.close()
+    print(f"[4dpaper] Generated (PNG): {output_path}", file=sys.stderr)
+
+
 def generate_html_figure(
     src_path: Path,
     field: str,
@@ -201,7 +264,15 @@ def main() -> None:
             if is_cache_valid(out, src):
                 print(f"[4dpaper] {fig_id}.png is up to date — skipping.", file=sys.stderr)
                 continue
-            print(f"[4dpaper] PDF figures for '{fig_id}' must be pre-rendered via pvpython; skipping.", file=sys.stderr)
+            print(f"[4dpaper] Generating {fig_id}.png (default camera) …", file=sys.stderr)
+            try:
+                generate_png_figure(src, field, time_spec, out)
+            except Exception as exc:
+                print(
+                    f"[4dpaper] ERROR generating {fig_id}.png: {exc}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
 
 
 if __name__ == "__main__":
