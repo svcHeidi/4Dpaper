@@ -1,6 +1,7 @@
 """Paper tab: iframe preview + Rebuild HTML + Export PDF."""
 from __future__ import annotations
 
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -20,6 +21,7 @@ class PaperPage(param.Parameterized):
         self._config = config
         self._qmd_path = Path(config["quarto_paper_path"])
         self._log_lines: list[str] = []
+        self._log_cb = None
 
         # ── Buttons ──────────────────────────────────────────────────────────
         self._rebuild_html_btn = pn.widgets.Button(
@@ -78,15 +80,25 @@ class PaperPage(param.Parameterized):
         self._pdf_link.object = ""
 
         def _run() -> None:
-            self._log_lines.append("[INFO] Running quarto render --to html…")
-            pn.state.execute(self._refresh_log)
-            code = run_quarto_render(self._qmd_path, self._log_lines)
-            pn.state.execute(lambda: self._finish_html(code))
+            try:
+                self._log_lines.append("[INFO] Running quarto render --to html…")
+                pn.state.execute(self._refresh_log)
+                code = run_quarto_render(self._qmd_path, self._log_lines)
+                pn.state.execute(lambda: self._finish_html(code))
+            except Exception as exc:
+                self._log_lines.append(f"[ERROR] {exc}")
+                pn.state.execute(lambda: self._finish_html(1))
 
         threading.Thread(target=_run, daemon=True).start()
-        pn.state.add_periodic_callback(self._refresh_log, period=500, count=120)
+        if self._log_cb is not None:
+            self._log_cb.stop()
+            self._log_cb = None
+        self._log_cb = pn.state.add_periodic_callback(self._refresh_log, period=500, count=600)
 
     def _finish_html(self, exit_code: int) -> None:
+        if self._log_cb is not None:
+            self._log_cb.stop()
+            self._log_cb = None
         self.is_building = False
         self._rebuild_html_btn.disabled = False
         self._export_pdf_btn.disabled = False
@@ -124,53 +136,61 @@ class PaperPage(param.Parameterized):
         pv_cfg = cfg.get("paraview", {})
 
         def _run() -> None:
-            # Step 1: pvpython figure render (requires camera state)
-            if camera_path and camera_path.exists() and pv_cfg:
-                self._log_lines.append("[INFO] Camera state found — rendering PDF figures…")
+            try:
+                # Step 1: pvpython figure render (requires camera state)
+                if camera_path and camera_path.exists() and pv_cfg:
+                    self._log_lines.append("[INFO] Camera state found — rendering PDF figures…")
+                    pn.state.execute(self._refresh_log)
+
+                    figures_dir = Path(__file__).parent.parent.parent / "state" / "figures"
+                    figures_dir.mkdir(parents=True, exist_ok=True)
+
+                    # Re-use camera render for the main figure (fig-vm → render_output.png)
+                    render_output = Path(cfg.get("render_output", str(figures_dir / "fig-vm.png")))
+                    exit_code = run_pvpython_render(
+                        pvpython_path=pv_cfg.get("pvpython_path", "pvpython"),
+                        pvsm_path=pv_cfg.get("pvsm_path", ""),
+                        foam_path=pv_cfg.get("foam_path", ""),
+                        camera_state_path=camera_path,
+                        output_path=render_output,
+                        resolution=pv_cfg.get("render_resolution", [1920, 1080]),
+                        log_lines=self._log_lines,
+                    )
+                    # Copy render output to state/figures/fig-vm.png for shortcode lookup
+                    if exit_code == 0 and render_output != figures_dir / "fig-vm.png":
+                        shutil.copy2(render_output, figures_dir / "fig-vm.png")
+
+                    if exit_code != 0:
+                        pn.state.execute(lambda: self._finish_pdf(exit_code, None))
+                        return
+                    self._log_lines.append("[INFO] PDF figures rendered.")
+                else:
+                    self._log_lines.append(
+                        "[WARN] No camera state — PDF figures will show placeholder text."
+                    )
+
+                # Step 2: quarto render --to pdf
+                self._log_lines.append("[INFO] Running quarto render --to pdf…")
                 pn.state.execute(self._refresh_log)
-
-                from pathlib import Path as _Path
-                figures_dir = _Path(__file__).parent.parent.parent / "state" / "figures"
-                figures_dir.mkdir(parents=True, exist_ok=True)
-
-                # Re-use camera render for the main figure (fig-vm → render_output.png)
-                render_output = _Path(cfg.get("render_output", str(figures_dir / "fig-vm.png")))
-                exit_code = run_pvpython_render(
-                    pvpython_path=pv_cfg.get("pvpython_path", "pvpython"),
-                    pvsm_path=pv_cfg.get("pvsm_path", ""),
-                    foam_path=pv_cfg.get("foam_path", ""),
-                    camera_state_path=camera_path,
-                    output_path=render_output,
-                    resolution=pv_cfg.get("render_resolution", [1920, 1080]),
-                    log_lines=self._log_lines,
+                exit_code = run_quarto_render(
+                    self._qmd_path, self._log_lines, output_format="pdf"
                 )
-                # Copy render output to state/figures/fig-vm.png for shortcode lookup
-                if exit_code == 0 and render_output != figures_dir / "fig-vm.png":
-                    import shutil
-                    shutil.copy2(render_output, figures_dir / "fig-vm.png")
-
-                if exit_code != 0:
-                    pn.state.execute(lambda: self._finish_pdf(exit_code, None))
-                    return
-                self._log_lines.append("[INFO] PDF figures rendered.")
-            else:
-                self._log_lines.append(
-                    "[WARN] No camera state — PDF figures will show placeholder text."
-                )
-
-            # Step 2: quarto render --to pdf
-            self._log_lines.append("[INFO] Running quarto render --to pdf…")
-            pn.state.execute(self._refresh_log)
-            exit_code = run_quarto_render(
-                self._qmd_path, self._log_lines, output_format="pdf"
-            )
-            pdf_path = self._qmd_path.parent / "_output" / "analysis_report.pdf"
-            pn.state.execute(lambda: self._finish_pdf(exit_code, pdf_path))
+                pdf_path = self._qmd_path.parent / "_output" / "analysis_report.pdf"
+                pn.state.execute(lambda: self._finish_pdf(exit_code, pdf_path))
+            except Exception as exc:
+                self._log_lines.append(f"[ERROR] {exc}")
+                pn.state.execute(lambda: self._finish_pdf(1, None))
 
         threading.Thread(target=_run, daemon=True).start()
-        pn.state.add_periodic_callback(self._refresh_log, period=500, count=120)
+        if self._log_cb is not None:
+            self._log_cb.stop()
+            self._log_cb = None
+        self._log_cb = pn.state.add_periodic_callback(self._refresh_log, period=500, count=600)
 
     def _finish_pdf(self, exit_code: int, pdf_path) -> None:
+        if self._log_cb is not None:
+            self._log_cb.stop()
+            self._log_cb = None
         self.is_building = False
         self._rebuild_html_btn.disabled = False
         self._export_pdf_btn.disabled = False
@@ -180,7 +200,7 @@ class PaperPage(param.Parameterized):
             self._status_badge.object = "✓ PDF exported successfully!"
             self._status_badge.alert_type = "success"
             self._pdf_link.object = (
-                f'<a href="file://{pdf_path}" target="_blank" style="font-size:1rem;">'
+                f'<a href="/output/analysis_report.pdf" target="_blank" style="font-size:1rem;">'
                 f'📄 Open analysis_report.pdf</a>'
             )
         else:
