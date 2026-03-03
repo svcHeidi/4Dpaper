@@ -152,12 +152,21 @@ def main() -> None:
     qmd_path = os.environ.get("QUARTO_DOCUMENT_PATH", "")
     output_format = os.environ.get("QUARTO_OUTPUT_FORMAT", "html")
 
-    if not qmd_path or not Path(qmd_path).exists():
-        print("[4dpaper] No QUARTO_DOCUMENT_PATH set — skipping.", file=sys.stderr)
-        return
+    # QUARTO_DOCUMENT_PATH is not always set for project-level pre-render hooks.
+    # Fall back to scanning all .qmd files in QUARTO_PROJECT_DIR (or project root).
+    if qmd_path and Path(qmd_path).exists():
+        qmd_files = [Path(qmd_path)]
+    else:
+        project_dir = Path(os.environ.get("QUARTO_PROJECT_DIR", str(_project_root)))
+        qmd_files = sorted(project_dir.glob("*.qmd"))
+        if not qmd_files:
+            print("[4dpaper] No .qmd files found — skipping.", file=sys.stderr)
+            return
+        print(f"[4dpaper] Scanning {len(qmd_files)} QMD file(s) in {project_dir}", file=sys.stderr)
 
-    text = Path(qmd_path).read_text()
-    figures = parse_shortcodes(text)
+    figures = []
+    for qmd in qmd_files:
+        figures.extend(parse_shortcodes(qmd.read_text()))
 
     if not figures:
         print("[4dpaper] No 4d-image shortcodes found.", file=sys.stderr)
