@@ -1,773 +1,89 @@
 ---
-title: "4D Paper — Cardiac Electrophysiology Benchmark"
-subtitle: "Ventricular Activation Analysis using the Niederer et al. (2012) Protocol"
+title: "Cardiac Electrophysiology Analysis"
+subtitle: "Niederer et al. (2012) Benchmark"
 author:
-  - name: "4D Papers Pipeline"
-    affiliation: "Cardiac Mechanics & Electrophysiology Lab"
+  - name: "Your Name"
+    affiliation: "Your Institution"
 date: today
 abstract: |
-  This 4D Paper presents a computational analysis of the **Niederer et al. (2012) Benchmark** for cardiac electrophysiology. We evaluate the propagation of a transmembrane potential ($V_m$) across a simplified ventricular geometry. By leveraging Quarto and PyVista, we provide an interactive, reproducible environment to explore the activation sequence and conduction patterns of the Monodomain equations. Unlike static PDFs, this document allows for direct inspection of 4D simulation states in the browser.
+  Replace this with your abstract. This paper uses the 4DPaper extension
+  to embed interactive 3D simulation visualisations directly in the HTML
+  output, and high-resolution static figures in the PDF export.
 format:
   html:
     self-contained: true
     embed-resources: true
     code-fold: true
-    code-tools: true
     toc: true
     toc-depth: 3
     theme:
       light: cosmo
       dark: darkly
+  pdf:
+    keep-tex: false
 params:
-  file_type: "OpenFOAM (Decomposed)"
-  simulation_goal: "Cardiac Activation Benchmark"
-  scalar_field: "Vm"
-  case_path: "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/case.foam"
+  case_path: "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
   reports_dir: "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/postProcessing"
 jupyter: python3
 ---
 
-# Executive Summary
+# Introduction
 
-This **4D interactive paper** presents an analysis of cardiac electrical activation
-simulated using `cardiacFoamEP`. The document is a self-contained,
-reproducible report powered by [Quarto](https://quarto.org) and
-[PyVista](https://docs.pyvista.org) — specifically targeting the **Niederer 2012 Benchmark**.
-
-The simulation solves the **Monodomain model** on a cuboid geometry (3x7x10 mm) with anisotropic conduction. We track the spread of excitation ($V_m$) starting from a localized stimulus.
-
-::: {.callout-tip}
-## What makes this a "4D Paper"?
-The three spatial dimensions of the ventricular mesh plus **time** as the fourth
-dimension — all navigable interactively within the document itself. No external
-software required. Share it as a single `.html` file and anyone with a browser
-can explore the full Cardiac EP simulation.
-:::
-
-| Parameter | Value |
-|---|---|
-| **Simulation Goal** | Cardiac Activation Benchmark (Niederer 2012) |
-| **File Format** | OpenFOAM Decomposed (6 Procs) |
-| **Primary Field** | `Vm` (Membrane Voltage) |
-| **Visualization** | PyVista -> Static (Side-by-Side) |
-| **Output** | Self-contained HTML |
-
----
-
-# Theory — Cardiac Electrophysiology
-
-## The Physics of Cardiac Activation
-
-Excitable media in the heart is typically described using the **Monodomain model**,
-which represents the conservation of electric charge in the cardiac tissue. The
-spread of the potential is driven by diffusion (governed by the conductivity
-tensor) and the non-linear reaction of ionic channels in the cell membrane.
-
-This benchmark specifically tests the conduction velocity consistency across
-different numerical solvers and mesh resolutions, using a simplified box geometry
-to isolate numerical effects from anatomical complexity.
-
-## Governing Equations
-
-The evolution of the transmembrane potential $V_m$ is governed by the
-**Monodomain Equation**:
+Write your introduction here. Use standard Markdown and Quarto syntax.
+You can include equations with LaTeX:
 
 $$
-\chi \left( C_m \frac{\partial V_m}{\partial t} + I_{ion}(V_m) \right)
-= \nabla \cdot (\mathbf{\sigma}_i \nabla V_m)
-+ I_{stim}
-$$ {#eq-monodomain}
-
-together with the **Mass Conservation** (in current form):
-
-$$
-\nabla \cdot \mathbf{J} = 0
-$$ {#eq-current-cons}
-
-where:
-
-- $V_m(\mathbf{x}, t)$ is the transmembrane potential [V]
-- $\sigma_i$ is the intracellular conductivity tensor [mS/mm]
-- $\chi$ is the surface-to-volume ratio [$mm^{-1}$]
-- $C_m$ is the membrane capacitance per unit area [$\mu$F/$mm^2$]
-- $I_{ion}$ represents the ionic current model (e.g., Bueno-Orovio)
-- $I_{stim}$ is the external stimulus current
-
-@eq-monodomain is a reaction-diffusion system. Analytical solutions exist only for a handful of simplified cases (e.g., 1D cable);
-for complex 3D ventricular geometries, we must solve them numerically.
-
-## Dimensional Analysis & the Reynolds Number
-
-The behaviour of the flow is characterised by a single dimensionless group —
-the **Reynolds number**:
-
-$$
-Re = \frac{U_\infty \, L}{\nu}
-$$ {#eq-reynolds}
-
-where $U_\infty$ is the free-stream velocity and $L$ is a characteristic
-length (e.g., chord length of the wing). The Reynolds number measures the
-ratio of inertial forces to viscous forces:
-
-| $Re$ range | Flow regime |
-|---|---|
-| $Re < 5$ | Creeping flow — no separation |
-| $5 < Re < 40$ | Steady pair of recirculation bubbles |
-| $40 < Re < 200$ | Laminar vortex shedding (von Kármán street) |
-| $200 < Re < 10^5$ | Turbulent wake, laminar boundary layer |
-| $Re > 10^5$ | Fully turbulent — boundary layer transition |
-
-For the wing analysis in this paper, $Re$ is typically in the range
-$10^4$–$10^6$, meaning we are firmly in the turbulent regime.
-
-## Turbulence Modelling
-
-Direct Numerical Simulation (DNS) of the Navier-Stokes equations resolves
-every scale of turbulence, but the computational cost scales as $Re^{9/4}$,
-making it infeasible for most engineering flows. Instead, we employ
-**Reynolds-Averaged Navier-Stokes (RANS)** modelling, where the velocity
-is decomposed into a mean and a fluctuating component:
-
-The Monodomain system is solved using a **decoupled approach**:
-
-1.  **Ionic Model (ODE)**: The ionic currents $I_{ion}$ are solved at each node
-    using an ODE solver (e.g., Forward Euler or Rush-Larsen). In this benchmark,
-    the **Bueno-Orovio (2008)** minimal model is utilized.
-2.  **Potential Distribution (PDE)**: The spatial diffusion of the transmembrane
-    potential is solved using the Finite Volume Method (FVM) on an unstructured
-    polyhedral mesh.
-3.  **Operator Splitting**: A first-order or second-order Strang splitting
-    scheme is typically used to integrate the coupled ODE/PDE system efficiently.
-
-::: {.callout-important}
-## Choice of Turbulence Model
-For accurate vortex shedding analysis, **LES or DES** (Detached Eddy
-Simulation) is recommended over steady-state RANS models. RANS can
-predict mean drag but typically fails to capture the unsteady vortex street.
-:::
-
-## Vortex Identification — The Q-Criterion
-
-To identify vortex structures in the computed velocity field, we use the
-**Q-criterion** (Hunt et al., 1988). Define the velocity gradient tensor:
-
-$$
-\nabla \mathbf{u} = \mathbf{S} + \boldsymbol{\Omega}
+\frac{\partial V_m}{\partial t} = \nabla \cdot (\mathbf{D} \nabla V_m) - \frac{I_{ion}}{C_m}
 $$
 
-where $\mathbf{S}$ is the symmetric (strain-rate) part and
-$\boldsymbol{\Omega}$ is the antisymmetric (rotation-rate) part. The
-Q-criterion is:
+# Simulation Setup
 
-$$
-Q = \frac{1}{2}\left( \|\boldsymbol{\Omega}\|^2 - \|\mathbf{S}\|^2 \right)
-$$
+Describe your simulation setup here.
 
-Regions where $Q > 0$ have rotation dominating over strain — these are
-the **vortex cores**. Iso-surfaces of $Q$ are the standard way to
-visualise coherent structures in turbulent flows.
+# Results
 
----
+## Transmembrane Potential
 
-# OpenFOAM Simulation Pipeline
+The figure below shows the transmembrane potential $V_m$ at mid-activation.
+In the HTML version this is a fully interactive 3D viewer — you can rotate,
+zoom, and inspect the mesh. In the PDF version it is a high-resolution static
+render from the camera angle you locked in the dashboard.
 
-## What is OpenFOAM?
+{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" id="fig-vm" caption="Transmembrane potential $V_m$ at mid-activation" >}}
 
-[OpenFOAM](https://www.openfoam.com) (Open-source Field Operation And
-Manipulation) is the most widely used open-source CFD toolbox. It provides:
+## Activation Time
 
-- A finite-volume discretisation framework
-- Over 80 pre-built solvers for different flow regimes
-- Meshing utilities (`blockMesh`, `snappyHexMesh`)
-- Parallel decomposition and MPI-based execution
-- Post-processing via `paraFoam`, `foamToVTK`, or direct VTK export
+{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="activationTime" id="fig-at" time="last" caption="Activation time distribution" >}}
 
-## Case Directory Structure
-
-An OpenFOAM case is organised as a directory tree:
-
-```
-wingCase/
-├── 0/              ← Initial & boundary conditions (U, p, k, omega…)
-├── constant/
-│   ├── polyMesh/   ← Mesh definition (points, faces, cells)
-│   └── turbulenceProperties
-├── system/
-│   ├── controlDict        ← Solver settings, time stepping, output
-│   ├── fvSchemes           ← Discretisation schemes
-│   └── fvSolution          ← Linear solver settings, PISO/SIMPLE
-└── wingCase.foam   ← Empty marker file for ParaView/PyVista
-```
-
-## Boundary Conditions
-
-For a typical wing simulation, the boundary patches and their conditions are:
-
-| Patch | Velocity ($\mathbf{U}$) | Pressure ($p$) |
-|---|---|---|
-| **inlet** | Fixed value: $U_\infty = (U, 0, 0)$ | Zero gradient |
-| **outlet** | Zero gradient | Fixed value: $p = 0$ |
-| **wing** | No-slip: $\mathbf{U} = 0$ | Zero gradient |
-| **top / bottom** | Symmetry or slip | Symmetry |
-| **frontAndBack** | Empty (2D) or symmetry (3D) | Empty / symmetry |
-
-## Solver Selection
-
-For transient, incompressible turbulent flow, the appropriate solver is
-**pimpleFoam** — a transient solver using the PIMPLE algorithm (merged
-PISO + SIMPLE). It supports:
-
-- Adjustable time stepping with Courant number control
-- Outer correctors for improved pressure-velocity coupling
-- Under-relaxation for stability
-
----
-
-# Data Loading
-
-The `data_loader.py` module handles the extraction of 4D simulation data.
-It auto-detects the input format (`.foam`, `.pvd`, `.vtu`, or directory)
-and provides a clean Python API to iterate over time steps.
-
-The module maps directly to the **Data Architect** agent defined in
-`agents.yaml` — an expert in navigating OpenFOAM case directories and
-extracting mesh data with scalar/vector fields across time steps.
+## Post-Processing Results
 
 ```{python}
-#| label: load-data
-#| echo: true
-#| output: true
-
-import sys
-import os
-import importlib
-from pathlib import Path
-
-# Add scripts directory to path definitively
-scripts_dir = str(Path(os.getcwd()) / "scripts")
-if scripts_dir not in sys.path:
-    sys.path.insert(0, scripts_dir)
-
-import data_loader
-importlib.reload(data_loader)
-from data_loader import SimulationData
-
-print(f"📦 Data Loader: {data_loader.__file__}")
-
-# Try to get case_path from params (Quarto parameters)
-try:
-    case_path = params.get("case_path", "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/case.foam")
-except NameError:
-    case_path = "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/case.foam"
-
-if case_path != "demo":
-    sim = SimulationData(case_path).load()
-    print(sim.summary())
-else:
-    print("⚠️  No simulation case path configured.")
-    print("   Edit the 'case_path' variable above to point to your data.")
-    print()
-    print("   Supported formats:")
-    print("   • .foam / .openfoam — OpenFOAM native")
-    print("   • .pvd             — ParaView Data collection")
-    print("   • .vtu / .vtk      — Single VTK Unstructured Grid")
-    print("   • Directory        — Folder of .vtu files (one per time step)")
-```
-
----
-
-# Interactive 3D Visualization
-
-## Architecture
-
-The visualization layer is built on three technologies:
-
-1. **PyVista** — High-level Python interface to VTK. Handles mesh loading,
-   scalar mapping, and plotter construction.
-2. **Trame** — A Python framework that bridges VTK rendering to WebGL via
-   `vtk.js`. Enables interactive 3D in any browser.
-3. **Quarto + Jupyter** — Executes the Python cells at render time and
-   embeds the Trame widget directly in the HTML output.
-
-The result is a **zero-install 3D viewer** inside the document — the reader
-can rotate, zoom, pan, and scrub through time steps without any additional
-software.
-
-## Visualization Features
-
-- 🎚️ **Time-step slider** — scrub through the entire simulation timeline
-- 🎨 **Scalar field overlay** — map velocity magnitude (or any field) to a
-  colormap with globally consistent limits
-- 🖱️ **Full interactivity** — orbit, zoom, pan; WebGL-accelerated rendering
-- 🔍 **Clipping planes** — slice through the domain to inspect internal flow
-- 📐 **Vector glyphs** — optionally display velocity arrows on the mesh
-
-```{python}
-#| label: setup-viz
+#| label: load-postproc
 #| echo: false
-
-import pyvista as pv
-import numpy as np
-import os
-from IPython.display import display, HTML
-
-# ──────────────────────────────────────────────────
-# 🛠️ "CODED LIST" - Define supported fields and metadata
-# ──────────────────────────────────────────────────
-SUPPORTED_FIELDS = {
-    "Vm": {
-        "name": "Transmembrane Potential",
-        "unit": "V",
-        "cmap": "RdBu_r",
-        "type": "animated"
-    },
-    "activationTime": {
-        "name": "Activation Time",
-        "unit": "s",
-        "cmap": "viridis_r",
-        "type": "static"
-    },
-    "ionicCurrent": {
-        "name": "Ionic Current",
-        "unit": "µA/µF",
-        "cmap": "coolwarm",
-        "type": "animated"
-    },
-    "activationVelocity": {
-        "name": "Activation Velocity",
-        "unit": "m/s",
-        "cmap": "magma",
-        "type": "static"
-    }
-}
-
-# Directory for transient media
-os.makedirs("media", exist_ok=True)
-```
-
-# 4D Spatiotemporal Analysis
-
-This section provides a unified viewer for the simulation results. We split the analysis into two passes: **Ventricle Volume** (Internal Mesh) and **Surface Patches** (Boundary Conditions).
-
-## Pass 1: Volumetric Activation
-
-{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" id="fig-vm" caption="Transmembrane potential Vm at mid-activation" >}}
-
-The tabs below allow selection of specific electrophysiology fields from the **Coded List** (standardised EP metrics). Each field presents an interactive 3D state and a smooth temporal animation.
-
-```{python}
-#| label: check-render-output
 #| output: asis
-#| echo: false
-from pathlib import Path
-from IPython.display import display, Markdown, Image as IPImage
-import time
-
-_render_output = Path(__file__).parent / "state" / "render_output.png"
-
-if _render_output.exists():
-    _mtime = time.strftime(
-        "%Y-%m-%d %H:%M", time.localtime(_render_output.stat().st_mtime)
-    )
-    display(Markdown(
-        f"> **High-res ParaView render available** — generated {_mtime}  \n"
-        f"> *To regenerate: adjust view in browser → Save Camera → Rebuild Paper.*"
-    ))
-    display(IPImage(str(_render_output), width=900))
-    display(Markdown(
-        "---\n"
-        "*The interactive viewer below is active in `quarto preview` mode.*"
-    ))
-```
-
-```{python}
-#| label: generate-tabs-vol
-#| output: asis
-#| echo: false
-
-if case_path != "demo":
-    # Get available fields from simulation
-    sample_mesh = sim.get_mesh(0)
-    available_fields = list(sample_mesh.point_data.keys()) + list(sample_mesh.cell_data.keys())
-    
-    # Filter supported fields
-    display_fields = [f for f in SUPPORTED_FIELDS.keys() if f in available_fields]
-    
-    # Start Tabset Container
-    print("\n::: {.panel-tabset}\n")
-    
-    for field_id in display_fields:
-        config = SUPPORTED_FIELDS[field_id]
-        
-        # Heading for the tab
-        print(f"\n### {config['name']}\n")
-        
-        # 1. Provide Context
-        print(f"**Field**: {config['name']} | **Units**: {config['unit']}\n")
-        
-        # 2. Render Interactive 3D (representative step)
-        mid_idx = sim.n_steps // 2
-        mesh = sim.get_mesh(mid_idx)
-        
-        if mesh is not None:
-            surface = mesh.extract_surface()
-            
-            # Create a unique plotter
-            pl_int = pv.Plotter(window_size=(800, 500))
-            if field_id in surface.point_data or field_id in surface.cell_data:
-                pl_int.add_mesh(surface, scalars=field_id, cmap=config['cmap'], 
-                               show_edges=False, smooth_shading=True,
-                               scalar_bar_args={"title": f"{config['name']} [{config['unit']}]"})
-            else:
-                pl_int.add_mesh(surface, color="grey", opacity=0.3)
-                
-            pl_int.background_color = "#1a1a2e"
-            
-            print(f"#### Interactive Snapshot (t = {sim.time_steps[mid_idx]:.3f}s)\n")
-            display(pl_int.show(jupyter_backend="html", return_viewer=True))
-        
-        # 3. Temporal Animation (Video)
-        print(f"\n#### Temporal Propagation (4D)\n")
-        vid_path = f"media/anim_{field_id}.gif"
-        print(f"![{config['name']} Propagation]({vid_path})\n")
-    
-    # Close Tabset Container
-    print("\n:::\n")
-else:
-    print("\n⚠️ No simulation data loaded.\n")
-```
-
-```{python}
-#| label: camera-capture-btn
-#| output: asis
-#| echo: false
-"""
-Camera-save button — only functional in `quarto preview` / live kernel mode.
-In frozen Quarto renders this renders as a static (non-functional) button.
-"""
 import json
-import panel as pn
 from pathlib import Path
 
-_STATE_DIR = Path(__file__).parent / "state"
-
-# pl_int is the last PyVista plotter created in the loop above.
-# In quarto preview (live kernel), its .camera properties reflect the
-# user's current browser view via PyVista's Trame sync.
 try:
-    _plotter = pl_int  # noqa: F821  (defined in previous cell)
-except NameError:
-    _plotter = None
-
-
-def _on_save_camera(event) -> None:
-    if _plotter is None:
-        _save_btn.name = "⚠ No plotter available"
-        _save_btn.button_type = "warning"
-        return
-
-    cam_data: dict = {
-        "position":    list(_plotter.camera.position),
-        "focal_point": list(_plotter.camera.focal_point),
-        "view_up":     list(_plotter.camera.view_up),
-    }
-    if _plotter.camera.is_parallel_projection:
-        cam_data["parallel_scale"] = float(_plotter.camera.parallel_scale)
-
-    _STATE_DIR.mkdir(exist_ok=True)
-    out = _STATE_DIR / "camera_state.json"
-    out.write_text(json.dumps(cam_data, indent=2))
-
-    _save_btn.name = "✓ Camera saved → state/camera_state.json"
-    _save_btn.button_type = "success"
-
-
-_save_btn = pn.widgets.Button(
-    name="📷  Save Camera State for High-Res Render",
-    button_type="primary",
-    width=380,
-)
-_save_btn.on_click(_on_save_camera)
-display(_save_btn)
-```
-
-## Pass 2: Boundary Patch Inspection
-
-In addition to the internal volume, we extract the simulation state on the boundary patches (e.g., epicardium, endocardium). This is crucial for verifying stimulus delivery and surface activation patterns.
-
-```{python}
-#| label: patch-analysis
-#| echo: true
-#| output: true
-
-# Extracting data in two steps (passes)
-if case_path != "demo":
-    print("📋 Dual-Pass Extraction Summary:")
-    
-    # Pass 1: Global Volume
-    vol_mesh = sim.get_mesh(0, part="internalMesh")
-    print(f"  • [Pass 1] Internal Volume: {vol_mesh.n_cells:,} cells")
-    
-    # Pass 2: Boundary Surfaces
-    # In OpenFOAM, boundary patches are enable via EnableAllPatchArrays() in our loader
-    # We can try to load the 'boundary' block or specific patches.
-    boundary = sim.get_mesh(0, part="boundary") 
-    if boundary is not None:
-         print(f"  • [Pass 2] Boundary Surface: {boundary.n_cells:,} cells")
+    reports_dir = Path(params["reports_dir"])
+    manifest_path = reports_dir / "plots.json"
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+        for artifact in manifest.get("artifacts", []):
+            label = artifact.get("label", artifact["path"])
+            path = reports_dir / artifact["path"]
+            if path.suffix == ".html":
+                from IPython.display import display, IFrame
+                display(IFrame(str(path), width="100%", height="500px"))
+            elif path.suffix in (".png", ".jpg"):
+                from IPython.display import display, Image
+                display(Image(str(path)))
     else:
-         print("  • [Pass 2] No explicit boundary patch found in the current extraction settings.")
-```
-
----
-
-# Numerical Methods & Convergence
-
-## Discretisation Schemes
-
-In `cardiacFoamEP`, the Monodomain equations are discretised using a Finite
-Volume Method (FVM). For the Niederer benchmark, the following schemes are utilized:
-
-| Term | Scheme | Rationale |
-|---|---|---|
-| Time derivative | Euler (1st order) | Standard for stiff EP systems |
-| Gradient | Gauss linear | 2nd-order accurate |
-| Laplacian (diffusion) | Gauss linear corrected | Handles complex ventricular meshes |
-| Source (reaction) | Implicit / Rush-Larsen | Stability for sodium channel dynamics |
-
-## Time Stepping & Stability
-
-The Monodomain equation is stiff due to the fast upstroke of the action potential
-(the $I_{Na}$ current). The time step $\Delta t$ is typically chosen as a multiple
-of the membrane time constant:
-
-$$
-\Delta t \leq \Delta t_{\text{upstroke}} \approx 0.05 \text{ ms}
-$$ {#eq-delta-t}
-
-For this simulation, $\Delta t = 0.005 \text{ s}$ (5 ms) was used for the 
-coarse analysis, consistent with the tutorial parameters.
-
-## Convergence Monitoring
-
-```{python}
-#| label: convergence-demo
-#| echo: true
-#| output: true
-
-import numpy as np
-import matplotlib.pyplot as plt
-
-# Simulate a typical residual convergence history for Vm and activationTime
-np.random.seed(42)
-iterations = np.arange(1, 501)
-residual_Vm = 1e-1 * np.exp(-0.012 * iterations) + 1e-6 * np.random.randn(500)
-residual_at = 8e-2 * np.exp(-0.010 * iterations) + 1e-6 * np.random.randn(500)
-
-residual_Vm = np.clip(residual_Vm, 1e-7, None)
-residual_at = np.clip(residual_at, 1e-7, None)
-
-fig, ax = plt.subplots(figsize=(10, 5))
-ax.semilogy(iterations, residual_Vm, label="Vm (Membrane Voltage)", color="#e63946", linewidth=1.2, alpha=0.8)
-ax.semilogy(iterations, residual_at, label="AT (Activation Time)",  color="#457b9d", linewidth=1.2, alpha=0.8)
-
-ax.axhline(y=1e-5, color="#f4a261", linestyle="--", linewidth=1, label="Target (1e-5)")
-ax.set_xlabel("Solver Iteration", fontsize=12)
-ax.set_ylabel("Residual", fontsize=12)
-ax.set_title("Residual Convergence — Cardiac EP Solver", fontsize=14, fontweight="bold")
-ax.legend(frameon=True, fancybox=True, shadow=True)
-ax.grid(True, alpha=0.3)
-ax.set_facecolor("#f8f9fa")
-fig.patch.set_facecolor("#f8f9fa")
-plt.tight_layout()
-plt.show()
-```
-
----
-
-# Results & Discussion
-
-## Activation Patterns
-
-When inspecting the 3D plots in Section 5, the following activation
-characteristics are observed for the Niederer Benchmark:
-
-1. **Anisotropic Propagation** — The activation wavefront travels faster
-   along the fiber direction $\mathbf{f}_0$. The ellipsoid shape of the 
-   wavefront is a direct consequence of the conductivity tensor $\mathbf{\sigma}$.
-
-2. **Conductivity Bias** — The benchmark specifies the ratio of axial to
-   transverse conductivity. Any deviation in the results compared to the
-   standard benchmark (AT = ~40-60ms) indicates numerical diffusion or
-   discretization error.
-
-## Quantitative Metrics
-
-For a cardiac EP simulation, the key metrics are:
-
-| Quantity | Symbol | Typical Range |
-|---|---|---|
-| Resting Potential | $V_{\text{rest}}$ | $-80$ to $-90$ mV |
-| Peak Potential | $V_{\text{peak}}$ | $+20$ to $+40$ mV |
-| Total Activation Time | $TAT$ | $40$–$70$ ms |
-| Conduction Velocity | $CV$ | $0.2$–$0.7$ m/s |
-
-
-## Depolarization Topology
-
-The wavefront morphology reveal the following features:
-
-1. **Fast Fiber-Axis Propagation** — The activation moves with velocity 
-   $CV_f$ in the longitudinal direction.
-2. **Anisotropy Ratio** — The ratio between longitudinal and transverse 
-   velocity matches the benchmark expectation of ~2:1.
-3. **Excitation Trigger** — The stimulus corner (0,0,0) is clearly visible 
-   in the activation time map.
-
-## Field Statistics
-
-| Quantity | Symbol | Measured | Benchmark |
-|---|---|---|---|
-| Max Activation Time | $AT_{\max}$ | ~60 ms | 60 ± 5 ms |
-| Peak Voltage | $V_{\max}$ | +35 mV | +40 mV |
-| Resting Voltage | $V_{\min}$ | -84 mV | -85 mV |
-| Conduction Velocity | $CV$ | 0.6 m/s | 0.61 m/s |
-
-## Temporal Evolution
-
-The activation wavefront propagates through the cuboid following these phases:
-
-1. **Pulse Stabilitation** ($t < 1 \text{ ms}$) — localized upstroke.
-2. **Ellipsoidal Spread** ($1 < t < 20 \text{ ms}$) — anisotropic front development.
-3. **Boundary Interaction** ($t > 30 \text{ ms}$) — front reaching the walls.
-4. **Full Depolarisation** ($t > 60 \text{ ms}$) — the tissue remains in the plateau phase.
-
----
-
-# Methodology Summary
-
-| Parameter | Value |
-|---|---|
-| **Solver** | cardiacFoamEP (Monodomain) |
-| **Cell Model** | Ten Tusscher / Hodgkin-Huxley |
-| **Mesh type** | Structured Hexahedral |
-| **Time scheme** | Euler (Implicit / Semi-implicit) |
-| **Data Format** | OpenFOAM Decomposed (6 Cores) |
-| **Scalar Field** | Vm (Membrane Voltage) |
-| **Vis. Backend** | PyVista -> Static (Side-by-Side) |
-| **Output** | Quarto -> Self-contained HTML |
-
----
-
-# Conclusions & Future Work
-
-## What This Demonstrates
-
-This 4D Paper proves that it is possible to create **publication-quality
-technical documents** that are simultaneously:
-
-- 📝 **Readable** — clear narrative with equations and figures
-- 🔬 **Reproducible** — all code cells execute from source
-- 🎮 **Interactive** — 3D visualizations with time navigation
-- 📦 **Portable** — a single `.html` file, no server needed
-
-## Future Extensions
-
-1. **Real-time collaboration** — connect the Quarto document to a live
-   OpenFOAM simulation via `functionObjects` and stream results as they
-   compute.
-
-2. **Multi-field dashboards** — extend the viewer to display multiple
-   scalar fields simultaneously (velocity, pressure, vorticity, TKE)
-   with linked cameras.
-
-3. **Quantitative analysis cells** — add code sections that compute
-   drag/lift coefficients, spectral analysis of velocity probes, and
-   comparison with experimental data.
-
-4. **Parametric studies** — use Quarto's `params` system to generate
-   multiple reports from the same template, each with different Reynolds
-   numbers or angles of attack.
-
-5. **PDF/LaTeX export** — dual-format output: interactive HTML for
-   exploration, static PDF for journal submission.
-
----
-
-## Generated Post-Processing Results {#sec-postprocessing}
-
-```{python}
-#| label: load-postproc-results
-#| output: asis
-import json
-from pathlib import Path
-from IPython.display import display, Markdown, Image
-
-try:
-    reports_dir = Path(params.get("reports_dir", ""))
+        print("> No post-processing results found yet. Run scripts from the Run tab.")
 except NameError:
-    reports_dir = Path("/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/postProcessing")
-
-manifest_path = reports_dir / "plots.json"
-
-if not manifest_path.exists():
-    display(Markdown(
-        "> **No post-processing outputs found.**  \n"
-        "> Run the dashboard (`panel serve dashboard/app.py`) and click **Run Post-Processing**."
-    ))
-else:
-    manifest = json.loads(manifest_path.read_text())
-    artifacts = manifest.get("artifacts", [])
-    generated_at = manifest.get("generated_at_utc", "unknown")
-    display(Markdown(f"*{len(artifacts)} artifact(s) generated at {generated_at}*"))
-
-    for artifact in artifacts:
-        label = artifact.get("label", artifact.get("path", "Output"))
-        fmt = artifact.get("format", "").lower()
-        rel_path = artifact.get("path", "")
-        abs_path = reports_dir / rel_path if not Path(rel_path).is_absolute() else Path(rel_path)
-
-        display(Markdown(f"### {label}"))
-
-        if fmt == "html" and abs_path.exists():
-            # For Quarto, embed by reference
-            display(Markdown(f"[Open {label}]({abs_path})"))
-        elif fmt in ("png", "jpg", "jpeg") and abs_path.exists():
-            display(Image(str(abs_path)))
-        else:
-            display(Markdown(f"*File: `{abs_path}`*"))
+    print("> params not available in this context.")
 ```
 
----
+# Conclusion
 
-# Appendix A — Environment Info
-
-```{python}
-#| label: environment
-#| echo: true
-#| code-fold: true
-
-import platform
-import pyvista as pv
-
-print(f"🐍 Python:   {platform.python_version()}")
-print(f"🔷 PyVista:  {pv.__version__}")
-print(f"📐 VTK:      {pv.vtk_version_info}")
-print(f"💻 Platform: {platform.platform()}")
-```
-
-# Appendix B — References
-
-1. Niederer, S. A., et al. (2012). Verification of cardiac tissue
-   electrophysiology simulators using an N-version benchmark.
-   *Royal Society Philosophical Transactions A*, 369(1954), 4331–4351.
-
-2. Ten Tusscher, K. H., & Panfilov, A. V. (2006). Alternans and spiral
-   breakup in a human ventricular tissue model. *American Journal of
-   Physiology-Heart and Circulatory Physiology*, 291(3), H1088-H1100.
-
-3. OpenFOAM Foundation (2024). *cardiacFoamEP User Reference*.
-   [openfoam.org](https://openfoam.org)
-
-4. Sullivan, C. B., & Kaszynski, A. (2019). PyVista: 3D plotting and mesh
-   analysis through a streamlined interface for the Visualization Toolkit
-   (VTK). *JOSS*, 4(37), 1450.
+Write your conclusions here.
