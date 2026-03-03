@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,9 @@ def run_postprocessing_script(
     """
     import subprocess
     import threading
+
+    if not re.fullmatch(r'[A-Za-z_]\w*', function_name):
+        raise ValueError(f"Invalid function name: {function_name!r}")
 
     cmd = [
         sys.executable, "-c",
