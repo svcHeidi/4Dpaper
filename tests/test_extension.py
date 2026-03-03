@@ -166,6 +166,35 @@ class TestIsCacheValid:
         assert mod.is_cache_valid(fig, src, camera_path=cam) is True
 
 
+class TestCameraSyncSnippet:
+    def test_contains_fig_id(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-test")
+        assert "fig-test" in snippet
+
+    def test_contains_event_hook(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm")
+        assert "onEndInteractionEvent" in snippet
+
+    def test_contains_badge_element(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm")
+        assert "camera-badge" in snippet
+        assert "Default view" in snippet
+
+    def test_contains_fetch_url(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm")
+        assert "localhost:5006/camera/" in snippet
+
+    def test_custom_server_url(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm", server_url="http://localhost:9000")
+        assert "localhost:9000/camera/" in snippet
+        assert "localhost:5006" not in snippet
+
+
 class TestGenerateHtmlFigure:
     def test_creates_html_file(self, tmp_path):
         """Smoke test: verify generate_html_figure creates a non-empty .html file."""

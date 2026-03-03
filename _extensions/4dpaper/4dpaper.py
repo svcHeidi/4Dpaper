@@ -86,6 +86,65 @@ def is_cache_valid(
     return True
 
 
+# ── Camera sync snippet ───────────────────────────────────────────────────────
+
+def _camera_sync_snippet(fig_id: str, server_url: str = "http://localhost:5006") -> str:
+    """
+    Return an HTML+JS snippet that:
+    - Shows a '📷 Default view' badge (position:fixed, top-right of iframe)
+    - After each rotation end, POSTs {position, focal_point, view_up} to the server
+    - Updates the badge to '📷 Camera synced' on success
+
+    vtk.js exposes window.renderWindow after OfflineLocalView.load() is called.
+    The interactor's onEndInteractionEvent fires after each drag ends.
+    The fetch is debounced 500ms so rapid drags only send one request.
+    """
+    fig_id_js = json.dumps(fig_id)
+    # Embed the camera endpoint prefix (server_url + "/camera/") as a literal
+    # string so that tests can assert its presence directly in the snippet source.
+    camera_prefix_js = json.dumps(server_url.rstrip("/") + "/camera/")
+    return (
+        f'<div id="camera-badge-{fig_id}" style="position:fixed;top:8px;right:8px;'
+        f'background:rgba(80,80,80,0.75);color:#fff;padding:4px 8px;'
+        f'border-radius:4px;font-size:11px;font-family:monospace;'
+        f'z-index:9999;pointer-events:none;">&#128247; Default view</div>\n'
+        f'<script>\n'
+        f'(function(){{\n'
+        f'  var FIG_ID={fig_id_js}, CAM_PREFIX={camera_prefix_js};\n'
+        f'  var badge=document.getElementById("camera-badge-{fig_id}");\n'
+        f'  var timer=null;\n'
+        f'  function waitRW(cb){{\n'
+        f'    if(window.renderWindow){{cb(window.renderWindow);}}\n'
+        f'    else{{setTimeout(function(){{waitRW(cb);}},100);}}\n'
+        f'  }}\n'
+        f'  waitRW(function(rw){{\n'
+        f'    rw.getInteractor().onEndInteractionEvent(function(){{\n'
+        f'      clearTimeout(timer);\n'
+        f'      timer=setTimeout(function(){{\n'
+        f'        var cam=rw.getRenderers().getFirst().getActiveCamera();\n'
+        f'        fetch(CAM_PREFIX+FIG_ID,{{\n'
+        f'          method:"POST",\n'
+        f'          headers:{{"Content-Type":"application/json"}},\n'
+        f'          body:JSON.stringify({{\n'
+        f'            position:cam.getPosition(),\n'
+        f'            focal_point:cam.getFocalPoint(),\n'
+        f'            view_up:cam.getViewUp()\n'
+        f'          }})\n'
+        f'        }}).then(function(r){{\n'
+        f'          if(r.ok){{badge.innerHTML="&#128247; Camera synced";'
+        f'badge.style.background="rgba(0,160,0,0.75)";}}\n'
+        f'        }}).catch(function(){{\n'
+        f'          badge.innerHTML="&#128247; Sync error";\n'
+        f'          badge.style.background="rgba(180,0,0,0.75)";\n'
+        f'        }});\n'
+        f'      }},500);\n'
+        f'    }});\n'
+        f'  }});\n'
+        f'}})();\n'
+        f'</script>'
+    )
+
+
 # ── Figure generation (Task 3) ────────────────────────────────────────────────
 
 def generate_png_figure(
@@ -179,6 +238,7 @@ def generate_html_figure(
     field: str,
     time_spec: str,
     output_path: Path,
+    fig_id: str | None = None,
 ) -> None:
     """
     Generate a self-contained vtk.js HTML figure using PyVista.
@@ -241,6 +301,8 @@ def generate_html_figure(
     # PyVista's trame output uses 100vw/100vh which fills the whole page.
     html = output_path.read_text()
     html = html.replace("100vw", "900px").replace("100vh", "600px")
+    if fig_id:
+        html = html.replace("</body>", _camera_sync_snippet(fig_id) + "\n</body>")
     output_path.write_text(html)
 
     print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
@@ -296,7 +358,7 @@ def main() -> None:
         else:
             print(f"[4dpaper] Generating {fig_id}.html …", file=sys.stderr)
             try:
-                generate_html_figure(src, field, time_spec, out_html)
+                generate_html_figure(src, field, time_spec, out_html, fig_id=fig_id)
             except Exception as exc:
                 print(f"[4dpaper] ERROR generating {fig_id}.html: {exc}", file=sys.stderr)
                 sys.exit(1)
