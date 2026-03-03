@@ -194,6 +194,35 @@ class TestCameraSyncSnippet:
         assert "localhost:9000/camera/" in snippet
         assert "localhost:5006" not in snippet
 
+    def test_debounce_order(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm")
+        # clearTimeout must appear before setTimeout
+        assert snippet.index("clearTimeout") < snippet.index("setTimeout")
+
+    def test_camera_api_chain(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm")
+        assert "getRenderers().getFirst().getActiveCamera()" in snippet
+
+    def test_fetch_is_post(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm")
+        assert 'method:"POST"' in snippet
+
+    def test_fetch_body_keys(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm")
+        assert "position" in snippet
+        assert "focal_point" in snippet
+        assert "view_up" in snippet
+
+    def test_script_tag_injection_safe(self):
+        mod = _load_4dpaper()
+        # A fig_id with </script> must not appear unescaped
+        snippet = mod._camera_sync_snippet("fig</script>vm")
+        assert "</script>" not in snippet.split("<script>", 1)[1].rsplit("</script>", 1)[0]
+
 
 class TestGenerateHtmlFigure:
     def test_creates_html_file(self, tmp_path):

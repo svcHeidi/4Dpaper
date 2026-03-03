@@ -99,10 +99,13 @@ def _camera_sync_snippet(fig_id: str, server_url: str = "http://localhost:5006")
     The interactor's onEndInteractionEvent fires after each drag ends.
     The fetch is debounced 500ms so rapid drags only send one request.
     """
-    fig_id_js = json.dumps(fig_id)
+    fig_id_js = json.dumps(fig_id).replace("</", "<\\/")
     # Embed the camera endpoint prefix (server_url + "/camera/") as a literal
     # string so that tests can assert its presence directly in the snippet source.
-    camera_prefix_js = json.dumps(server_url.rstrip("/") + "/camera/")
+    camera_prefix_js = json.dumps(server_url.rstrip("/") + "/camera/").replace("</", "<\\/")
+    # Escape </  in the raw fig_id used inside the script body (e.g. getElementById arg)
+    # so that a fig_id containing </script> cannot break out of the <script> block.
+    fig_id_safe = fig_id.replace("</", "<\\/")
     return (
         f'<div id="camera-badge-{fig_id}" style="position:fixed;top:8px;right:8px;'
         f'background:rgba(80,80,80,0.75);color:#fff;padding:4px 8px;'
@@ -111,11 +114,11 @@ def _camera_sync_snippet(fig_id: str, server_url: str = "http://localhost:5006")
         f'<script>\n'
         f'(function(){{\n'
         f'  var FIG_ID={fig_id_js}, CAM_PREFIX={camera_prefix_js};\n'
-        f'  var badge=document.getElementById("camera-badge-{fig_id}");\n'
+        f'  var badge=document.getElementById("camera-badge-{fig_id_safe}");\n'
         f'  var timer=null;\n'
         f'  function waitRW(cb){{\n'
         f'    if(window.renderWindow){{cb(window.renderWindow);}}\n'
-        f'    else{{setTimeout(function(){{waitRW(cb);}},100);}}\n'
+        f'    else{{var iv=setInterval(function(){{if(window.renderWindow){{clearInterval(iv);cb(window.renderWindow);}}}},100);}}\n'
         f'  }}\n'
         f'  waitRW(function(rw){{\n'
         f'    rw.getInteractor().onEndInteractionEvent(function(){{\n'
@@ -302,7 +305,14 @@ def generate_html_figure(
     html = output_path.read_text()
     html = html.replace("100vw", "900px").replace("100vh", "600px")
     if fig_id:
-        html = html.replace("</body>", _camera_sync_snippet(fig_id) + "\n</body>")
+        if "</body>" not in html:
+            print(
+                f"[4dpaper] Warning: no </body> in {output_path.name} "
+                "— camera sync badge not injected.",
+                file=sys.stderr,
+            )
+        else:
+            html = html.replace("</body>", _camera_sync_snippet(fig_id) + "\n</body>", 1)
     output_path.write_text(html)
 
     print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
