@@ -104,22 +104,23 @@ def run_postprocessing_script(
     return result_payload
 
 
-def run_quarto_render(qmd_path: Path, log_lines: list[str]) -> int:
+def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str = "html") -> int:
     """
-    Run `quarto render <qmd_path>`.  Streams output to *log_lines*.
-    Returns the process exit code.
+    Run `quarto render <qmd_path> --to <output_format>`.
+    Streams output to *log_lines*. Returns the process exit code.
     """
     import os
     import subprocess
     import threading
 
-    # Tell Quarto to use the same Python that is running this dashboard,
-    # so it picks up jupyter/nbformat from the active venv.
     env = os.environ.copy()
     env["QUARTO_PYTHON"] = sys.executable
+    # Prepend .venv/bin to PATH so the pre-render hook finds the right Python
+    venv_bin = str(Path(__file__).parent.parent / ".venv" / "bin")
+    env["PATH"] = venv_bin + ":" + env.get("PATH", "")
 
     proc = subprocess.Popen(
-        ["quarto", "render", str(qmd_path)],
+        ["quarto", "render", str(qmd_path), "--to", output_format],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

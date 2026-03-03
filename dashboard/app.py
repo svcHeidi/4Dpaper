@@ -2,8 +2,11 @@
 4Dpaper Dashboard — main Panel app.
 
 Launch with:
-    panel serve dashboard/app.py --show --port 5006
+    panel serve dashboard/app.py --static-dirs output=_output --show --port 5006
 from the 4Dpapers repository root.
+
+The --static-dirs flag makes _output/ available at /output/ so the
+paper iframe can embed the rendered HTML at /output/analysis_report.html.
 """
 from __future__ import annotations
 
