@@ -108,7 +108,7 @@ def generate_html_figure(
         idx = max(0, n - 1)
     else:  # "mid" or numeric string
         try:
-            idx = int(time_spec)
+            idx = max(0, min(int(time_spec), n - 1))
         except ValueError:
             idx = n // 2
 
@@ -192,7 +192,7 @@ def main() -> None:
             if is_cache_valid(out, src):
                 print(f"[4dpaper] {fig_id}.png is up to date — skipping.", file=sys.stderr)
                 continue
-            print(f"[4dpaper] PDF figures: run 'Export PDF' from the dashboard.", file=sys.stderr)
+            print(f"[4dpaper] PDF figures for '{fig_id}' must be pre-rendered via pvpython; skipping.", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -145,7 +145,10 @@ class PaperPage(param.Parameterized):
                     figures_dir = Path(__file__).parent.parent.parent / "state" / "figures"
                     figures_dir.mkdir(parents=True, exist_ok=True)
 
-                    # Re-use camera render for the main figure (fig-vm → render_output.png)
+                    # NOTE: The current PDF export renders a single pvpython figure and maps it
+                    # to `fig-vm.png`. Additional figures with different IDs will show the Lua
+                    # placeholder text "run 'Export PDF'..." in the PDF output. Future work:
+                    # parse the QMD to discover all figure IDs and render each independently.
                     render_output = Path(cfg.get("render_output", str(figures_dir / "fig-vm.png")))
                     exit_code = run_pvpython_render(
                         pvpython_path=pv_cfg.get("pvpython_path", "pvpython"),
