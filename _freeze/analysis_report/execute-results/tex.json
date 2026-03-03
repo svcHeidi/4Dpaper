@@ -6,7 +6,6 @@
     "supporting": [
       "analysis_report_files"
     ],
-    "filters": [],
-    "includes": {}
+    "filters": []
   }
 }

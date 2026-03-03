@@ -8,7 +8,7 @@ __pycache__/
 **/*.quarto_ipynb
 
 # Machine-local visualization state
-state/camera_state.json
+state/camera_*.json
 state/render_output.png
 
 # Extension-generated figure cache
