@@ -220,7 +220,9 @@ def main() -> None:
         return
 
     qmd_path = os.environ.get("QUARTO_DOCUMENT_PATH", "")
-    output_format = os.environ.get("QUARTO_OUTPUT_FORMAT", "html")
+    # QUARTO_OUTPUT_FORMAT is not reliably set for project-level pre-render hooks.
+    # We always generate both .html and .png so both HTML and PDF output work.
+    output_format = os.environ.get("QUARTO_OUTPUT_FORMAT", "html")  # kept for logging only
 
     # QUARTO_DOCUMENT_PATH is not always set for project-level pre-render hooks.
     # Fall back to scanning all .qmd files in QUARTO_PROJECT_DIR (or project root).
@@ -251,34 +253,29 @@ def main() -> None:
         field = fig["field"]
         time_spec = fig.get("time", "mid")
 
-        if output_format in ("html", "html4", "html5"):
-            out = figures_dir / f"{fig_id}.html"
-            if is_cache_valid(out, src):
-                print(f"[4dpaper] {fig_id}.html is up to date — skipping.", file=sys.stderr)
-                continue
+        # Always generate both .html (for web) and .png (for PDF).
+        # QUARTO_OUTPUT_FORMAT is not reliably set for project pre-render hooks,
+        # so we keep both formats up to date on every render pass.
+        out_html = figures_dir / f"{fig_id}.html"
+        if is_cache_valid(out_html, src):
+            print(f"[4dpaper] {fig_id}.html is up to date — skipping.", file=sys.stderr)
+        else:
             print(f"[4dpaper] Generating {fig_id}.html …", file=sys.stderr)
             try:
-                generate_html_figure(src, field, time_spec, out)
+                generate_html_figure(src, field, time_spec, out_html)
             except Exception as exc:
-                print(
-                    f"[4dpaper] ERROR generating {fig_id}.html: {exc}",
-                    file=sys.stderr,
-                )
+                print(f"[4dpaper] ERROR generating {fig_id}.html: {exc}", file=sys.stderr)
                 sys.exit(1)
 
-        elif output_format in ("pdf", "latex"):
-            out = figures_dir / f"{fig_id}.png"
-            if is_cache_valid(out, src):
-                print(f"[4dpaper] {fig_id}.png is up to date — skipping.", file=sys.stderr)
-                continue
-            print(f"[4dpaper] Generating {fig_id}.png (default camera) …", file=sys.stderr)
+        out_png = figures_dir / f"{fig_id}.png"
+        if is_cache_valid(out_png, src):
+            print(f"[4dpaper] {fig_id}.png is up to date — skipping.", file=sys.stderr)
+        else:
+            print(f"[4dpaper] Generating {fig_id}.png …", file=sys.stderr)
             try:
-                generate_png_figure(src, field, time_spec, out)
+                generate_png_figure(src, field, time_spec, out_png)
             except Exception as exc:
-                print(
-                    f"[4dpaper] ERROR generating {fig_id}.png: {exc}",
-                    file=sys.stderr,
-                )
+                print(f"[4dpaper] ERROR generating {fig_id}.png: {exc}", file=sys.stderr)
                 sys.exit(1)
 
 
