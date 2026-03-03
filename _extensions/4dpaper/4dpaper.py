@@ -202,6 +202,13 @@ def generate_html_figure(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pl.export_html(str(output_path))
     pl.close()
+
+    # Patch viewport units so the widget has a fixed height when embedded inline.
+    # PyVista's trame output uses 100vw/100vh which fills the whole page.
+    html = output_path.read_text()
+    html = html.replace("100vw", "900px").replace("100vh", "600px")
+    output_path.write_text(html)
+
     print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
 
 
