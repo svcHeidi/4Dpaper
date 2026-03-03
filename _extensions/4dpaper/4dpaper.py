@@ -219,7 +219,7 @@ def generate_png_figure(
             cam = json.loads(camera_path.read_text())
             pl.camera.position = cam["position"]
             pl.camera.focal_point = cam["focal_point"]
-            pl.camera.view_up = cam["view_up"]
+            pl.camera.up = cam["view_up"]
             print(f"[4dpaper] Applied saved camera for {fig_id}", file=sys.stderr)
         except (json.JSONDecodeError, KeyError) as exc:
             print(
