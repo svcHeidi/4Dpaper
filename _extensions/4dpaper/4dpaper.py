@@ -10,6 +10,7 @@ and QUARTO_OUTPUT_FORMAT from the environment.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -152,12 +153,19 @@ def generate_png_figure(
         if fig_id else None
     )
     if camera_path is not None and camera_path.exists():
-        import json as _json
-        cam = _json.loads(camera_path.read_text())
-        pl.camera.position = cam["position"]
-        pl.camera.focal_point = cam["focal_point"]
-        pl.camera.view_up = cam["view_up"]
-        print(f"[4dpaper] Applied saved camera for {fig_id}", file=sys.stderr)
+        try:
+            cam = json.loads(camera_path.read_text())
+            pl.camera.position = cam["position"]
+            pl.camera.focal_point = cam["focal_point"]
+            pl.camera.view_up = cam["view_up"]
+            print(f"[4dpaper] Applied saved camera for {fig_id}", file=sys.stderr)
+        except (json.JSONDecodeError, KeyError) as exc:
+            print(
+                f"[4dpaper] Warning: could not apply saved camera for {fig_id} ({exc})"
+                " — using isometric view.",
+                file=sys.stderr,
+            )
+            pl.isometric_view()
     else:
         pl.isometric_view()
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -121,37 +121,48 @@ class TestIsCacheValid:
 
     def test_stale_when_camera_newer_than_png(self, tmp_path):
         mod = _load_4dpaper()
+        import os, time as _time
+        now = _time.time()
         src = tmp_path / "case.foam"
         src.write_text("")
         fig = tmp_path / "fig.png"
         fig.write_text("")
-        time.sleep(0.05)
         cam = tmp_path / "camera_fig.json"
         cam.write_text("{}")
-        # camera newer than fig → cache NOT valid
+        # Set src and fig older than cam — guaranteed distinct mtimes
+        os.utime(src, (now - 2, now - 2))
+        os.utime(fig, (now - 1, now - 1))
+        os.utime(cam, (now, now))
         assert mod.is_cache_valid(fig, src, camera_path=cam) is False
 
     def test_valid_when_png_newer_than_camera(self, tmp_path):
         mod = _load_4dpaper()
+        import os, time as _time
+        now = _time.time()
         src = tmp_path / "case.foam"
         src.write_text("")
         cam = tmp_path / "camera_fig.json"
         cam.write_text("{}")
-        time.sleep(0.05)
         fig = tmp_path / "fig.png"
         fig.write_text("")
-        # png newer than camera → cache IS valid
+        # Set src and cam older than fig — guaranteed distinct mtimes
+        os.utime(src, (now - 2, now - 2))
+        os.utime(cam, (now - 1, now - 1))
+        os.utime(fig, (now, now))
         assert mod.is_cache_valid(fig, src, camera_path=cam) is True
 
     def test_valid_when_camera_file_absent(self, tmp_path):
         mod = _load_4dpaper()
+        import os, time as _time
+        now = _time.time()
         src = tmp_path / "case.foam"
         src.write_text("")
-        time.sleep(0.05)
         fig = tmp_path / "fig.png"
         fig.write_text("")
+        # Set src older than fig
+        os.utime(src, (now - 1, now - 1))
+        os.utime(fig, (now, now))
         cam = tmp_path / "nonexistent_camera.json"
-        # no camera file → behaves as before
         assert mod.is_cache_valid(fig, src, camera_path=cam) is True
 
 
