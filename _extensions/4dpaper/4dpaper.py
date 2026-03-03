@@ -63,16 +63,26 @@ def parse_shortcodes(text: str) -> list[dict]:
 
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 
-def is_cache_valid(fig_path: Path, src_path: Path) -> bool:
+def is_cache_valid(
+    fig_path: Path,
+    src_path: Path,
+    camera_path: Path | None = None,
+) -> bool:
     """
-    Return True if fig_path exists and is newer than src_path.
+    Return True if fig_path exists, is newer than src_path, and is newer
+    than camera_path (if given and present).
+
     Returns True (assume valid) if src_path does not exist.
     """
     if not fig_path.exists():
         return False
-    if not src_path.exists():
-        return True
-    return fig_path.stat().st_mtime > src_path.stat().st_mtime
+    fig_mtime = fig_path.stat().st_mtime
+    if src_path.exists() and fig_mtime <= src_path.stat().st_mtime:
+        return False
+    if camera_path is not None and camera_path.exists():
+        if fig_mtime <= camera_path.stat().st_mtime:
+            return False
+    return True
 
 
 # ── Figure generation (Task 3) ────────────────────────────────────────────────
@@ -82,11 +92,14 @@ def generate_png_figure(
     field: str,
     time_spec: str,
     output_path: Path,
+    fig_id: str | None = None,
 ) -> None:
     """
-    Generate a static PNG figure using PyVista (default camera angle).
+    Generate a static PNG figure using PyVista.
 
-    Used as a fallback for PDF export when no pvpython camera state exists.
+    If a saved camera JSON exists at state/camera_<fig_id>.json, the saved
+    camera position is applied; otherwise falls back to isometric view.
+    Used as a fallback for PDF export.
     """
     import pyvista as pv
     from scripts.data_loader import SimulationData
@@ -133,7 +146,20 @@ def generate_png_figure(
             file=sys.stderr,
         )
 
-    pl.isometric_view()
+    # Apply saved camera if available, else fall back to isometric view
+    camera_path = (
+        _project_root / "state" / f"camera_{fig_id}.json"
+        if fig_id else None
+    )
+    if camera_path is not None and camera_path.exists():
+        import json as _json
+        cam = _json.loads(camera_path.read_text())
+        pl.camera.position = cam["position"]
+        pl.camera.focal_point = cam["focal_point"]
+        pl.camera.view_up = cam["view_up"]
+        print(f"[4dpaper] Applied saved camera for {fig_id}", file=sys.stderr)
+    else:
+        pl.isometric_view()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pl.screenshot(str(output_path))
     pl.close()
@@ -268,12 +294,13 @@ def main() -> None:
                 sys.exit(1)
 
         out_png = figures_dir / f"{fig_id}.png"
-        if is_cache_valid(out_png, src):
+        camera_path = _project_root / "state" / f"camera_{fig_id}.json"
+        if is_cache_valid(out_png, src, camera_path=camera_path):
             print(f"[4dpaper] {fig_id}.png is up to date — skipping.", file=sys.stderr)
         else:
             print(f"[4dpaper] Generating {fig_id}.png …", file=sys.stderr)
             try:
-                generate_png_figure(src, field, time_spec, out_png)
+                generate_png_figure(src, field, time_spec, out_png, fig_id=fig_id)
             except Exception as exc:
                 print(f"[4dpaper] ERROR generating {fig_id}.png: {exc}", file=sys.stderr)
                 sys.exit(1)
