@@ -13,6 +13,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 FAKE_CONFIG = {
     "cardiacfoam_root": "/fake/cf",
     "quarto_paper_path": "/fake/paper.qmd",
+    "camera_state": "",
+    "render_output": "",
+    "paraview": {},
     "tutorials": {
         "NiedererEtAl2012": {
             "display_name": "Niederer Et Al. 2012",
