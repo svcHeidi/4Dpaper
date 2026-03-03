@@ -48,7 +48,7 @@ local function fourd_image(args, kwargs)
     local f = io.open(fig_path, "r")
     if f then
       f:close()
-      local img = pandoc.Image(caption, fig_path, id)
+      local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, {width="90%"}))
       return pandoc.Para({img})
     else
       return pandoc.Para({
