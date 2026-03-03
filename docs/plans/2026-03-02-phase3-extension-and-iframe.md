@@ -1064,7 +1064,7 @@ Replace with:
 4Dpaper Dashboard — main Panel app.
 
 Launch with:
-    panel serve dashboard/app.py --static-dirs output=_output --show --port 5006
+    panel serve dashboard/app.py --plugins dashboard.camera_plugin --static-dirs output=_output --show --port 5006
 from the 4Dpapers repository root.
 
 The --static-dirs flag makes _output/ available at /output/ so the
@@ -1315,7 +1315,7 @@ PyVista `export_html` uses Panel's trame backend. Ensure `panel`, `trame`, `tram
 **Iframe shows "refused to connect"**
 The dashboard must be started with `--static-dirs output=_output`:
 ```bash
-panel serve dashboard/app.py --static-dirs output=_output --show --port 5006
+panel serve dashboard/app.py --plugins dashboard.camera_plugin --static-dirs output=_output --show --port 5006
 ```
 
 **Pre-render hook not called by Quarto**
