@@ -1,0 +1,11 @@
+{
+  "hash": "fed09c6a9975144dcd69064caed05d28",
+  "result": {
+    "engine": "jupyter",
+    "markdown": "---\ntitle: \"Cardiac Electrophysiology Analysis\"\nsubtitle: \"Niederer et al. (2012) Benchmark\"\nauthor:\n  - name: \"Your Name\"\n    affiliation: \"Your Institution\"\ndate: today\nabstract: |\n  Replace this with your abstract. This paper uses the 4DPaper extension\n  to embed interactive 3D simulation visualisations directly in the HTML\n  output, and high-resolution static figures in the PDF export.\nformat:\n  html:\n    self-contained: true\n    embed-resources: true\n    code-fold: true\n    toc: true\n    toc-depth: 3\n    theme:\n      light: cosmo\n      dark: darkly\n  pdf:\n    keep-tex: false\nparams:\n  case_path: \"/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam\"\n  reports_dir: \"/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/postProcessing\"\njupyter: python3\n---\n\n# Introduction\n\nWrite your introduction here. Use standard Markdown and Quarto syntax.\nYou can include equations with LaTeX:\n\n$$\n\\frac{\\partial V_m}{\\partial t} = \\nabla \\cdot (\\mathbf{D} \\nabla V_m) - \\frac{I_{ion}}{C_m}\n$$\n\n# Simulation Setup\n\nDescribe your simulation setup here.\n\n# Results\n\n## Transmembrane Potential\n\nThe figure below shows the transmembrane potential $V_m$ at mid-activation.\nIn the HTML version this is a fully interactive 3D viewer — you can rotate,\nzoom, and inspect the mesh. In the PDF version it is a high-resolution static\nrender from the camera angle you locked in the dashboard.\n\n{{< 4d-image src=\"/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam\" field=\"Vm\" id=\"fig-vm\" caption=\"Transmembrane potential $V_m$ at mid-activation\" >}}\n\n## Activation Time\n\n{{< 4d-image src=\"/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam\" field=\"activationTime\" id=\"fig-at\" time=\"last\" caption=\"Activation time distribution\" >}}\n\n## Post-Processing Results\n\n::: {#load-postproc .cell execution_count=1}\n> params not available in this context.\n:::\n\n\n# Conclusion\n\nWrite your conclusions here.\n\n",
+    "supporting": [
+      "analysis_report_files"
+    ],
+    "filters": []
+  }
+}
