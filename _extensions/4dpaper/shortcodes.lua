@@ -25,11 +25,14 @@ local function fourd_image(args, kwargs)
     if f then
       local content = f:read("*all")
       f:close()
-      -- Wrap in a figure div for styling
+      -- Embed via srcdoc iframe so the vtk.js canvas is sandboxed in its own
+      -- browsing context (window.innerWidth/Height = iframe size, not page viewport).
+      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
       return pandoc.RawBlock("html",
-        '<figure class="fourd-figure">\n' ..
-        content .. "\n" ..
-        (caption ~= "" and ('<figcaption>' .. caption .. '</figcaption>\n') or "") ..
+        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+        '<iframe srcdoc="' .. escaped .. '" width="100%" height="600px" ' ..
+        'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
+        (caption ~= "" and ('<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n') or "") ..
         '</figure>')
     else
       -- Placeholder shown when figure has not been generated yet
