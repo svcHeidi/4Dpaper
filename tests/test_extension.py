@@ -211,9 +211,9 @@ class TestCameraSyncSnippet:
     def test_waits_for_renderer_global(self):
         mod = _load_4dpaper()
         snippet = mod._camera_sync_snippet("fig-vm")
-        # Snippet must wait for the __4dRenderer global set by the
-        # OfflineLocalView.load patch in generate_html_figure
-        assert "window.__4dRenderer" in snippet
+        # Snippet derives renderer from renderWindow.getRenderers()
+        assert "getRenderers" in snippet
+        assert "window.__4dRenderer" not in snippet
 
     def test_fetch_is_post(self):
         mod = _load_4dpaper()

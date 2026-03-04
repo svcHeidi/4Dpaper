@@ -95,17 +95,13 @@ def _camera_sync_snippet(fig_id: str, server_url: str = "http://localhost:5006")
     - After each rotation end, POSTs {position, focal_point, view_up} to the server
     - Updates the badge to '📷 Camera synced' on success
 
-    window.renderWindow and window.__4dRenderer are set by the OfflineLocalView.load
-    patch injected in generate_html_figure. The interactor's onEndInteractionEvent
-    fires after each drag ends. The fetch is debounced 500ms so rapid drags only
-    send one request.
+    vtk.js sets window.renderWindow internally via OfflineLocalView.load().
+    The renderer is derived via renderWindow.getRenderers().getFirst().
+    The interactor's onEndInteractionEvent fires after each drag ends.
+    The fetch is debounced 500ms so rapid drags only send one request.
     """
     fig_id_js = json.dumps(fig_id).replace("</", "<\\/")
-    # Embed the camera endpoint prefix (server_url + "/camera/") as a literal
-    # string so that tests can assert its presence directly in the snippet source.
     camera_prefix_js = json.dumps(server_url.rstrip("/") + "/camera/").replace("</", "<\\/")
-    # Escape </ in the raw fig_id used inside the script body (e.g. getElementById arg)
-    # so that a fig_id containing </script> cannot break out of the <script> block.
     fig_id_safe = fig_id.replace("</", "<\\/")
     return (
         f'<div id="camera-badge-{fig_id}" style="position:fixed;top:8px;right:8px;'
@@ -119,8 +115,12 @@ def _camera_sync_snippet(fig_id: str, server_url: str = "http://localhost:5006")
         f'  var timer=null;\n'
         f'  function waitRW(cb){{\n'
         f'    function check(){{\n'
-        f'      if(window.renderWindow&&window.__4dRenderer){{cb(window.renderWindow,window.__4dRenderer);}}\n'
-        f'      else{{setTimeout(check,100);}}\n'
+        f'      var rw=window.renderWindow;\n'
+        f'      if(rw&&rw.getRenderers){{\n'
+        f'        var renderer=rw.getRenderers().getFirst();\n'
+        f'        if(renderer){{cb(rw,renderer);return;}}\n'
+        f'      }}\n'
+        f'      setTimeout(check,200);\n'
         f'    }}\n'
         f'    check();\n'
         f'  }}\n'
