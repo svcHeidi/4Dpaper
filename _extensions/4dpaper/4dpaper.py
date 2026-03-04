@@ -95,15 +95,16 @@ def _camera_sync_snippet(fig_id: str, server_url: str = "http://localhost:5006")
     - After each rotation end, POSTs {position, focal_point, view_up} to the server
     - Updates the badge to '📷 Camera synced' on success
 
-    vtk.js exposes window.renderWindow after OfflineLocalView.load() is called.
-    The interactor's onEndInteractionEvent fires after each drag ends.
-    The fetch is debounced 500ms so rapid drags only send one request.
+    window.renderWindow and window.__4dRenderer are set by the OfflineLocalView.load
+    patch injected in generate_html_figure. The interactor's onEndInteractionEvent
+    fires after each drag ends. The fetch is debounced 500ms so rapid drags only
+    send one request.
     """
     fig_id_js = json.dumps(fig_id).replace("</", "<\\/")
     # Embed the camera endpoint prefix (server_url + "/camera/") as a literal
     # string so that tests can assert its presence directly in the snippet source.
     camera_prefix_js = json.dumps(server_url.rstrip("/") + "/camera/").replace("</", "<\\/")
-    # Escape </  in the raw fig_id used inside the script body (e.g. getElementById arg)
+    # Escape </ in the raw fig_id used inside the script body (e.g. getElementById arg)
     # so that a fig_id containing </script> cannot break out of the <script> block.
     fig_id_safe = fig_id.replace("</", "<\\/")
     return (
@@ -117,14 +118,17 @@ def _camera_sync_snippet(fig_id: str, server_url: str = "http://localhost:5006")
         f'  var badge=document.getElementById("camera-badge-{fig_id_safe}");\n'
         f'  var timer=null;\n'
         f'  function waitRW(cb){{\n'
-        f'    if(window.renderWindow){{cb(window.renderWindow);}}\n'
-        f'    else{{var iv=setInterval(function(){{if(window.renderWindow){{clearInterval(iv);cb(window.renderWindow);}}}},100);}}\n'
+        f'    function check(){{\n'
+        f'      if(window.renderWindow&&window.__4dRenderer){{cb(window.renderWindow,window.__4dRenderer);}}\n'
+        f'      else{{setTimeout(check,100);}}\n'
+        f'    }}\n'
+        f'    check();\n'
         f'  }}\n'
-        f'  waitRW(function(rw){{\n'
+        f'  waitRW(function(rw,renderer){{\n'
         f'    rw.getInteractor().onEndInteractionEvent(function(){{\n'
         f'      clearTimeout(timer);\n'
         f'      timer=setTimeout(function(){{\n'
-        f'        var cam=rw.getRenderers().getFirst().getActiveCamera();\n'
+        f'        var cam=renderer.getActiveCamera();\n'
         f'        fetch(CAM_PREFIX+FIG_ID,{{\n'
         f'          method:"POST",\n'
         f'          headers:{{"Content-Type":"application/json"}},\n'
@@ -304,6 +308,31 @@ def generate_html_figure(
     # PyVista's trame output uses 100vw/100vh which fills the whole page.
     html = output_path.read_text()
     html = html.replace("100vw", "900px").replace("100vh", "600px")
+
+    # Patch OfflineLocalView.load to expose window.renderWindow and
+    # window.__4dRenderer so the camera sync snippet can hook into them.
+    # OfflineLocalView.load returns a Promise that resolves to
+    # {renderWindow, renderer, ...}. We capture both globals here.
+    _old_load = "OfflineLocalView.load(container, { base64Str });"
+    _new_load = (
+        "OfflineLocalView.load(container, { base64Str })"
+        ".then(function(obj){"
+        "if(!obj)return;"
+        "window.renderWindow=obj.renderWindow||obj;"
+        "window.__4dRenderer=obj.renderer"
+        "||(obj.renderWindow&&obj.renderWindow.getRenderers"
+        "?obj.renderWindow.getRenderers().getFirst():null);"
+        "});"
+    )
+    if _old_load in html:
+        html = html.replace(_old_load, _new_load, 1)
+    else:
+        print(
+            f"[4dpaper] Warning: could not patch OfflineLocalView.load in "
+            f"{output_path.name} — camera sync will not work.",
+            file=sys.stderr,
+        )
+
     if fig_id:
         if "</body>" not in html:
             print(

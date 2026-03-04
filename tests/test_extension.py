@@ -197,13 +197,23 @@ class TestCameraSyncSnippet:
     def test_debounce_order(self):
         mod = _load_4dpaper()
         snippet = mod._camera_sync_snippet("fig-vm")
-        # clearTimeout must appear before setTimeout
-        assert snippet.index("clearTimeout") < snippet.index("setTimeout")
+        # Inside the interaction handler, clearTimeout(timer) must appear
+        # before timer=setTimeout(...) to correctly cancel a pending debounce.
+        assert snippet.index("clearTimeout(timer)") < snippet.index("timer=setTimeout")
 
     def test_camera_api_chain(self):
         mod = _load_4dpaper()
         snippet = mod._camera_sync_snippet("fig-vm")
-        assert "getRenderers().getFirst().getActiveCamera()" in snippet
+        # renderer is passed as second arg to the waitRW callback;
+        # camera is accessed via renderer.getActiveCamera()
+        assert "renderer.getActiveCamera()" in snippet
+
+    def test_waits_for_renderer_global(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm")
+        # Snippet must wait for the __4dRenderer global set by the
+        # OfflineLocalView.load patch in generate_html_figure
+        assert "window.__4dRenderer" in snippet
 
     def test_fetch_is_post(self):
         mod = _load_4dpaper()

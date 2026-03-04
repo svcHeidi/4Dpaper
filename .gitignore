@@ -14,3 +14,5 @@ state/render_output.png
 # Extension-generated figure cache
 state/figures/*.html
 state/figures/*.png
+
+/.luarc.json
