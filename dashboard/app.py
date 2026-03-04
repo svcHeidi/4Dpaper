@@ -21,85 +21,163 @@ if str(_repo_root) not in sys.path:
 
 import panel as pn
 
-from dashboard.utils import load_config, load_manifest, resolve_param_paths
-from dashboard.pages.run_page import build_run_page
-from dashboard.pages.outputs_page import build_outputs_page
+from dashboard.utils import load_config
 from dashboard.pages.paper_page import build_paper_page
+from dashboard.figure_browser import build_figure_browser
 
-pn.extension("codeeditor", sizing_mode="stretch_width", template="bootstrap")
+pn.extension(
+    "codeeditor",
+    sizing_mode="stretch_width",
+    template="bootstrap",
+    raw_css=[
+        """
+        /* ── Full-width layout ──────────────────────────────────────────── */
+        html, body { overflow-x: hidden !important; max-width: 100vw; }
+        .container-fluid {
+            padding-left:  0 !important;
+            padding-right: 0 !important;
+            max-width: 100% !important;
+        }
+        #main { padding: 0 !important; }
+
+        /* ── Ace editor: no horizontal scroll / movement ─────────────────
+           Use highly specific selectors to win against Ace's own rules.  */
+        div.ace_editor                         { overflow: hidden !important; }
+        div.ace_editor div.ace_scroller        { overflow-x: hidden !important; }
+        div.ace_editor div.ace_scrollbar-h     { display: none   !important;
+                                                 height: 0       !important; }
+        div.ace_editor div.ace_content         { overflow-x: hidden !important; }
+        """
+    ],
+)
 
 
 def create_app():
     config = load_config()
-    tutorials = config.get("tutorials", {})
-    tutorial_keys = list(tutorials.keys())
+    qmd_path = Path(config["quarto_paper_path"])
 
-    # ── Sidebar ──────────────────────────────────────────────────────────────
-    tutorial_selector = pn.widgets.Select(
-        name="Tutorial",
-        options={v["display_name"]: k for k, v in tutorials.items()},
+    # ── QMD editor ────────────────────────────────────────────────────────────
+    qmd_content = qmd_path.read_text() if qmd_path.exists() else (
+        f"# File not found\n\n`{qmd_path}` does not exist.\n\n"
+        "Update `quarto_paper_path` in `dashboard/config.yaml`."
+    )
+
+    editor = pn.widgets.CodeEditor(
+        value=qmd_content,
+        language="markdown",
         sizing_mode="stretch_width",
-    )
-    last_run_status = pn.pane.Markdown("*No run yet.*")
-
-    sidebar = pn.Column(
-        pn.pane.Markdown("## 4Dpaper\n---"),
-        pn.pane.Markdown("**Tutorial**"),
-        tutorial_selector,
-        pn.layout.Divider(),
-        pn.pane.Markdown("**Last run**"),
-        last_run_status,
-        width=260,
+        height=800,
+        theme="tomorrow_night",
     )
 
-    # ── Pages (built lazily when tutorial changes) ────────────────────────────
-    current_tutorial_key = tutorial_keys[0] if tutorial_keys else None
-
-    run_col = pn.Column(sizing_mode="stretch_width")
-    outputs_col = pn.Column(sizing_mode="stretch_width")
-    paper_col = pn.Column(sizing_mode="stretch_width")
-
-    def _load_tutorial(key: str):
-        run_col.clear()
-        run_col.append(build_run_page(key, config))
-
-        tut_cfg = config["tutorials"][key]
-        manifest_rel = tut_cfg.get("plots_manifest", "")
-        cf_root = Path(config["cardiacfoam_root"])
-        manifest_path = cf_root / manifest_rel
-        manifest = load_manifest(manifest_path)
-
-        outputs_col.clear()
-        outputs_col.append(build_outputs_page(manifest))
-
-        paper_col.clear()
-        paper_col.append(build_paper_page(config))
-
-    if current_tutorial_key:
-        _load_tutorial(current_tutorial_key)
-
-    def _on_tutorial_change(event):
-        _load_tutorial(event.new)
-
-    tutorial_selector.param.watch(_on_tutorial_change, "value")
-
-    # ── Tabs ─────────────────────────────────────────────────────────────────
-    tabs = pn.Tabs(
-        ("▶ Run", run_col),
-        ("📊 Outputs", outputs_col),
-        ("📄 Paper", paper_col),
-        dynamic=True,
+    save_btn = pn.widgets.Button(
+        name="💾  Save",
+        button_type="default",
+        width=110,
+    )
+    save_status = pn.pane.Alert(
+        "",
+        alert_type="success",
         sizing_mode="stretch_width",
+        visible=False,
     )
 
-    # ── Root layout ───────────────────────────────────────────────────────────
-    app = pn.Row(
+    def _on_save(_event):
+        try:
+            qmd_path.write_text(editor.value, encoding="utf-8")
+            save_status.object = "✓ Saved — click Rebuild HTML to preview changes."
+            save_status.alert_type = "success"
+        except Exception as exc:
+            save_status.object = f"✗ Save failed: {exc}"
+            save_status.alert_type = "danger"
+        save_status.visible = True
+
+    save_btn.on_click(_on_save)
+
+    # ── Ace word-wrap via Bokeh jscallback (reliable client-side JS) ──────────
+    # pn.pane.HTML script tags are stripped by Bokeh's innerHTML injection.
+    # jscallback creates a real Bokeh CustomJS that is sent to the browser over
+    # the WebSocket and executed there — no sanitisation happens.
+    _wrap_trigger = pn.widgets.Button(
+        name="", width=1, height=1, margin=0, visible=False,
+    )
+    _wrap_trigger.jscallback(
+        clicks="""
+        (function init(){
+            if(typeof ace==='undefined'){setTimeout(init,200);return;}
+            document.querySelectorAll('.ace_editor').forEach(function(el){
+                try{
+                    var ed=ace.edit(el);
+                    ed.session.setUseWrapMode(true);
+                    // also hide the h-scrollbar via the editor API
+                    if(ed.renderer && ed.renderer.$scrollbarV)
+                        ed.renderer.$scrollbarV.element.style.overflowX='hidden';
+                }catch(e){}
+            });
+        })();
+        """,
+    )
+
+    # Fire the callback as soon as the session WebSocket is ready.
+    pn.state.onload(lambda: setattr(_wrap_trigger, "clicks", 1))
+
+    editor_panel = pn.Column(
+        pn.pane.Markdown(f"### `{qmd_path.name}`"),
+        pn.Row(save_btn, save_status),
+        editor,
+        _wrap_trigger,          # invisible; must be in the layout to be served
+        sizing_mode="stretch_both",
+        min_width=380,
+    )
+
+    # ── Figure browser sidebar ─────────────────────────────────────────────────
+    sidebar = build_figure_browser(editor, qmd_path, config)
+
+    # ── Paper preview ──────────────────────────────────────────────────────────
+    paper_panel = pn.Column(
+        build_paper_page(config),
+        sizing_mode="stretch_both",
+        min_width=480,
+    )
+
+    # ── Panel toggle toolbar ───────────────────────────────────────────────────
+    sidebar_toggle = pn.widgets.Toggle(
+        name="⊣  Figures",
+        value=True,
+        button_type="primary",
+        width=110,
+    )
+    preview_toggle = pn.widgets.Toggle(
+        name="Preview  ⊢",
+        value=True,
+        button_type="primary",
+        width=110,
+    )
+
+    sidebar_toggle.param.watch(lambda e: setattr(sidebar, "visible", e.new), "value")
+    preview_toggle.param.watch(lambda e: setattr(paper_panel, "visible", e.new), "value")
+
+    toolbar = pn.Row(
+        sidebar_toggle,
+        pn.layout.HSpacer(),
+        preview_toggle,
+        sizing_mode="stretch_width",
+        height=42,
+        styles={
+            "padding": "4px 8px",
+            "background": "#212529",
+            "border-bottom": "1px solid #343a40",
+        },
+    )
+
+    body = pn.Row(
         sidebar,
-        pn.layout.VSpacer(width=16),
-        tabs,
-        sizing_mode="stretch_width",
+        editor_panel,
+        paper_panel,
+        sizing_mode="stretch_both",
     )
-    return app
+
+    return pn.Column(toolbar, body, sizing_mode="stretch_both")
 
 
 app = create_app()

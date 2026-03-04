@@ -1,7 +1,6 @@
 """Paper tab: iframe preview + Rebuild HTML + Export PDF."""
 from __future__ import annotations
 
-import shutil
 import threading
 import time
 from pathlib import Path
@@ -10,7 +9,7 @@ from typing import Any
 import panel as pn
 import param
 
-from dashboard.utils import run_pvpython_render, run_quarto_render
+from dashboard.utils import run_quarto_render
 
 
 class PaperPage(param.Parameterized):
@@ -127,52 +126,14 @@ class PaperPage(param.Parameterized):
         self._rebuild_html_btn.disabled = True
         self._export_pdf_btn.disabled = True
         self._log_lines.clear()
-        self._status_badge.object = "Checking for camera state…"
+        self._status_badge.object = "Exporting PDF…"
         self._status_badge.alert_type = "warning"
         self._pdf_link.object = ""
 
-        cfg = self._config
-        camera_path = Path(cfg.get("camera_state", ""))
-        pv_cfg = cfg.get("paraview", {})
-
         def _run() -> None:
             try:
-                # Step 1: pvpython figure render (requires camera state)
-                if camera_path and camera_path.exists() and pv_cfg:
-                    self._log_lines.append("[INFO] Camera state found — rendering PDF figures…")
-                    pn.state.execute(self._refresh_log)
-
-                    figures_dir = Path(__file__).parent.parent.parent / "state" / "figures"
-                    figures_dir.mkdir(parents=True, exist_ok=True)
-
-                    # NOTE: The current PDF export renders a single pvpython figure and maps it
-                    # to `fig-vm.png`. Additional figures with different IDs will show the Lua
-                    # placeholder text "run 'Export PDF'..." in the PDF output. Future work:
-                    # parse the QMD to discover all figure IDs and render each independently.
-                    render_output = Path(cfg.get("render_output", str(figures_dir / "fig-vm.png")))
-                    exit_code = run_pvpython_render(
-                        pvpython_path=pv_cfg.get("pvpython_path", "pvpython"),
-                        pvsm_path=pv_cfg.get("pvsm_path", ""),
-                        foam_path=pv_cfg.get("foam_path", ""),
-                        camera_state_path=camera_path,
-                        output_path=render_output,
-                        resolution=pv_cfg.get("render_resolution", [1920, 1080]),
-                        log_lines=self._log_lines,
-                    )
-                    # Copy render output to state/figures/fig-vm.png for shortcode lookup
-                    if exit_code == 0 and render_output != figures_dir / "fig-vm.png":
-                        shutil.copy2(render_output, figures_dir / "fig-vm.png")
-
-                    if exit_code != 0:
-                        pn.state.execute(lambda: self._finish_pdf(exit_code, None))
-                        return
-                    self._log_lines.append("[INFO] PDF figures rendered.")
-                else:
-                    self._log_lines.append(
-                        "[WARN] No camera state — PDF figures will show placeholder text."
-                    )
-
-                # Step 2: quarto render --to pdf
+                # quarto render --to pdf triggers the pre-render hook which
+                # regenerates PNGs using any saved camera_<fig_id>.json files.
                 self._log_lines.append("[INFO] Running quarto render --to pdf…")
                 pn.state.execute(self._refresh_log)
                 exit_code = run_quarto_render(

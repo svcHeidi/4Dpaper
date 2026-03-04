@@ -21,9 +21,6 @@ format:
       dark: darkly
   pdf:
     keep-tex: false
-params:
-  case_path: "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
-  reports_dir: "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/postProcessing"
 jupyter: python3
 ---
 
@@ -54,35 +51,6 @@ render from the camera angle you locked in the dashboard.
 ## Activation Time
 
 {{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="activationTime" id="fig-at" time="last" caption="Activation time distribution" >}}
-
-## Post-Processing Results
-
-```{python}
-#| label: load-postproc
-#| echo: false
-#| output: asis
-import json
-from pathlib import Path
-
-try:
-    reports_dir = Path(params["reports_dir"])
-    manifest_path = reports_dir / "plots.json"
-    if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text())
-        for artifact in manifest.get("artifacts", []):
-            label = artifact.get("label", artifact["path"])
-            path = reports_dir / artifact["path"]
-            if path.suffix == ".html":
-                from IPython.display import display, IFrame
-                display(IFrame(str(path), width="100%", height="500px"))
-            elif path.suffix in (".png", ".jpg"):
-                from IPython.display import display, Image
-                display(Image(str(path)))
-    else:
-        print("> No post-processing results found yet. Run scripts from the Run tab.")
-except NameError:
-    print("> params not available in this context.")
-```
 
 # Conclusion
 

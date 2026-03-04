@@ -1,9 +1,7 @@
 """Utility helpers for the 4Dpapers dashboard."""
 from __future__ import annotations
 
-import importlib.util
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,92 +20,6 @@ def load_config() -> dict[str, Any]:
         return yaml.safe_load(fh)
 
 
-def load_manifest(manifest_path: Path) -> dict[str, Any] | None:
-    """Read plots.json; return parsed dict or None if not found."""
-    if not manifest_path.exists():
-        return None
-    return json.loads(manifest_path.read_text())
-
-
-def resolve_param_paths(params: dict[str, Any], *, root: Path) -> dict[str, Any]:
-    """Resolve relative string param values to absolute paths under *root*."""
-    resolved: dict[str, Any] = {}
-    for key, value in params.items():
-        if isinstance(value, str) and not Path(value).is_absolute():
-            resolved[key] = str(root / value)
-        else:
-            resolved[key] = value
-    return resolved
-
-
-def load_script_module(module_path: Path, module_name: str = "postproc_script"):
-    """Dynamically import a Python file and return the module object."""
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Cannot load module from {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def run_postprocessing_script(
-    *,
-    module_path: Path,
-    function_name: str,
-    params: dict[str, Any],
-    log_lines: list[str],
-) -> Any:
-    """
-    Import *module_path*, call *function_name*(**params).
-    Stdout/stderr are captured into *log_lines* in real-time via a subprocess
-    so that the Panel log pane can update incrementally.
-
-    Returns the function's return value (artifact list / dict / None).
-    """
-    import subprocess
-    import threading
-
-    if not re.fullmatch(r'[A-Za-z_]\w*', function_name):
-        raise ValueError(f"Invalid function name: {function_name!r}")
-
-    cmd = [
-        sys.executable, "-c",
-        f"import importlib.util, sys, json\n"
-        f"spec = importlib.util.spec_from_file_location('m', {str(module_path)!r})\n"
-        f"mod = importlib.util.module_from_spec(spec)\n"
-        f"spec.loader.exec_module(mod)\n"
-        f"result = mod.{function_name}(**{params!r})\n"
-        f"print('__RESULT__:' + json.dumps(result, default=str))\n",
-    ]
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-
-    result_payload = None
-
-    def _read():
-        nonlocal result_payload
-        for line in proc.stdout:
-            line = line.rstrip("\n")
-            if line.startswith("__RESULT__:"):
-                result_payload = json.loads(line[len("__RESULT__:"):])
-            else:
-                log_lines.append(line)
-
-    thread = threading.Thread(target=_read, daemon=True)
-    thread.start()
-    proc.wait()
-    thread.join()
-
-    if proc.returncode != 0:
-        log_lines.append(f"[ERROR] Script exited with code {proc.returncode}")
-
-    return result_payload
-
-
 def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str = "html") -> int:
     """
     Run `quarto render <qmd_path> --to <output_format>`.
@@ -118,10 +30,13 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
     import threading
 
     env = os.environ.copy()
-    env["QUARTO_PYTHON"] = sys.executable
-    # Prepend .venv/bin to PATH so the pre-render hook finds the right Python
-    venv_bin = str(Path(__file__).parent.parent / ".venv" / "bin")
-    env["PATH"] = venv_bin + ":" + env.get("PATH", "")
+    # Always use the project .venv Python for Quarto — it has nbformat/jupyter.
+    # sys.executable may point to a different environment (e.g. the system venv
+    # used to launch `panel serve`) that lacks those packages.
+    _venv_bin = Path(__file__).parent.parent / ".venv" / "bin"
+    _venv_python = _venv_bin / "python"
+    env["QUARTO_PYTHON"] = str(_venv_python) if _venv_python.exists() else sys.executable
+    env["PATH"] = str(_venv_bin) + ":" + env.get("PATH", "")
 
     proc = subprocess.Popen(
         ["quarto", "render", str(qmd_path), "--to", output_format],
@@ -153,7 +68,7 @@ def save_camera_state(
     *,
     output_path: Path,
 ) -> None:
-    """Serialize PyVista camera state to JSON for use by paraview_render.py."""
+    """Serialize PyVista camera state to JSON."""
     payload: dict = {
         "position":    list(position),
         "focal_point": list(focal_point),
@@ -170,57 +85,3 @@ def load_camera_state(path: Path) -> dict | None:
     if not path.exists():
         return None
     return json.loads(path.read_text())
-
-
-def run_pvpython_render(
-    *,
-    pvpython_path: str,
-    pvsm_path: str,
-    foam_path: str,
-    camera_state_path: Path,
-    output_path: Path,
-    resolution: list[int],
-    log_lines: list[str],
-) -> int:
-    """
-    Invoke pvpython to run dashboard/paraview_render.py as a subprocess.
-    Streams stdout+stderr to log_lines line by line.
-    Returns the process exit code (0 = success).
-    """
-    import subprocess
-    import threading
-
-    render_script = Path(__file__).parent / "paraview_render.py"
-    cmd = [
-        pvpython_path,
-        str(render_script),
-        str(pvsm_path),
-        str(foam_path),
-        str(camera_state_path),
-        str(output_path),
-        str(resolution[0]),
-        str(resolution[1]),
-    ]
-    log_lines.append(f"[INFO] Running: {' '.join(cmd)}")
-
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-
-    def _read_output() -> None:
-        for line in proc.stdout:
-            log_lines.append(line.rstrip("\n"))
-
-    thread = threading.Thread(target=_read_output, daemon=True)
-    thread.start()
-    proc.wait()
-    thread.join()
-
-    if proc.returncode != 0:
-        log_lines.append(
-            f"[ERROR] pvpython exited with code {proc.returncode}"
-        )
-    return proc.returncode
