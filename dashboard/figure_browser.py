@@ -143,14 +143,17 @@ _SIDEBAR_STYLES = {
 }
 
 
-def build_figure_browser(
+def build_figure_insert_form(
     editor: pn.widgets.CodeEditor,
     qmd_path: Path,
     config: dict[str, Any],
 ) -> pn.Column:
     """
-    Build the left sidebar for browsing .foam files and inserting 4d-image
-    shortcodes into the QMD editor.
+    Build the figure-insertion form for browsing .foam files and inserting
+    4d-image shortcodes into the QMD editor.
+
+    Returns a plain Column (no fixed width/styles) — the caller decides how
+    to present it (e.g. as a toggle panel or modal).
     """
     project_root = qmd_path.parent
     cf_root_str = config.get("cardiacfoam_root", str(Path.home()))
@@ -312,9 +315,7 @@ def build_figure_browser(
 
     insert_btn.on_click(_on_insert)
 
-    # ── Sidebar layout ────────────────────────────────────────────────────────
-    # sizing_mode="stretch_height": fixed width=_W, height fills the parent Row.
-    # (sizing_mode="fixed" locked height to content height, cutting it off.)
+    # ── Form layout ───────────────────────────────────────────────────────────
     return pn.Column(
         pn.pane.Markdown("### Insert Figure", styles={"color": "#ddd"}),
         file_selector,
@@ -329,7 +330,4 @@ def build_figure_browser(
         shortcode_preview,
         insert_btn,
         insert_status,
-        width=_W,
-        sizing_mode="stretch_height",   # ← fills Row height; does not lock height
-        styles=_SIDEBAR_STYLES,
     )
