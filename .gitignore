@@ -16,3 +16,4 @@ state/figures/*.html
 state/figures/*.png
 
 /.luarc.json
+.worktrees/
