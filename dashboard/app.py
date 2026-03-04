@@ -23,7 +23,8 @@ import panel as pn
 
 from dashboard.utils import load_config
 from dashboard.pages.paper_page import build_paper_page
-from dashboard.figure_browser import build_figure_browser
+from dashboard.file_tree import build_file_tree_sidebar, get_language
+from dashboard.figure_browser import build_figure_insert_form
 
 pn.extension(
     "codeeditor",
@@ -70,6 +71,22 @@ def create_app():
         theme="tomorrow_night",
     )
 
+    # ── Multi-file state ──────────────────────────────────────────────────────
+    current_file = {"path": str(qmd_path)}
+
+    editor_title = pn.pane.Markdown(f"### `{qmd_path.name}`")
+
+    def _on_file_click(file_path: str, language: str):
+        # Auto-save current file before switching
+        if current_file["path"]:
+            Path(current_file["path"]).write_text(editor.value, encoding="utf-8")
+        # Load new file
+        current_file["path"] = file_path
+        editor.value = Path(file_path).read_text(encoding="utf-8")
+        editor.language = language
+        editor_title.object = f"### `{Path(file_path).name}`"
+
+    # ── Save button ───────────────────────────────────────────────────────────
     save_btn = pn.widgets.Button(
         name="💾  Save",
         button_type="default",
@@ -84,8 +101,8 @@ def create_app():
 
     def _on_save(_event):
         try:
-            qmd_path.write_text(editor.value, encoding="utf-8")
-            save_status.object = "✓ Saved — click Rebuild HTML to preview changes."
+            Path(current_file["path"]).write_text(editor.value, encoding="utf-8")
+            save_status.object = f"✓ Saved {Path(current_file['path']).name}"
             save_status.alert_type = "success"
         except Exception as exc:
             save_status.object = f"✗ Save failed: {exc}"
@@ -121,17 +138,35 @@ def create_app():
     # Fire the callback as soon as the session WebSocket is ready.
     pn.state.onload(lambda: setattr(_wrap_trigger, "clicks", 1))
 
+    # ── Insert Figure toggle + form ───────────────────────────────────────────
+    insert_fig_btn = pn.widgets.Toggle(
+        name="📐 Insert Figure",
+        value=False,
+        button_type="default",
+        width=140,
+    )
+
+    figure_form = build_figure_insert_form(editor, qmd_path, config)
+    figure_form.visible = False
+    insert_fig_btn.param.watch(
+        lambda e: setattr(figure_form, "visible", e.new), "value"
+    )
+
     editor_panel = pn.Column(
-        pn.pane.Markdown(f"### `{qmd_path.name}`"),
-        pn.Row(save_btn, save_status),
+        editor_title,
+        pn.Row(save_btn, insert_fig_btn, save_status),
+        figure_form,
         editor,
         _wrap_trigger,          # invisible; must be in the layout to be served
         sizing_mode="stretch_both",
         min_width=380,
     )
 
-    # ── Figure browser sidebar ─────────────────────────────────────────────────
-    sidebar = build_figure_browser(editor, qmd_path, config)
+    # ── File tree sidebar ──────────────────────────────────────────────────────
+    sidebar = build_file_tree_sidebar(
+        project_root=qmd_path.parent,
+        on_file_click=_on_file_click,
+    )
 
     # ── Paper preview ──────────────────────────────────────────────────────────
     paper_panel = pn.Column(
@@ -142,7 +177,7 @@ def create_app():
 
     # ── Panel toggle toolbar ───────────────────────────────────────────────────
     sidebar_toggle = pn.widgets.Toggle(
-        name="⊣  Figures",
+        name="⊣  Files",
         value=True,
         button_type="primary",
         width=110,
