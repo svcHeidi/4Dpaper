@@ -309,30 +309,6 @@ def generate_html_figure(
     html = output_path.read_text()
     html = html.replace("100vw", "900px").replace("100vh", "600px")
 
-    # Patch OfflineLocalView.load to expose window.renderWindow and
-    # window.__4dRenderer so the camera sync snippet can hook into them.
-    # OfflineLocalView.load returns a Promise that resolves to
-    # {renderWindow, renderer, ...}. We capture both globals here.
-    _old_load = "OfflineLocalView.load(container, { base64Str });"
-    _new_load = (
-        "OfflineLocalView.load(container, { base64Str })"
-        ".then(function(obj){"
-        "if(!obj)return;"
-        "window.renderWindow=obj.renderWindow||obj;"
-        "window.__4dRenderer=obj.renderer"
-        "||(obj.renderWindow&&obj.renderWindow.getRenderers"
-        "?obj.renderWindow.getRenderers().getFirst():null);"
-        "});"
-    )
-    if _old_load in html:
-        html = html.replace(_old_load, _new_load, 1)
-    else:
-        print(
-            f"[4dpaper] Warning: could not patch OfflineLocalView.load in "
-            f"{output_path.name} — camera sync will not work.",
-            file=sys.stderr,
-        )
-
     if fig_id:
         if "</body>" not in html:
             print(
