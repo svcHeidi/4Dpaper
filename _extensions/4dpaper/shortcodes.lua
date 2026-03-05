@@ -9,8 +9,10 @@ HTML output: embeds state/figures/<id>.html as raw HTML block (interactive vtk.j
 PDF output:  embeds state/figures/<id>.png as a standard Markdown image
 --]]
 
+local _relay_injected = false
+
 local function fourd_image(args, kwargs)
-  local id      = pandoc.utils.stringify(kwargs["id"]      or pandoc.Str(""))
+  local id      = pandoc.utils.stringify(kwargs["id"] or pandoc.Str(""))
   local caption = pandoc.utils.stringify(kwargs["caption"] or pandoc.Str(""))
 
   if id == "" then
@@ -28,12 +30,50 @@ local function fourd_image(args, kwargs)
       -- Embed via srcdoc iframe so the vtk.js canvas is sandboxed in its own
       -- browsing context (window.innerWidth/Height = iframe size, not page viewport).
       local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+
+      -- Relay script: listens for postMessage from srcdoc iframes and calls
+      -- fetch("/camera/...") from the same origin (Quarto page is served by
+      -- Panel at the same origin). Only injected once per page.
+      local relay_script = ""
+      if not _relay_injected then
+        _relay_injected = true
+        relay_script = [[
+<script>
+(function(){
+  window.addEventListener("message",function(e){
+    if(!e.data||e.data.type!=="4dpaper-camera")return;
+    var figId=e.data.fig_id;
+    var camera=e.data.camera;
+    fetch("/camera/"+figId,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(camera)
+    }).then(function(r){
+      if(r.ok&&e.source){
+        e.source.postMessage({type:"4dpaper-camera-ack",fig_id:figId,status:"ok"},"*");
+      }
+    }).catch(function(){
+      if(e.source){
+        e.source.postMessage({type:"4dpaper-camera-ack",fig_id:figId,status:"error"},"*");
+      }
+    });
+  });
+})();
+</script>
+]]
+      end
+
       return pandoc.RawBlock("html",
         '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
         '<iframe srcdoc="' .. escaped .. '" width="100%" height="600px" ' ..
         'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
-        (caption ~= "" and ('<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n') or "") ..
-        '</figure>')
+        (
+        caption ~= "" and
+            (
+            '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
+            ) or "") ..
+        '</figure>\n' ..
+        relay_script)
     else
       -- Placeholder shown when figure has not been generated yet
       return pandoc.RawBlock("html",
@@ -45,14 +85,14 @@ local function fourd_image(args, kwargs)
         '</div>')
     end
 
-  -- ── PDF / LaTeX output: embed pre-rendered PNG ────────────────────────────
+    -- ── PDF / LaTeX output: embed pre-rendered PNG ────────────────────────────
   else
     local fig_path = "state/figures/" .. id .. ".png"
     local f = io.open(fig_path, "r")
     if f then
       f:close()
-      local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, {width="90%"}))
-      return pandoc.Para({img})
+      local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, { width = "90%" }))
+      return pandoc.Para({ img })
     else
       return pandoc.Para({
         pandoc.Str("[Figure "),

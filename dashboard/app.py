@@ -11,6 +11,7 @@ paper iframe can embed the rendered HTML at /output/analysis_report.html.
 from __future__ import annotations
 
 import sys
+import threading
 from pathlib import Path
 
 # Ensure the repo root is on sys.path so `dashboard.*` imports work when
@@ -32,8 +33,16 @@ pn.extension(
     template="bootstrap",
     raw_css=[
         """
+        /* ── Hide the "Panel Application" header bar ─────────────────────── */
+        #header { display: none !important; height: 0 !important; }
+
         /* ── Full-width layout ──────────────────────────────────────────── */
-        html, body { overflow-x: hidden !important; max-width: 100vw; }
+        html, body {
+            overflow-x: hidden !important;
+            max-width: 100vw;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
         .container-fluid {
             padding-left:  0 !important;
             padding-right: 0 !important;
@@ -99,6 +108,8 @@ def create_app():
         visible=False,
     )
 
+    _save_timer: list[threading.Timer] = []  # holds at most one timer
+
     def _on_save(_event):
         try:
             Path(current_file["path"]).write_text(editor.value, encoding="utf-8")
@@ -108,6 +119,17 @@ def create_app():
             save_status.object = f"✗ Save failed: {exc}"
             save_status.alert_type = "danger"
         save_status.visible = True
+        # Auto-hide after 3 s
+        for t in _save_timer:
+            t.cancel()
+        _save_timer.clear()
+        doc = pn.state.curdoc
+        def _hide():
+            doc.add_next_tick_callback(lambda: setattr(save_status, "visible", False))
+        t = threading.Timer(3.0, _hide)
+        t.daemon = True
+        t.start()
+        _save_timer.append(t)
 
     save_btn.on_click(_on_save)
 
@@ -122,15 +144,52 @@ def create_app():
         clicks="""
         (function init(){
             if(typeof ace==='undefined'){setTimeout(init,200);return;}
+            // ── Enable word-wrap on every Ace editor instance ────────────
             document.querySelectorAll('.ace_editor').forEach(function(el){
                 try{
                     var ed=ace.edit(el);
                     ed.session.setUseWrapMode(true);
-                    // also hide the h-scrollbar via the editor API
                     if(ed.renderer && ed.renderer.$scrollbarV)
                         ed.renderer.$scrollbarV.element.style.overflowX='hidden';
                 }catch(e){}
             });
+            // ── Force equal widths on editor + preview panels ────────────
+            // Bokeh uses shadow DOM; we traverse shadow roots to find the
+            // body Row (3 visible children: sidebar, editor, preview) and
+            // force the last two to share space equally via inline flex.
+            // Delay to ensure Bokeh's layout is fully rendered first.
+            setTimeout(function(){
+                var found=false;
+                function fix(root,depth){
+                    if(found||depth>12)return;
+                    var kids=root.children||[];
+                    for(var i=0;i<kids.length;i++){
+                        if(found)return;
+                        var sr=kids[i].shadowRoot;
+                        if(sr){
+                            var vis=[];
+                            for(var j=0;j<sr.children.length;j++){
+                                if(sr.children[j].offsetWidth>10)vis.push(sr.children[j]);
+                            }
+                            if(vis.length===3&&vis[0].offsetWidth<350&&vis[1].offsetWidth>350){
+                                vis[1].style.setProperty('flex','1 1 0%','important');
+                                vis[1].style.setProperty('width','auto','important');
+                                vis[2].style.setProperty('flex','1 1 0%','important');
+                                vis[2].style.setProperty('width','auto','important');
+                                found=true;
+                                // Trigger Ace editor resize after layout change
+                                document.querySelectorAll('.ace_editor').forEach(function(el){
+                                    try{ace.edit(el).resize();}catch(e){}
+                                });
+                                return;
+                            }
+                            fix(sr,depth+1);
+                        }
+                        fix(kids[i],depth+1);
+                    }
+                }
+                fix(document.body,0);
+            },1000);
         })();
         """,
     )
@@ -138,41 +197,42 @@ def create_app():
     # Fire the callback as soon as the session WebSocket is ready.
     pn.state.onload(lambda: setattr(_wrap_trigger, "clicks", 1))
 
-    # ── Insert Figure toggle + form ───────────────────────────────────────────
-    insert_fig_btn = pn.widgets.Toggle(
-        name="📐 Insert Figure",
-        value=False,
-        button_type="default",
-        width=140,
-    )
-
-    figure_form = build_figure_insert_form(editor, qmd_path, config)
-    figure_form.visible = False
-    insert_fig_btn.param.watch(
-        lambda e: setattr(figure_form, "visible", e.new), "value"
-    )
-
     editor_panel = pn.Column(
         editor_title,
-        pn.Row(save_btn, insert_fig_btn, save_status),
-        figure_form,
+        pn.Row(save_btn, save_status),
         editor,
         _wrap_trigger,          # invisible; must be in the layout to be served
         sizing_mode="stretch_both",
-        min_width=380,
+        min_width=400,
     )
 
-    # ── File tree sidebar ──────────────────────────────────────────────────────
+    # ── File tree sidebar (+ Insert Figure at the bottom) ─────────────────────
     sidebar = build_file_tree_sidebar(
         project_root=qmd_path.parent,
         on_file_click=_on_file_click,
     )
 
+    # ── Insert Figure toggle + form (lives in sidebar) ────────────────────────
+    insert_fig_btn = pn.widgets.Toggle(
+        name="📐 Insert Figure",
+        value=False,
+        button_type="default",
+        width=260,
+    )
+    figure_form = build_figure_insert_form(editor, qmd_path, config)
+    figure_form.visible = False
+    insert_fig_btn.param.watch(
+        lambda e: setattr(figure_form, "visible", e.new), "value"
+    )
+    sidebar.append(pn.layout.Divider(margin=(8, 0, 4, 0)))
+    sidebar.append(insert_fig_btn)
+    sidebar.append(figure_form)
+
     # ── Paper preview ──────────────────────────────────────────────────────────
     paper_panel = pn.Column(
         build_paper_page(config),
         sizing_mode="stretch_both",
-        min_width=480,
+        min_width=400,
     )
 
     # ── Panel toggle toolbar ───────────────────────────────────────────────────
