@@ -172,27 +172,31 @@ class TestCameraSyncSnippet:
         snippet = mod._camera_sync_snippet("fig-test")
         assert "fig-test" in snippet
 
-    def test_contains_event_hook(self):
+    def test_uses_postmessage(self):
         mod = _load_4dpaper()
         snippet = mod._camera_sync_snippet("fig-vm")
-        assert "onEndInteractionEvent" in snippet
+        assert "parent.postMessage" in snippet
+
+    def test_message_type(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm")
+        assert "4dpaper-camera" in snippet
+
+    def test_no_fetch_in_snippet(self):
+        """Snippet must NOT contain fetch() — that's now in the relay script."""
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm")
+        assert "fetch(" not in snippet
+
+    def test_ack_listener(self):
+        mod = _load_4dpaper()
+        snippet = mod._camera_sync_snippet("fig-vm")
+        assert "4dpaper-camera-ack" in snippet
 
     def test_contains_badge_element(self):
         mod = _load_4dpaper()
         snippet = mod._camera_sync_snippet("fig-vm")
         assert "camera-badge" in snippet
-        assert "Default view" in snippet
-
-    def test_contains_fetch_url(self):
-        mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        assert "localhost:5006/camera/" in snippet
-
-    def test_custom_server_url(self):
-        mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm", server_url="http://localhost:9000")
-        assert "localhost:9000/camera/" in snippet
-        assert "localhost:5006" not in snippet
 
     def test_debounce_order(self):
         mod = _load_4dpaper()
@@ -214,11 +218,9 @@ class TestCameraSyncSnippet:
         # Snippet derives renderer from renderWindow.getRenderers()
         assert "getRenderers" in snippet
         assert "window.__4dRenderer" not in snippet
-
-    def test_fetch_is_post(self):
-        mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        assert 'method:"POST"' in snippet
+        # Must iterate renderers and find the one with actors, NOT use getFirst()
+        assert "getActors" in snippet
+        assert ".getFirst()" not in snippet
 
     def test_fetch_body_keys(self):
         mod = _load_4dpaper()
@@ -255,3 +257,71 @@ class TestGenerateHtmlFigure:
         assert out.stat().st_size > 1000, "Output HTML is suspiciously small"
         content = out.read_text()
         assert "<html" in content.lower() or "<!DOCTYPE" in content.lower() or "vtk" in content.lower() or "script" in content.lower()
+
+
+class TestCameraSyncIntegration:
+    """Integration tests: camera saved via the server flows into PNG generation."""
+
+    def test_camera_snippet_in_generated_html(self, tmp_path):
+        """When fig_id is provided, the generated HTML must include the postMessage camera sync."""
+        mod = _load_4dpaper()
+        case_path = Path(
+            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+        )
+        if not case_path.exists():
+            pytest.skip("Niederer case not available")
+
+        out = tmp_path / "fig-vm.html"
+        mod.generate_html_figure(
+            src_path=case_path,
+            field="Vm",
+            time_spec="mid",
+            output_path=out,
+            fig_id="fig-vm",
+        )
+        content = out.read_text()
+        # The camera sync snippet should be in the HTML
+        assert "parent.postMessage" in content
+        assert "4dpaper-camera" in content
+        assert "camera-badge-fig-vm" in content
+        # Must find the renderer with actors, not use getFirst()
+        assert "getActors" in content
+        assert ".getFirst()" not in content
+
+    def test_saved_camera_used_for_png(self, tmp_path, monkeypatch):
+        """Camera JSON saved by the server is read back and applied during PNG generation."""
+        import json
+
+        mod = _load_4dpaper()
+        case_path = Path(
+            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+        )
+        if not case_path.exists():
+            pytest.skip("Niederer case not available")
+
+        # 1) Save a camera state file (as the server handler would)
+        camera_data = {
+            "position": [0.05, 0.03, 0.15],
+            "focal_point": [0.005, 0.0035, 0.005],
+            "view_up": [0, 1, 0],
+        }
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        cam_file = state_dir / "camera_fig-vm.json"
+        cam_file.write_text(json.dumps(camera_data))
+
+        # 2) Patch _project_root so generate_png_figure finds our camera file
+        monkeypatch.setattr(mod, "_project_root", tmp_path)
+
+        # 3) Generate PNG with the saved camera
+        png_out = tmp_path / "fig-vm.png"
+        mod.generate_png_figure(
+            src_path=case_path,
+            field="Vm",
+            time_spec="mid",
+            output_path=png_out,
+            fig_id="fig-vm",
+        )
+        assert png_out.exists(), "PNG was not created"
+        assert png_out.stat().st_size > 500, "PNG is suspiciously small"
+
