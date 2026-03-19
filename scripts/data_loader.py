@@ -88,11 +88,11 @@ class SimulationData:
         elif self._format == "openfoam":
             self._load_openfoam()
         elif self._format == "pvd":
-            self._load_pvd()
+            self.load_pvd()
         elif self._format == "vtk_directory":
-            self._load_vtk_directory()
+            self.load_vtk_directory()
         elif self._format == "vtk_single":
-            self._load_vtk_single()
+            self.load_vtk_single()
 
         return self
 
@@ -157,20 +157,12 @@ class SimulationData:
         self._time_steps = list(reader.time_values)
         self._reader = reader
 
-    def _load_pvd(self):
-        """Load a PVD collection."""
-        self.load_pvd()
-
     def load_pvd(self):
         """Load a PVD XML collection that indexes multiple VTK files with timestamps."""
         reader = pv.PVDReader(str(self.case_path))
         self._time_steps = list(reader.time_values) or [0]
         self._reader = reader
         self._format = "pvd"
-
-    def _load_vtk_directory(self):
-        """Load a directory of VTK files."""
-        self.load_vtk_directory()
 
     def load_vtk_directory(self):
         """Load a directory of .vtu files, treating each file as one time step."""
@@ -179,10 +171,6 @@ class SimulationData:
         for i, f in enumerate(vtu_files):
             self._meshes[(i, "default")] = pv.read(f)
         self._format = "vtk_directory"
-
-    def _load_vtk_single(self):
-        """Load a single VTK file."""
-        self.load_vtk_single()
 
     def load_vtk_single(self):
         """Load a single VTK/VTU/VTP file (one time step)."""
