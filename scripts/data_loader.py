@@ -159,22 +159,36 @@ class SimulationData:
 
     def _load_pvd(self):
         """Load a PVD collection."""
+        self.load_pvd()
+
+    def load_pvd(self):
+        """Load a PVD XML collection that indexes multiple VTK files with timestamps."""
         reader = pv.PVDReader(str(self.case_path))
-        self._time_steps = list(reader.time_values)
+        self._time_steps = list(reader.time_values) or [0]
         self._reader = reader
+        self._format = "pvd"
 
     def _load_vtk_directory(self):
         """Load a directory of VTK files."""
+        self.load_vtk_directory()
+
+    def load_vtk_directory(self):
+        """Load a directory of .vtu files, treating each file as one time step."""
         vtu_files = sorted(glob.glob(str(self.case_path / "*.vtu")))
         self._time_steps = list(range(len(vtu_files)))
-        self._meshes = {
-            i: pv.read(f) for i, f in enumerate(vtu_files)
-        }
+        for i, f in enumerate(vtu_files):
+            self._meshes[(i, "default")] = pv.read(f)
+        self._format = "vtk_directory"
 
     def _load_vtk_single(self):
         """Load a single VTK file."""
+        self.load_vtk_single()
+
+    def load_vtk_single(self):
+        """Load a single VTK/VTU/VTP file (one time step)."""
         self._time_steps = [0]
-        self._meshes = {0: pv.read(str(self.case_path))}
+        self._meshes[(0, "default")] = pv.read(str(self.case_path))
+        self._format = "vtk_single"
 
     @property
     def time_steps(self) -> list:
