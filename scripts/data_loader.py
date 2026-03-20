@@ -102,43 +102,29 @@ class SimulationData:
         )
 
     def load(self):
-        """Load the simulation data and discover time steps."""
-        if self._format == "openfoam_decomposed":
-            self._load_decomposed()
-        elif self._format == "openfoam":
-            self._load_openfoam()
-        elif self._format == "pvd":
-            self.load_pvd()
-        elif self._format == "vtk_directory":
-            self.load_vtk_directory()
-        elif self._format == "vtk_single":
-            self.load_vtk_single()
-        elif self._format == "vtp":
-            self.load_vtp()
-        elif self._format == "stl":
-            self.load_stl()
-        elif self._format == "obj":
-            self.load_obj()
-        elif self._format == "ply":
-            self.load_ply()
-        elif self._format == "ensight":
-            self.load_ensight()
-        elif self._format == "cgns":
-            self.load_cgns()
-        elif self._format == "exodus":
-            self.load_exodus()
-        elif self._format == "xdmf":
-            self.load_xdmf()
-        elif self._format == "hdf5":
-            self.load_hdf5()
-        elif self._format == "med":
-            self.load_med()
-        elif self._format == "msh":
-            self.load_msh()
-
+        """Load simulation data using the auto-detected format. Returns self."""
+        dispatch = {
+            "openfoam":            self.load_openfoam,
+            "openfoam_decomposed": self.load_openfoam_decomposed,
+            "pvd":                 self.load_pvd,
+            "vtk_single":          self.load_vtk_single,
+            "vtk_directory":       self.load_vtk_directory,
+            "vtp":                 self.load_vtp,
+            "stl":                 self.load_stl,
+            "obj":                 self.load_obj,
+            "ply":                 self.load_ply,
+            "ensight":             self.load_ensight,
+            "cgns":                self.load_cgns,
+            "exodus":              self.load_exodus,
+            "xdmf":                self.load_xdmf,
+            "hdf5":                self.load_hdf5,
+            "med":                 self.load_med,
+            "msh":                 self.load_msh,
+        }
+        dispatch[self._format]()
         return self
 
-    def _load_decomposed(self):
+    def load_openfoam_decomposed(self):
         """
         Load a decomposed (parallel) OpenFOAM case.
         
@@ -188,7 +174,7 @@ class SimulationData:
         print(f"   Processors: {[os.path.basename(p) for p in proc_dirs]}")
         print(f"   Time range: {self._time_steps[0]} → {self._time_steps[-1]}")
 
-    def _load_openfoam(self):
+    def load_openfoam(self):
         """Load a reconstructed OpenFOAM case."""
         reader = pv.OpenFOAMReader(str(self.case_path))
         vtk_r = reader._reader
