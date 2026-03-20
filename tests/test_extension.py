@@ -112,8 +112,8 @@ class TestParsePanelShortcodes:
         assert p["id"] == "panel-1"
         assert p["layout"] == "2x2"
         assert len(p["subfigures"]) == 2
-        assert p["subfigures"][0] == {"src": "a.foam", "id": "fig-a", "field": "Vm", "time": "mid"}
-        assert p["subfigures"][1] == {"src": "b.stl",  "id": "fig-b", "field": "",   "time": "mid"}
+        assert p["subfigures"][0] == {"src": "a.foam", "id": "fig-a", "field": "Vm", "time": "mid", "fields": ""}
+        assert p["subfigures"][1] == {"src": "b.stl",  "id": "fig-b", "field": "",   "time": "mid", "fields": ""}
 
     def test_defaults_height_and_caption(self):
         mod = _load_4dpaper()

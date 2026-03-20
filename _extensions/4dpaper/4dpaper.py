@@ -116,10 +116,11 @@ def parse_panel_shortcodes(text: str) -> list[dict]:
         n = 1
         while f"src{n}" in kwargs:
             subfigures.append({
-                "src":   kwargs[f"src{n}"],
-                "id":    kwargs.get(f"id{n}", f"panel-sub-{n}"),
-                "field": kwargs.get(f"field{n}", ""),
-                "time":  kwargs.get(f"time{n}", "mid"),
+                "src":    kwargs[f"src{n}"],
+                "id":     kwargs.get(f"id{n}", f"panel-sub-{n}"),
+                "field":  kwargs.get(f"field{n}", ""),
+                "time":   kwargs.get(f"time{n}", "mid"),
+                "fields": kwargs.get(f"fields{n}", ""),
             })
             n += 1
         if not subfigures:
@@ -874,7 +875,8 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
     for sub in panel["subfigures"]:
         src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
         out = figures_dir / f"{sub['id']}.html"
-        generate_html_figure(src, sub["field"], sub["time"], out, fig_id=sub["id"])
+        af = [f.strip() for f in sub.get("fields", "").split(",") if f.strip()] or None
+        generate_html_figure(src, sub["field"], sub["time"], out, fig_id=sub["id"], available_fields=af)
 
     # Bidirectional re-relay: forwards camera/field UP to top, acks DOWN to children
     re_relay = """\
@@ -1385,6 +1387,9 @@ def main() -> None:
                 sub_mtimes.append(cam.stat().st_mtime)
         script_mtime = _here.stat().st_mtime
         sub_mtimes.append(script_mtime)
+        for qmd in qmd_files:
+            if qmd.exists():
+                sub_mtimes.append(qmd.stat().st_mtime)
         max_dep_mtime = max(sub_mtimes) if sub_mtimes else 0.0
 
         if out_html.exists() and out_html.stat().st_mtime >= max_dep_mtime:
