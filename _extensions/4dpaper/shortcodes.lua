@@ -231,26 +231,67 @@ local function fourd_panel(args, kwargs)
   local id      = pandoc.utils.stringify(kwargs["id"]      or pandoc.Str(""))
   local caption = pandoc.utils.stringify(kwargs["caption"] or pandoc.Str(""))
   local height  = pandoc.utils.stringify(kwargs["height"]  or pandoc.Str("800px"))
+  local layout  = pandoc.utils.stringify(kwargs["layout"]  or pandoc.Str("1x1"))
 
   if id == "" then
     return pandoc.RawBlock("html",
       '<div style="color:red">⚠ 4d-panel: missing required attribute <code>id</code></div>')
   end
 
-  -- ── HTML output: embed composite vtk.js panel ─────────────────────────────
+  -- ── HTML output: CSS grid of individual srcdoc iframes ────────────────────
+  -- Each sub-figure is a direct srcdoc iframe (same depth as fourd_image).
+  -- This avoids triple-nesting (page → composite srcdoc → data: iframe).
   if quarto.doc.isFormat("html") then
-    local fig_path = "state/figures/" .. id .. ".html"
-    local f = io.open(fig_path, "r")
-    if f then
-      local content = f:read("*all")
-      f:close()
-      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+    local ncols = tonumber(layout:match("^(%d+)x")) or 1
+    local nrows = tonumber(layout:match("x(%d+)$")) or 1
 
-      -- Inject relay script once per page (shared guard with fourd_image/fourd_video)
-      local relay_script = ""
-      if not _relay_injected then
-        _relay_injected = true
-        relay_script = [[
+    -- Collect sub-figure cells by reading id1, id2, ... from kwargs
+    local cells = {}
+    local n = 1
+    while true do
+      local sub_id_val = kwargs["id" .. n]
+      if not sub_id_val then break end
+      local sub_id = pandoc.utils.stringify(sub_id_val)
+      local fig_path = "state/figures/" .. sub_id .. ".html"
+      local f = io.open(fig_path, "r")
+      if f then
+        local content = f:read("*all")
+        f:close()
+        local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+        table.insert(cells,
+          '<iframe srcdoc="' .. escaped .. '" ' ..
+          'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>')
+      else
+        table.insert(cells,
+          '<div style="background:#222;display:flex;align-items:center;' ..
+          'justify-content:center;color:#888;font-family:sans-serif;font-size:0.85rem;">' ..
+          '⚠ ' .. sub_id .. ' not rendered</div>')
+      end
+      n = n + 1
+    end
+
+    if #cells == 0 then
+      return pandoc.RawBlock("html",
+        '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;' ..
+        'border-radius:4px;margin:1rem 0">' ..
+        '<strong>⚠ 4D Panel not yet rendered</strong><br>' ..
+        'Panel ID: <code>' .. id .. '</code><br>' ..
+        '<small>Click <strong>Rebuild HTML</strong> in the dashboard to generate.</small>' ..
+        '</div>')
+    end
+
+    local grid_style = (
+      'display:grid;' ..
+      'grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
+      'grid-template-rows:repeat(' .. nrows .. ',1fr);' ..
+      'gap:4px;width:100%;height:' .. height .. ';background:#111;'
+    )
+
+    -- Inject relay script once per page (shared guard with fourd_image/fourd_video)
+    local relay_script = ""
+    if not _relay_injected then
+      _relay_injected = true
+      relay_script = [[
 <script>
 (function(){
   window.addEventListener("message",function(e){
@@ -292,26 +333,16 @@ local function fourd_panel(args, kwargs)
 })();
 </script>
 ]]
-      end
-
-      return pandoc.RawBlock("html",
-        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-        '<iframe srcdoc="' .. escaped .. '" width="100%" height="' .. height .. '" ' ..
-        'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
-        (caption ~= "" and
-          '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
-          or "") ..
-        '</figure>\n' ..
-        relay_script)
-    else
-      return pandoc.RawBlock("html",
-        '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;' ..
-        'border-radius:4px;margin:1rem 0">' ..
-        '<strong>⚠ 4D Panel not yet rendered</strong><br>' ..
-        'Panel ID: <code>' .. id .. '</code><br>' ..
-        '<small>Click <strong>Rebuild HTML</strong> in the dashboard to generate.</small>' ..
-        '</div>')
     end
+
+    return pandoc.RawBlock("html",
+      '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+      '<div style="' .. grid_style .. '">' .. table.concat(cells) .. '</div>\n' ..
+      (caption ~= "" and
+        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
+        or "") ..
+      '</figure>\n' ..
+      relay_script)
 
   -- ── PDF / LaTeX output: embed composite PNG ───────────────────────────────
   else
