@@ -121,6 +121,14 @@ class SimulationData:
             self.load_obj()
         elif self._format == "ply":
             self.load_ply()
+        elif self._format == "ensight":
+            self.load_ensight()
+        elif self._format == "cgns":
+            self.load_cgns()
+        elif self._format == "exodus":
+            self.load_exodus()
+        elif self._format == "xdmf":
+            self.load_xdmf()
 
         return self
 
@@ -229,6 +237,41 @@ class SimulationData:
         self._time_steps = [0]
         self._meshes[(0, "default")] = pv.read(str(self.case_path))
         self._format = "ply"
+
+    # ── CFD / FEA time-series loaders ────────────────────────────────────────
+
+    def load_ensight(self):
+        """Load an EnSight Gold case file (.case) with optional time series."""
+        reader = pv.EnSightReader(str(self.case_path))
+        self._time_steps = list(reader.time_values) or [0]
+        self._reader = reader
+        self._format = "ensight"
+
+    def load_cgns(self):
+        """Load a CGNS (CFD General Notation System) file with optional time series."""
+        reader = pv.CGNSReader(str(self.case_path))
+        reader.enable_all_bases()
+        reader.enable_all_families()
+        self._time_steps = list(reader.time_values) or [0]
+        self._reader = reader
+        self._format = "cgns"
+
+    def load_exodus(self):
+        """Load an Exodus II file (.exo/.e/.ex2) as used in FEA and Sandia codes."""
+        reader = pv.ExodusIIReader(str(self.case_path))
+        self._time_steps = list(reader.time_values) or [0]
+        self._reader = reader
+        self._format = "exodus"
+
+    def load_xdmf(self):
+        """Load an XDMF file (.xdmf/.xmf), typically paired with a companion HDF5 store.
+
+        The companion .h5 file must be in the same directory as the .xdmf file.
+        """
+        reader = pv.XdmfReader(str(self.case_path))
+        self._time_steps = list(reader.time_values) or [0]
+        self._reader = reader
+        self._format = "xdmf"
 
     @property
     def time_steps(self) -> list:
