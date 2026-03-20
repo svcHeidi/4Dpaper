@@ -220,3 +220,55 @@ class TestSingleMeshLoaders:
         with patch("data_loader.pv.read", return_value=MagicMock()):
             getattr(sim, method)()
         assert sim._format == suffix.lstrip(".")
+
+
+class TestReaderLoaders:
+    """EnSight, CGNS, Exodus, XDMF: use pv reader objects with time_values."""
+
+    def _make_fake_reader(self, time_values=(0.0, 1.0)):
+        reader = MagicMock()
+        reader.time_values = list(time_values)
+        return reader
+
+    def _make_sim(self, fmt):
+        sim = SimulationData.__new__(SimulationData)
+        sim.case_path = Path(f"dummy.{fmt}")
+        sim._meshes = {}
+        sim._time_steps = []
+        sim._reader = None
+        sim._format = fmt
+        sim._is_decomposed = False
+        sim._proc_readers = []
+        sim._proc_foam_files = []
+        return sim
+
+    @pytest.mark.parametrize("fmt,method,pv_class", [
+        ("ensight", "load_ensight", "EnSightReader"),
+        ("cgns",    "load_cgns",    "CGNSReader"),
+        ("exodus",  "load_exodus",  "ExodusIIReader"),
+        ("xdmf",    "load_xdmf",   "XdmfReader"),
+    ])
+    def test_sets_reader_and_time_steps(self, fmt, method, pv_class):
+        fake_reader = self._make_fake_reader()
+        sim = self._make_sim(fmt)
+        with patch(f"data_loader.pv.{pv_class}", return_value=fake_reader):
+            getattr(sim, method)()
+        assert sim._reader is fake_reader
+        assert sim._time_steps == [0.0, 1.0]
+        assert sim._format == fmt
+
+    def test_cgns_enables_all_bases_and_families(self):
+        fake_reader = self._make_fake_reader()
+        sim = self._make_sim("cgns")
+        with patch("data_loader.pv.CGNSReader", return_value=fake_reader):
+            sim.load_cgns()
+        fake_reader.enable_all_bases.assert_called_once()
+        fake_reader.enable_all_families.assert_called_once()
+
+    def test_empty_time_values_defaults_to_zero(self):
+        """If reader has no time values, fall back to [0]."""
+        fake_reader = self._make_fake_reader(time_values=[])
+        sim = self._make_sim("ensight")
+        with patch("data_loader.pv.EnSightReader", return_value=fake_reader):
+            sim.load_ensight()
+        assert sim._time_steps == [0]
