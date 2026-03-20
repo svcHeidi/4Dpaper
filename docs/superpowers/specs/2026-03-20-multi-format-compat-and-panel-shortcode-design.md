@@ -171,7 +171,30 @@ window.addEventListener("message", function(e) {
 </script>
 ```
 
-This script is inserted once into the composite HTML (before the grid div). The Quarto relay at `top` receives it and calls `fetch("/camera/...")` as normal.
+This script is **bidirectional** — it must forward messages both up and down:
+
+```html
+<script>
+window.addEventListener("message", function(e) {
+  if (!e.data) return;
+  // Upward: camera/field messages from children → top (Quarto relay)
+  if (e.data.type === "4dpaper-camera" || e.data.type === "4dpaper-field-update") {
+    top.postMessage(e.data, "*");
+  }
+  // Downward: acks from top → broadcast to all child iframes
+  if (e.data.type === "4dpaper-camera-ack" || e.data.type === "4dpaper-field-ack") {
+    var iframes = document.querySelectorAll("iframe");
+    for (var i = 0; i < iframes.length; i++) {
+      iframes[i].contentWindow.postMessage(e.data, "*");
+    }
+  }
+});
+</script>
+```
+
+**Why bidirectional:** When the Quarto relay calls `e.source.postMessage(ack, "*")` on success, `e.source` is the composite iframe (it was the sender of `top.postMessage`). Without the downward leg, the ack never reaches the sub-figure and the green "📷 Camera synced" badge never appears. Broadcasting acks to all children is safe — each sub-figure's ack listener filters by `e.data.fig_id === FIG_ID` (baked in at generation time), so only the rotating sub-figure reacts. No infinite loop: camera messages travel children → composite → top; acks travel top → composite → children — opposite directions, different types.
+
+This script is inserted once into the composite HTML (before the grid div). The Quarto relay at `top` receives camera messages and calls `fetch("/camera/...")` as normal.
 
 ### `generate_panel_png(panel: dict, figures_dir: Path) -> None`
 
