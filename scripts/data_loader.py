@@ -113,6 +113,14 @@ class SimulationData:
             self.load_vtk_directory()
         elif self._format == "vtk_single":
             self.load_vtk_single()
+        elif self._format == "vtp":
+            self.load_vtp()
+        elif self._format == "stl":
+            self.load_stl()
+        elif self._format == "obj":
+            self.load_obj()
+        elif self._format == "ply":
+            self.load_ply()
 
         return self
 
@@ -197,6 +205,30 @@ class SimulationData:
         self._time_steps = [0]
         self._meshes[(0, "default")] = pv.read(str(self.case_path))
         self._format = "vtk_single"
+
+    def load_vtp(self):
+        """Load a VTK PolyData file (.vtp) — surface mesh, one time step."""
+        self._time_steps = [0]
+        self._meshes[(0, "default")] = pv.read(str(self.case_path))
+        self._format = "vtp"
+
+    def load_stl(self):
+        """Load an STL surface mesh — one time step."""
+        self._time_steps = [0]
+        self._meshes[(0, "default")] = pv.read(str(self.case_path))
+        self._format = "stl"
+
+    def load_obj(self):
+        """Load a Wavefront OBJ surface mesh — one time step."""
+        self._time_steps = [0]
+        self._meshes[(0, "default")] = pv.read(str(self.case_path))
+        self._format = "obj"
+
+    def load_ply(self):
+        """Load a PLY point cloud or surface mesh — one time step."""
+        self._time_steps = [0]
+        self._meshes[(0, "default")] = pv.read(str(self.case_path))
+        self._format = "ply"
 
     @property
     def time_steps(self) -> list:
