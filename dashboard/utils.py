@@ -37,6 +37,10 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
     _venv_python = _venv_bin / "python"
     env["QUARTO_PYTHON"] = str(_venv_python) if _venv_python.exists() else sys.executable
     env["PATH"] = str(_venv_bin) + ":" + env.get("PATH", "")
+    # App mode: Lua embeds figures as static src= iframes instead of srcdoc,
+    # so pandoc doesn't process MB of inline HTML. ~10x faster preview build.
+    if output_format == "html":
+        env["FOURD_APP_MODE"] = "1"
 
     proc = subprocess.Popen(
         ["quarto", "render", str(qmd_path), "--to", output_format],

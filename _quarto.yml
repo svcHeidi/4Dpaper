@@ -15,7 +15,6 @@ format:
     code-fold: true
     code-tools: true
     code-line-numbers: true
-    self-contained: true
     embed-resources: true
     smooth-scroll: true
     number-sections: true

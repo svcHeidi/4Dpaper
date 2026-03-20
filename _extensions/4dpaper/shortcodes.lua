@@ -10,6 +10,10 @@ PDF output:  embeds state/figures/<id>.png as a standard Markdown image
 --]]
 
 local _relay_injected = false
+-- App mode: set by dashboard when building preview HTML.
+-- Figures are served as static files (/state/figures/<id>.html) instead of
+-- being inlined as srcdoc — pandoc processes ~50KB instead of ~15MB, ~10x faster.
+local _app_mode = os.getenv("FOURD_APP_MODE") == "1"
 
 local function fourd_image(args, kwargs)
   local id      = pandoc.utils.stringify(kwargs["id"] or pandoc.Str(""))
@@ -20,24 +24,26 @@ local function fourd_image(args, kwargs)
       '<div style="color:red">⚠ 4d-image: missing required attribute <code>id</code></div>')
   end
 
-  -- ── HTML output: embed self-contained vtk.js widget ───────────────────────
+  -- ── HTML output ───────────────────────────────────────────────────────────
   if quarto.doc.isFormat("html") then
     local fig_path = "state/figures/" .. id .. ".html"
-    local f = io.open(fig_path, "r")
-    if f then
-      local content = f:read("*all")
-      f:close()
-      -- Embed via srcdoc iframe so the vtk.js canvas is sandboxed in its own
-      -- browsing context (window.innerWidth/Height = iframe size, not page viewport).
-      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+    local exists = io.open(fig_path, "r")
+    if exists then exists:close() end
 
-      -- Relay script: listens for postMessage from srcdoc iframes and calls
-      -- fetch("/camera/...") from the same origin (Quarto page is served by
-      -- Panel at the same origin). Only injected once per page.
-      local relay_script = ""
-      if not _relay_injected then
-        _relay_injected = true
-        relay_script = [[
+    if not exists then
+      return pandoc.RawBlock("html",
+        '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;' ..
+        'border-radius:4px;margin:1rem 0">' ..
+        '<strong>⚠ 4D Figure not yet rendered</strong><br>' ..
+        'Figure ID: <code>' .. id .. '</code><br>' ..
+        '<small>Click <strong>Rebuild HTML</strong> in the dashboard to generate.</small>' ..
+        '</div>')
+    end
+
+    local relay_script = ""
+    if not _relay_injected then
+      _relay_injected = true
+      relay_script = [[
 <script>
 (function(){
   window.addEventListener("message",function(e){
@@ -79,29 +85,31 @@ local function fourd_image(args, kwargs)
 })();
 </script>
 ]]
-      end
-
-      return pandoc.RawBlock("html",
-        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-        '<iframe srcdoc="' .. escaped .. '" width="100%" height="600px" ' ..
-        'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
-        (
-        caption ~= "" and
-            (
-            '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
-            ) or "") ..
-        '</figure>\n' ..
-        relay_script)
-    else
-      -- Placeholder shown when figure has not been generated yet
-      return pandoc.RawBlock("html",
-        '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;' ..
-        'border-radius:4px;margin:1rem 0">' ..
-        '<strong>⚠ 4D Figure not yet rendered</strong><br>' ..
-        'Figure ID: <code>' .. id .. '</code><br>' ..
-        '<small>Click <strong>Rebuild HTML</strong> in the dashboard to generate.</small>' ..
-        '</div>')
     end
+
+    local iframe
+    if _app_mode then
+      -- App mode: reference static file — pandoc doesn't inline the content.
+      iframe = '<iframe src="/state/figures/' .. id .. '.html" width="100%" height="600px" ' ..
+               'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
+    else
+      -- Export mode: inline as srcdoc for a fully self-contained HTML file.
+      local f = io.open(fig_path, "r")
+      local content = f:read("*all")
+      f:close()
+      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+      iframe = '<iframe srcdoc="' .. escaped .. '" width="100%" height="600px" ' ..
+               'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
+    end
+
+    return pandoc.RawBlock("html",
+      '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+      iframe .. '\n' ..
+      (caption ~= "" and
+        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
+        or "") ..
+      '</figure>\n' ..
+      relay_script)
 
     -- ── PDF / LaTeX output: embed pre-rendered PNG ────────────────────────────
   else
@@ -130,26 +138,26 @@ local function fourd_video(args, kwargs)
       '<div style="color:red">⚠ 4d-video: missing required attribute <code>id</code></div>')
   end
 
-  -- ── HTML output: embed self-contained video element ───────────────────────
+  -- ── HTML output ───────────────────────────────────────────────────────────
   if quarto.doc.isFormat("html") then
     local html_path = "state/figures/" .. id .. "-video.html"
-    local f = io.open(html_path, "r")
-    if f then
-      local content = f:read("*all")
-      f:close()
-      local cap_html = ""
-      if caption ~= "" then
-        cap_html = '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
-          caption .. '</figcaption>\n'
-      end
+    local exists = io.open(html_path, "r")
+    if exists then exists:close() end
 
-      -- Relay script: same as fourd_image — only injected once per page.
-      -- Required so the camera-setup modal inside the srcdoc iframe can call
-      -- fetch("/camera/<id>") via postMessage → parent relay.
-      local relay_script = ""
-      if not _relay_injected then
-        _relay_injected = true
-        relay_script = [[
+    if not exists then
+      return pandoc.RawBlock("html",
+        '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;' ..
+        'border-radius:4px;margin:1rem 0">' ..
+        '<strong>⚠ 4D Video not yet rendered</strong><br>' ..
+        'Figure ID: <code>' .. id .. '</code><br>' ..
+        '<small>Click <strong>Rebuild HTML</strong> in the dashboard to generate.</small>' ..
+        '</div>')
+    end
+
+    local relay_script = ""
+    if not _relay_injected then
+      _relay_injected = true
+      relay_script = [[
 <script>
 (function(){
   window.addEventListener("message",function(e){
@@ -191,23 +199,27 @@ local function fourd_video(args, kwargs)
 })();
 </script>
 ]]
-      end
-
-      return pandoc.RawBlock("html",
-        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-        content .. '\n' ..
-        cap_html ..
-        '</figure>\n' ..
-        relay_script)
-    else
-      return pandoc.RawBlock("html",
-        '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;' ..
-        'border-radius:4px;margin:1rem 0">' ..
-        '<strong>⚠ 4D Video not yet rendered</strong><br>' ..
-        'Figure ID: <code>' .. id .. '</code><br>' ..
-        '<small>Click <strong>Rebuild HTML</strong> in the dashboard to generate.</small>' ..
-        '</div>')
     end
+
+    local cap_html = caption ~= "" and
+      '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
+      or ""
+
+    local body
+    if _app_mode then
+      body = '<iframe src="/state/figures/' .. id .. '-video.html" width="100%" height="600px" ' ..
+             'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
+    else
+      local f = io.open(html_path, "r")
+      body = f:read("*all")
+      f:close()
+    end
+
+    return pandoc.RawBlock("html",
+      '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+      body .. '\n' .. cap_html ..
+      '</figure>\n' ..
+      relay_script)
 
   -- ── PDF / LaTeX output: embed pre-rendered frame PNG ──────────────────────
   else
@@ -253,14 +265,22 @@ local function fourd_panel(args, kwargs)
       if not sub_id_val then break end
       local sub_id = pandoc.utils.stringify(sub_id_val)
       local fig_path = "state/figures/" .. sub_id .. ".html"
-      local f = io.open(fig_path, "r")
-      if f then
-        local content = f:read("*all")
-        f:close()
-        local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-        table.insert(cells,
-          '<iframe srcdoc="' .. escaped .. '" ' ..
-          'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>')
+      local exists = io.open(fig_path, "r")
+      if exists then exists:close() end
+      if exists then
+        local cell_iframe
+        if _app_mode then
+          cell_iframe = '<iframe src="/state/figures/' .. sub_id .. '.html" ' ..
+                        'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
+        else
+          local f = io.open(fig_path, "r")
+          local content = f:read("*all")
+          f:close()
+          local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+          cell_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
+                        'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
+        end
+        table.insert(cells, cell_iframe)
       else
         table.insert(cells,
           '<div style="background:#222;display:flex;align-items:center;' ..
