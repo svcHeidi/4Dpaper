@@ -212,6 +212,11 @@ class SimulationData:
         if mesh_key in self._meshes:
             return self._meshes[mesh_key]
 
+        # Non-OpenFOAM formats store under "default" — fall back when part not found
+        default_key = (step_index, "default")
+        if default_key in self._meshes:
+            return self._meshes[default_key]
+
         if self._is_decomposed:
             return self._get_decomposed_mesh(step_index, part)
 
