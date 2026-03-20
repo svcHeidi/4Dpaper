@@ -46,12 +46,27 @@ In the HTML version this is a fully interactive 3D viewer — you can rotate,
 zoom, and inspect the mesh. In the PDF version it is a high-resolution static
 render from the camera angle you locked in the dashboard.
 
-{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" id="fig-vm" caption="Transmembrane potential $V_m$ at mid-activation" >}}
+{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" fields="Vm,activationTime,activationVelocity" id="fig-vm" caption="Transmembrane potential $V_m$ at mid-activation" >}}
 
 ## Activation Time
 
-{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="activationTime" id="fig-at" time="last" caption="Activation time distribution" >}}
+{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="activationTime" fields="Vm,activationTime,activationVelocity" id="fig-at" time="last" caption="Activation time distribution" >}}
+
+## Transmembrane Potential Animation
+
+{{< 4d-video src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" fps="10" id="vid-vm" caption="Transmembrane potential $V_m$ over time" >}}
 
 # Conclusion
 
 Write your conclusions here.
+
+## Format Compatibility Test
+
+> Remove this section after verification.
+
+{{< 4d-image src="tests/data/base.stl"               field=""      id="fig-test-stl"  caption="STL: base geometry" >}}
+{{< 4d-image src="tests/data/airplane.ply"            field=""      id="fig-test-ply"  caption="PLY: airplane" >}}
+{{< 4d-image src="tests/data/sphere.obj"              field=""      id="fig-test-obj"  caption="OBJ: sphere" >}}
+{{< 4d-image src="tests/data/track0.vtp"              field=""      id="fig-test-vtp"  caption="VTP: track" >}}
+{{< 4d-image src="tests/data/slab_cubic.msh"          field=""      id="fig-test-msh"  caption="MSH: slab" >}}
+{{< 4d-image src="tests/data/fiber_directions.xdmf"   field="fiber" id="fig-test-xdmf" caption="XDMF: fiber directions" >}}
