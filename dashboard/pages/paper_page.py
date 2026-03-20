@@ -25,17 +25,24 @@ class PaperPage(param.Parameterized):
         self._hide_timer: threading.Timer | None = None
         self._status_text = ""
         self._status_type = "info"
+        self._build_start: float | None = None
 
         # ── Buttons ──────────────────────────────────────────────────────────
         self._rebuild_html_btn = pn.widgets.Button(
-            name="⚙  Rebuild HTML",
+            name="⚙ HTML",
             button_type="primary",
-            width=180,
+            width=75,
+            height=26,
+            margin=(0, 2),
+            styles={"font-size": "11px"},
         )
         self._export_pdf_btn = pn.widgets.Button(
-            name="📥  Export PDF",
+            name="📥 PDF",
             button_type="default",
-            width=180,
+            width=70,
+            height=26,
+            margin=(0, 2),
+            styles={"font-size": "11px"},
         )
 
         # ── Build overlay (appears over the preview, auto-hides) ─────────
@@ -61,11 +68,26 @@ class PaperPage(param.Parameterized):
             sizing_mode="stretch_width",
         )
 
-        # ── PDF download link ─────────────────────────────────────────────────
-        self._pdf_link = pn.pane.HTML("", sizing_mode="stretch_width")
+        # ── PDF link (persistent if file exists) ──────────────────────────────
+        self._pdf_link = pn.pane.HTML("", sizing_mode="stretch_width", margin=(10, 8))
+        self._set_pdf_link_if_exists()
 
         self._rebuild_html_btn.on_click(self._on_rebuild_html)
         self._export_pdf_btn.on_click(self._on_export_pdf)
+
+    def _set_pdf_link_if_exists(self) -> None:
+        """Check if analysis_report.pdf exists and set the link if so."""
+        pdf_path = self._qmd_path.parent / "_output" / "analysis_report.pdf"
+        if pdf_path.exists():
+            ts = int(time.time())
+            self._pdf_link.object = (
+                f'<a href="/output/analysis_report.pdf?t={ts}" target="_blank" '
+                f'style="background:#007bff; color:white; padding:4px 8px; '
+                f'border-radius:4px; text-decoration:none; font-size:11px; '
+                f'font-weight:bold; font-family:sans-serif; display:inline-block;'
+                f'margin: 0 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">'
+                f'📄 PDF</a>'
+            )
 
     # ── Overlay helpers ────────────────────────────────────────────────────
 
@@ -78,6 +100,13 @@ class PaperPage(param.Parameterized):
             "success": "#28a745", "danger": "#dc3545",
         }
         color = colors.get(status_type, "#17a2b8")
+        elapsed_html = ""
+        if self._build_start is not None and self.is_building:
+            elapsed = int(time.time() - self._build_start)
+            elapsed_html = (
+                f'<div style="color:#aaa;font-size:11px;margin-bottom:4px;">'
+                f'⏱ {elapsed}s elapsed</div>'
+            )
         log_html = ""
         if show_log and self._log_lines:
             escaped = "<br>".join(
@@ -92,7 +121,7 @@ class PaperPage(param.Parameterized):
             f'padding:12px 16px;border-radius:6px;font-family:monospace;'
             f'font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">'
             f'<div style="color:{color};font-weight:bold;margin-bottom:4px;">'
-            f'{html_mod.escape(status_text)}</div>{log_html}</div>'
+            f'{html_mod.escape(status_text)}</div>{elapsed_html}{log_html}</div>'
         )
         self._overlay.visible = True
 
@@ -129,6 +158,7 @@ class PaperPage(param.Parameterized):
         self._export_pdf_btn.disabled = True
         self._log_lines.clear()
         self._pdf_link.object = ""
+        self._build_start = time.time()
         self._update_overlay("Building HTML paper\u2026", "warning")
 
         # Capture Bokeh document here (on the event loop) before spawning thread.
@@ -160,8 +190,10 @@ class PaperPage(param.Parameterized):
         self._export_pdf_btn.disabled = False
 
         if exit_code == 0:
+            elapsed = f" ({int(time.time() - self._build_start)}s)" if self._build_start else ""
+            self._build_start = None
             self._update_overlay(
-                "\u2713 HTML paper built successfully!", "success", show_log=False,
+                f"\u2713 HTML paper built successfully!{elapsed}", "success", show_log=False,
             )
             self._schedule_hide_overlay(doc, delay_s=4.0)
             ts = int(time.time())
@@ -186,6 +218,7 @@ class PaperPage(param.Parameterized):
         self._export_pdf_btn.disabled = True
         self._log_lines.clear()
         self._pdf_link.object = ""
+        self._build_start = time.time()
         self._update_overlay("Exporting PDF\u2026", "warning")
 
         doc = pn.state.curdoc
@@ -225,15 +258,20 @@ class PaperPage(param.Parameterized):
         self._export_pdf_btn.disabled = False
 
         if exit_code == 0 and pdf_path and Path(pdf_path).exists():
+            elapsed = f" ({int(time.time() - self._build_start)}s)" if self._build_start else ""
+            self._build_start = None
             self._update_overlay(
-                "\u2713 PDF exported successfully!", "success", show_log=False,
+                f"✓ PDF exported successfully!{elapsed}", "success", show_log=False,
             )
             self._schedule_hide_overlay(doc, delay_s=4.0)
-            import time
             cache_bust = int(time.time())
             self._pdf_link.object = (
                 f'<a href="/output/analysis_report.pdf?t={cache_bust}" target="_blank" '
-                f'style="font-size:1rem;">\U0001f4c4 Open analysis_report.pdf</a>'
+                f'style="background:#007bff; color:white; padding:4px 8px; '
+                f'border-radius:4px; text-decoration:none; font-size:11px; '
+                f'font-weight:bold; font-family:sans-serif; display:inline-block;'
+                f'margin: 0 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">'
+                f'📄 PDF</a>'
             )
         else:
             self._update_overlay(
@@ -247,21 +285,32 @@ class PaperPage(param.Parameterized):
         if self.is_building:
             self._update_overlay(self._status_text, self._status_type)
 
+    @property
+    def rebuild_btn(self) -> pn.widgets.Button:
+        return self._rebuild_html_btn
+
+    @property
+    def export_btn(self) -> pn.widgets.Button:
+        return self._export_pdf_btn
+
+    @property
+    def pdf_link(self) -> pn.pane.HTML:
+        return self._pdf_link
+
     def layout(self) -> pn.Column:
         preview_container = pn.Column(
             self._overlay,
             self._iframe,
-            self._pdf_link,
             sizing_mode="stretch_width",
             styles={"position": "relative"},
         )
         return pn.Column(
-            pn.Row(self._rebuild_html_btn, self._export_pdf_btn),
             preview_container,
             sizing_mode="stretch_width",
         )
 
 
-def build_paper_page(config: dict[str, Any]) -> pn.Column:
+def build_paper_page(config: dict[str, Any]) -> tuple[pn.Column, PaperPage]:
+    """Return (layout, page_instance) so callers can access buttons."""
     page = PaperPage(config=config)
-    return page.layout()
+    return page.layout(), page
