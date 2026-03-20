@@ -21,7 +21,7 @@ import numpy as np
 class SimulationData:
     """
     Iterates through 4D simulation states from OpenFOAM or VTK files.
-    
+
     Supports:
       - Reconstructed cases (time dirs at case root)
       - Decomposed cases (time dirs only inside processor* folders)
@@ -33,6 +33,21 @@ class SimulationData:
         for state in sim:
             print(state.time, state.mesh.n_points)
     """
+
+    _SUFFIX_MAP = {
+        # VTK family
+        ".pvd": "pvd", ".vtu": "vtk_single", ".vtk": "vtk_single", ".vtp": "vtp",
+        # Surface meshes
+        ".stl": "stl", ".obj": "obj", ".ply": "ply",
+        # CFD time-series
+        ".case": "ensight", ".cgns": "cgns",
+        # FEA time-series
+        ".exo": "exodus", ".e": "exodus", ".ex2": "exodus",
+        # XDMF + HDF5 pair
+        ".xdmf": "xdmf", ".xmf": "xdmf",
+        # meshio-backed (.h5 excluded — PyVista maps it to FLUENTCFFReader)
+        ".hdf5": "hdf5", ".med": "med", ".msh": "msh",
+    }
 
     def __init__(self, case_path: str):
         """
@@ -53,33 +68,38 @@ class SimulationData:
         self._detect_format()
 
     def _detect_format(self):
-        """Auto-detect the simulation file format."""
+        """Auto-detect simulation file format from path extension."""
         suffix = self.case_path.suffix.lower()
 
-        if suffix == ".foam" or suffix == ".openfoam":
+        # OpenFOAM: check for decomposed (processor*) directories
+        if suffix in (".foam", ".openfoam"):
             case_dir = self.case_path.parent
             proc_dirs = sorted(glob.glob(str(case_dir / "processor*")))
-            
             if proc_dirs:
-                # Prioritize decomposed case if processor directories exist
                 print(f"🔍 Detected {len(proc_dirs)} processor directories — using decomposed mode.")
                 self._format = "openfoam_decomposed"
                 self._is_decomposed = True
             else:
                 print("🔍 No processor directories found — using reconstructed mode.")
                 self._format = "openfoam"
-                
-        elif suffix == ".pvd":
-            self._format = "pvd"
-        elif suffix in (".vtu", ".vtk"):
-            self._format = "vtk_single"
-        elif self.case_path.is_dir():
+            return
+
+        # All other formats via SUFFIX_MAP
+        if suffix in self._SUFFIX_MAP:
+            self._format = self._SUFFIX_MAP[suffix]
+            return
+
+        # Directory of VTK files
+        if self.case_path.is_dir():
             self._format = "vtk_directory"
-        else:
-            raise ValueError(
-                f"Unsupported format: {suffix}. "
-                "Expected .foam, .pvd, .vtu, .vtk, or a directory of VTK files."
-            )
+            return
+
+        raise ValueError(
+            f"Unsupported format: '{suffix}'. "
+            f"Supported extensions: .foam, .openfoam, "
+            + ", ".join(sorted(self._SUFFIX_MAP.keys()))
+            + ", or a directory of .vtu files."
+        )
 
     def load(self):
         """Load the simulation data and discover time steps."""
