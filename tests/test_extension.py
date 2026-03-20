@@ -184,8 +184,8 @@ class TestGeneratePanelHtml:
     def _make_panel(self, layout="2x1", subfigures=None):
         if subfigures is None:
             subfigures = [
-                {"src": "a.foam", "id": "fig-a", "field": "", "time": "mid"},
-                {"src": "b.stl",  "id": "fig-b", "field": "", "time": "mid"},
+                {"src": "a.foam", "id": "fig-a", "field": "", "time": "mid", "fields": ""},
+                {"src": "b.stl",  "id": "fig-b", "field": "", "time": "mid", "fields": ""},
             ]
         return {
             "id": "panel-test",
