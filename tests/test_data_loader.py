@@ -53,3 +53,43 @@ class TestCacheKeyBugFix:
         assert (0, "default") in sim._meshes
         assert (1, "default") in sim._meshes
         assert 0 not in sim._meshes
+
+
+class TestGetMeshFallback:
+    """get_mesh must fall back to (step, 'default') when exact part key is absent."""
+
+    def _make_sim(self, mesh):
+        sim = SimulationData.__new__(SimulationData)
+        sim._meshes = {(0, "default"): mesh}
+        sim._time_steps = [0]
+        sim._reader = None
+        sim._format = "stl"
+        sim._is_decomposed = False
+        sim._proc_readers = []
+        sim._proc_foam_files = []
+        return sim
+
+    def test_get_mesh_returns_default_when_part_not_found(self):
+        """Calling get_mesh(0) with default part='internalMesh' must return the cached mesh."""
+        fake_mesh = MagicMock()
+        sim = self._make_sim(fake_mesh)
+        result = sim.get_mesh(0)  # part defaults to "internalMesh"
+        assert result is fake_mesh
+
+    def test_get_mesh_exact_key_takes_priority(self):
+        """When the exact (step, part) key exists, it takes priority over default."""
+        openfoam_mesh = MagicMock()
+        default_mesh = MagicMock()
+        sim = SimulationData.__new__(SimulationData)
+        sim._meshes = {
+            (0, "internalMesh"): openfoam_mesh,
+            (0, "default"): default_mesh,
+        }
+        sim._time_steps = [0]
+        sim._reader = None
+        sim._format = "openfoam"
+        sim._is_decomposed = False
+        sim._proc_readers = []
+        sim._proc_foam_files = []
+        result = sim.get_mesh(0, part="internalMesh")
+        assert result is openfoam_mesh
