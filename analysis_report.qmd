@@ -60,16 +60,6 @@ render from the camera angle you locked in the dashboard.
 
 Write your conclusions here.
 
-## Format Compatibility Test
-
-> Remove this section after verification.
-
-{{< 4d-image src="tests/data/base.stl"               field=""      id="fig-test-stl"  caption="STL: base geometry" >}}
-{{< 4d-image src="tests/data/airplane.ply"            field=""      id="fig-test-ply"  caption="PLY: airplane" >}}
-{{< 4d-image src="tests/data/sphere.obj"              field=""      id="fig-test-obj"  caption="OBJ: sphere" >}}
-{{< 4d-image src="tests/data/track0.vtp"              field=""      id="fig-test-vtp"  caption="VTP: track" >}}
-{{< 4d-image src="tests/data/slab_cubic.msh"          field=""      id="fig-test-msh"  caption="MSH: slab" >}}
-{{< 4d-image src="tests/data/fiber_directions.xdmf"   field="fiber" id="fig-test-xdmf" caption="XDMF: fiber directions" >}}
 
 ## Panel Demo
 
