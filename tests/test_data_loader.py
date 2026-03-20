@@ -313,3 +313,61 @@ class TestMeshioLoaders:
         with patch.dict("sys.modules", {"meshio": None}):
             with pytest.raises(ImportError, match="pip install meshio"):
                 sim.load_hdf5()
+
+
+# ── Integration tests with real files ─────────────────────────────────────
+DATA_DIR = Path(__file__).parent / "data"
+
+
+class TestRealFiles:
+    """Load actual files from tests/data/ and verify basic mesh properties.
+
+    These tests are skipped automatically if the data file is not present.
+    """
+
+    def _load(self, filename):
+        """Helper: load a file and return the SimulationData object."""
+        path = DATA_DIR / filename
+        if not path.exists():
+            pytest.skip(f"Test data not found: {path}")
+        sim = SimulationData(str(path)).load()
+        return sim
+
+    def _assert_mesh_ok(self, sim):
+        """Assert that at least one time step loaded a non-empty mesh."""
+        assert sim.n_steps >= 1
+        mesh = sim.get_mesh(0)
+        assert mesh is not None
+        assert mesh.n_points > 0
+
+    def test_vtk(self):
+        self._assert_mesh_ok(self._load("hexbeam.vtk"))
+
+    def test_vtu(self):
+        self._assert_mesh_ok(self._load("ref_block.vtu"))
+
+    def test_ply(self):
+        self._assert_mesh_ok(self._load("airplane.ply"))
+
+    def test_stl(self):
+        self._assert_mesh_ok(self._load("base.stl"))
+
+    def test_obj(self):
+        self._assert_mesh_ok(self._load("sphere.obj"))
+
+    def test_vtp(self):
+        self._assert_mesh_ok(self._load("track0.vtp"))
+
+    def test_pvd(self):
+        self._assert_mesh_ok(self._load("pvd_example/bi_ventricular_fiber.pvd"))
+
+    def test_msh(self):
+        # Requires meshio: pip install meshio
+        try:
+            self._assert_mesh_ok(self._load("slab_cubic.msh"))
+        except ImportError as exc:
+            pytest.skip(str(exc))
+
+    def test_xdmf(self):
+        # Requires an XDMF file with time steps and a companion .h5
+        self._assert_mesh_ok(self._load("ellipsoid_0.005.xdmf"))
