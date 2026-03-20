@@ -264,6 +264,9 @@ local function fourd_panel(args, kwargs)
       local sub_id_val = kwargs["id" .. n]
       if not sub_id_val then break end
       local sub_id = pandoc.utils.stringify(sub_id_val)
+      -- In Quarto's Lua shortcode API, accessing a missing key may return an
+      -- empty pandoc element (not nil), so check for empty string too.
+      if sub_id == "" then break end
       local fig_path = "state/figures/" .. sub_id .. ".html"
       local exists = io.open(fig_path, "r")
       if exists then exists:close() end
