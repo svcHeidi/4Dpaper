@@ -20,18 +20,24 @@ import numpy as np
 
 class SimulationData:
     """
-    Iterates through 4D simulation states from OpenFOAM or VTK files.
+    Iterates through 4D simulation states from a wide range of 3D file formats.
 
-    Supports:
-      - Reconstructed cases (time dirs at case root)
-      - Decomposed cases (time dirs only inside processor* folders)
-      - .pvd collections
-      - Single or directory of .vtu files
+    Supported formats:
+      OpenFOAM:  .foam, .openfoam (reconstructed and decomposed/parallel)
+      VTK:       .pvd, .vtu, .vtk, .vtp, or a directory of .vtu files
+      Surface:   .stl, .obj, .ply
+      CFD:       .case (EnSight Gold), .cgns
+      FEA:       .exo, .e, .ex2 (Exodus II)
+      XDMF:      .xdmf, .xmf (companion .h5 must be co-located)
+      meshio:    .hdf5, .med (Salome), .msh (Gmsh)  — requires pip install meshio
+
+    Each format has a standalone public loader (e.g. sim.load_ensight()) that
+    can be called directly without going through auto-detection.
 
     Usage:
-        sim = SimulationData("path/to/case.foam")
-        for state in sim:
-            print(state.time, state.mesh.n_points)
+        sim = SimulationData("path/to/case.foam").load()
+        for time, mesh in sim:
+            print(time, mesh.n_points)
     """
 
     _SUFFIX_MAP = {
