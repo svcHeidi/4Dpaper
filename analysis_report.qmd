@@ -59,10 +59,11 @@ render from the camera angle you locked in the dashboard.
 Write your conclusions here.
 
 
-## Panel Demo
+## Side-by-Side Comparison
 
-{{< 4d-panel id="panel-demo" layout="2x2" height="600px" caption="Panel demo: four meshes in a 2×2 grid."
-    src1="tests/data/base.stl"         id1="pd-stl"  field1=""
-    src2="tests/data/airplane.ply"     id2="pd-ply"  field2=""
-    src3="tests/data/sphere.obj"       id3="pd-obj"  field3=""
-    src4="tests/data/track0.vtp"       id4="pd-vtp"  field4="" >}}
+{{< 4d-panel id="panel-compare" layout="2x1" height="500px"
+    caption="$V_m$ (left) vs activation time (right) — same mesh, same camera."
+    src1="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+    id1="fig-vm" field1="Vm"
+    src2="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+    id2="fig-at" field2="activationTime" >}}
