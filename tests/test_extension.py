@@ -637,6 +637,11 @@ class TestGenerateVideoFigure:
         except ImportError:
             pytest.skip("imageio.v3 not available")
 
+        try:
+            import av  # pyav backend required for plugin="pyav"
+        except ImportError:
+            pytest.skip("pyav not installed — run: pip install imageio[pyav]")
+
         mp4_path = tmp_path / "vid-vm-video.mp4"
         frame_path = tmp_path / "vid-vm-frame.png"
         html_path = tmp_path / "vid-vm-video.html"
