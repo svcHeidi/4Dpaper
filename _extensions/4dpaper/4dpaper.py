@@ -1232,13 +1232,15 @@ def main() -> None:
 
     figures = []
     videos = []
+    panels = []
     for qmd in qmd_files:
         text = qmd.read_text()
         figures.extend(parse_shortcodes(text))
         videos.extend(parse_video_shortcodes(text))
+        panels.extend(parse_panel_shortcodes(text))
 
-    if not figures and not videos:
-        print("[4dpaper] No 4d-image or 4d-video shortcodes found.", file=sys.stderr)
+    if not figures and not videos and not panels:
+        print("[4dpaper] No 4d-image, 4d-video, or 4d-panel shortcodes found.", file=sys.stderr)
         return
 
     figures_dir = _project_root / "state" / "figures"
@@ -1365,6 +1367,45 @@ def main() -> None:
         except Exception as exc:
             print(f"[4dpaper] ERROR generating video {fig_id}: {exc}", file=sys.stderr)
             sys.exit(1)
+
+    # ── Panel shortcode processing ─────────────────────────────────────────────
+    for panel in panels:
+        panel_id = panel["id"]
+        out_html = figures_dir / f"{panel_id}.html"
+        out_png  = figures_dir / f"{panel_id}.png"
+
+        # Determine max mtime of all sub-figure source files and camera JSONs
+        sub_mtimes = []
+        for sub in panel["subfigures"]:
+            src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
+            if src.exists():
+                sub_mtimes.append(src.stat().st_mtime)
+            cam = _project_root / "state" / f"camera_{sub['id']}.json"
+            if cam.exists():
+                sub_mtimes.append(cam.stat().st_mtime)
+        script_mtime = _here.stat().st_mtime
+        sub_mtimes.append(script_mtime)
+        max_dep_mtime = max(sub_mtimes) if sub_mtimes else 0.0
+
+        if out_html.exists() and out_html.stat().st_mtime >= max_dep_mtime:
+            print(f"[4dpaper] {panel_id}.html is up to date — skipping.", file=sys.stderr)
+        else:
+            print(f"[4dpaper] Generating panel {panel_id}.html …", file=sys.stderr)
+            try:
+                generate_panel_html(panel, figures_dir)
+            except Exception as exc:
+                print(f"[4dpaper] ERROR generating panel {panel_id}.html: {exc}", file=sys.stderr)
+                sys.exit(1)
+
+        if out_png.exists() and out_png.stat().st_mtime >= max_dep_mtime:
+            print(f"[4dpaper] {panel_id}.png is up to date — skipping.")
+        else:
+            print(f"[4dpaper] Generating panel {panel_id}.png …")
+            try:
+                generate_panel_png(panel, figures_dir)
+            except Exception as exc:
+                print(f"[4dpaper] ERROR generating panel {panel_id}.png: {exc}")
+                sys.exit(1)
 
 
 if __name__ == "__main__":
