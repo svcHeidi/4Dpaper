@@ -29,7 +29,7 @@ class SimulationData:
       CFD:       .case (EnSight Gold), .cgns
       FEA:       .exo, .e, .ex2 (Exodus II)
       XDMF:      .xdmf, .xmf (companion .h5 must be co-located)
-      meshio:    .hdf5, .med (Salome), .msh (Gmsh)  — requires pip install meshio
+      meshio:    .hdf5, .med (Salome), .msh (Gmsh), .inp (Abaqus mesh)  — requires pip install meshio
 
     Each format has a standalone public loader (e.g. sim.load_ensight()) that
     can be called directly without going through auto-detection.
@@ -53,6 +53,8 @@ class SimulationData:
         ".xdmf": "xdmf", ".xmf": "xdmf",
         # meshio-backed (.h5 excluded — PyVista maps it to FLUENTCFFReader)
         ".hdf5": "hdf5", ".med": "med", ".msh": "msh",
+        # Abaqus input deck (mesh only — .odb output databases are proprietary)
+        ".inp": "abaqus_inp",
     }
 
     def __init__(self, case_path: str):
@@ -126,6 +128,7 @@ class SimulationData:
             "hdf5":                self.load_hdf5,
             "med":                 self.load_med,
             "msh":                 self.load_msh,
+            "abaqus_inp":          self.load_abaqus_inp,
         }
         dispatch[self._format]()
         return self
@@ -316,6 +319,18 @@ class SimulationData:
         self._time_steps = [0]
         self._meshes[(0, "default")] = self._read_via_meshio()
         self._format = "msh"
+
+    def load_abaqus_inp(self):
+        """Load an Abaqus input deck (.inp) via meshio.
+
+        Reads mesh geometry, node sets, and element sets. Field results
+        are stored in Abaqus .odb files (proprietary binary) and are not
+        supported. If you need field data, export from Abaqus to VTK/VTU.
+        Requires: pip install meshio
+        """
+        self._time_steps = [0]
+        self._meshes[(0, "default")] = self._read_via_meshio()
+        self._format = "abaqus_inp"
 
     @property
     def time_steps(self) -> list:

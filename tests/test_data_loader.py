@@ -169,6 +169,7 @@ class TestDetectFormat:
     def test_hdf5(self):     assert self._detect(".hdf5") == "hdf5"
     def test_med(self):      assert self._detect(".med")  == "med"
     def test_msh(self):      assert self._detect(".msh")  == "msh"
+    def test_inp(self):      assert self._detect(".inp")  == "abaqus_inp"
 
     def test_unsupported_raises(self):
         with pytest.raises(ValueError, match="Unsupported"):
@@ -290,9 +291,10 @@ class TestMeshioLoaders:
         return sim
 
     @pytest.mark.parametrize("suffix,method,fmt", [
-        (".hdf5", "load_hdf5", "hdf5"),
-        (".med",  "load_med",  "med"),
-        (".msh",  "load_msh",  "msh"),
+        (".hdf5", "load_hdf5",      "hdf5"),
+        (".med",  "load_med",       "med"),
+        (".msh",  "load_msh",       "msh"),
+        (".inp",  "load_abaqus_inp","abaqus_inp"),
     ])
     def test_loads_single_mesh_via_meshio(self, suffix, method, fmt):
         fake_pv_mesh = MagicMock()
