@@ -1196,6 +1196,7 @@ class TestPanelEndToEnd:
 
     def test_generate_panel_html_real_files(self, tmp_path):
         """generate_panel_html creates composite HTML and sub-figure HTMLs from real STL/PLY files."""
+        pytest.importorskip("pyvista")
         mod = _load_4dpaper()
         stl_path = Path(__file__).parent / "data" / "base.stl"
         ply_path = Path(__file__).parent / "data" / "airplane.ply"
@@ -1214,6 +1215,7 @@ class TestPanelEndToEnd:
 
     def test_generate_panel_png_real_files(self, tmp_path):
         """generate_panel_png creates a 1920x1080 composite PNG from real STL/PLY files."""
+        pytest.importorskip("pyvista")
         from PIL import Image
 
         mod = _load_4dpaper()
