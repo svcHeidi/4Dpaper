@@ -70,3 +70,11 @@ Write your conclusions here.
 {{< 4d-image src="tests/data/track0.vtp"              field=""      id="fig-test-vtp"  caption="VTP: track" >}}
 {{< 4d-image src="tests/data/slab_cubic.msh"          field=""      id="fig-test-msh"  caption="MSH: slab" >}}
 {{< 4d-image src="tests/data/fiber_directions.xdmf"   field="fiber" id="fig-test-xdmf" caption="XDMF: fiber directions" >}}
+
+## Panel Demo
+
+{{< 4d-panel id="panel-demo" layout="2x2" height="600px" caption="Panel demo: four meshes in a 2×2 grid."
+    src1="tests/data/base.stl"         id1="pd-stl"  field1=""
+    src2="tests/data/airplane.ply"     id2="pd-ply"  field2=""
+    src3="tests/data/sphere.obj"       id3="pd-obj"  field3=""
+    src4="tests/data/track0.vtp"       id4="pd-vtp"  field4="" >}}

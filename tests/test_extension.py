@@ -1179,3 +1179,51 @@ class TestCameraSyncIntegration:
         assert png_out.exists(), "PNG was not created"
         assert png_out.stat().st_size > 500, "PNG is suspiciously small"
 
+
+class TestPanelEndToEnd:
+    """End-to-end integration tests for generate_panel_html/png with real test data."""
+
+    _PANEL = {
+        "id": "panel-e2e",
+        "layout": "2x1",
+        "height": "600px",
+        "caption": "",
+        "subfigures": [
+            {"src": "tests/data/base.stl",    "id": "e2e-stl", "field": "", "time": "mid", "fields": ""},
+            {"src": "tests/data/airplane.ply", "id": "e2e-ply", "field": "", "time": "mid", "fields": ""},
+        ],
+    }
+
+    def test_generate_panel_html_real_files(self, tmp_path):
+        """generate_panel_html creates composite HTML and sub-figure HTMLs from real STL/PLY files."""
+        mod = _load_4dpaper()
+        stl_path = Path(__file__).parent / "data" / "base.stl"
+        ply_path = Path(__file__).parent / "data" / "airplane.ply"
+        if not stl_path.exists() or not ply_path.exists():
+            pytest.skip("Test data files not found")
+
+        mod.generate_panel_html(self._PANEL, tmp_path)
+
+        assert (tmp_path / "panel-e2e.html").exists(), "Composite panel HTML not created"
+        assert (tmp_path / "e2e-stl.html").exists(), "Sub-figure e2e-stl.html not created"
+        assert (tmp_path / "e2e-ply.html").exists(), "Sub-figure e2e-ply.html not created"
+
+        html = (tmp_path / "panel-e2e.html").read_text()
+        assert "grid-template-columns:repeat(2,1fr)" in html, "CSS grid columns not found"
+        assert "4dpaper-camera-ack" in html, "Bidirectional re-relay script not found"
+
+    def test_generate_panel_png_real_files(self, tmp_path):
+        """generate_panel_png creates a 1920x1080 composite PNG from real STL/PLY files."""
+        from PIL import Image
+
+        mod = _load_4dpaper()
+        stl_path = Path(__file__).parent / "data" / "base.stl"
+        ply_path = Path(__file__).parent / "data" / "airplane.ply"
+        if not stl_path.exists() or not ply_path.exists():
+            pytest.skip("Test data files not found")
+
+        mod.generate_panel_png(self._PANEL, tmp_path)
+
+        assert (tmp_path / "panel-e2e.png").exists(), "Composite panel PNG not created"
+        img = Image.open(tmp_path / "panel-e2e.png")
+        assert img.size == (1920, 1080), f"Expected (1920, 1080), got {img.size}"
