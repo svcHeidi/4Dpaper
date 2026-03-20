@@ -844,6 +844,77 @@ def generate_html_figure(
     print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
 
 
+def generate_panel_html(panel: dict, figures_dir: Path) -> None:
+    """
+    Generate a composite HTML file embedding multiple vtk.js figures in a CSS grid.
+
+    Layout convention: "COLSxROWS" e.g. "2x2" = 2 columns 2 rows.
+    Output: figures_dir/<panel-id>.html — a single self-contained file.
+
+    Camera sync: a bidirectional re-relay script forwards camera/field messages
+    from child srcdoc iframes up to top (Quarto relay), and acks back down to
+    all children so each sub-figure's camera badge works correctly.
+    """
+    layout = panel["layout"]
+    try:
+        ncols_s, nrows_s = layout.split("x")
+        ncols, nrows = int(ncols_s), int(nrows_s)
+    except (ValueError, AttributeError):
+        raise ValueError(
+            f"[4dpaper] 4d-panel layout must be 'COLSxROWS' (e.g. '2x2', '3x1'), got: '{layout}'"
+        )
+
+    height = panel.get("height", "800px")
+
+    # Generate each sub-figure HTML (reuses caching inside generate_html_figure)
+    for sub in panel["subfigures"]:
+        src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
+        out = figures_dir / f"{sub['id']}.html"
+        generate_html_figure(src, sub["field"], sub["time"], out, fig_id=sub["id"])
+
+    # Bidirectional re-relay: forwards camera/field UP to top, acks DOWN to children
+    re_relay = """\
+<script>
+window.addEventListener("message",function(e){
+  if(!e.data)return;
+  if(e.data.type==="4dpaper-camera"||e.data.type==="4dpaper-field-update"){
+    top.postMessage(e.data,"*");
+  }
+  if(e.data.type==="4dpaper-camera-ack"||e.data.type==="4dpaper-field-ack"){
+    var iframes=document.querySelectorAll("iframe");
+    for(var i=0;i<iframes.length;i++){iframes[i].contentWindow.postMessage(e.data,"*");}
+  }
+});
+</script>"""
+
+    grid_style = (
+        f'display:grid;grid-template-columns:repeat({ncols},1fr);'
+        f'grid-template-rows:repeat({nrows},1fr);gap:4px;'
+        f'width:100%;height:{height};background:#111;'
+    )
+
+    cells = []
+    for sub in panel["subfigures"]:
+        content = (figures_dir / f"{sub['id']}.html").read_text()
+        escaped = content.replace("&", "&amp;").replace('"', "&quot;")
+        cells.append(
+            f'<iframe srcdoc="{escaped}" '
+            f'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
+        )
+
+    composite = (
+        f'<!DOCTYPE html><html><body style="margin:0;padding:0;">'
+        f'{re_relay}'
+        f'<div style="{grid_style}">'
+        + "".join(cells)
+        + f'</div></body></html>'
+    )
+
+    out_path = figures_dir / f"{panel['id']}.html"
+    out_path.write_text(composite)
+    print(f"[4dpaper] Generated panel (HTML): {out_path}", file=sys.stderr)
+
+
 # ── Video figure generation ───────────────────────────────────────────────────
 
 def _build_video_html_fragment(b64: str, fig_id: str, escaped_preview: str) -> str:

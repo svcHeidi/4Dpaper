@@ -178,6 +178,106 @@ class TestParsePanelShortcodes:
         assert len(result[1]["subfigures"]) == 2
 
 
+class TestGeneratePanelHtml:
+    """generate_panel_html() composes sub-figure HTMLs into a CSS grid."""
+
+    def _make_panel(self, layout="2x1", subfigures=None):
+        if subfigures is None:
+            subfigures = [
+                {"src": "a.foam", "id": "fig-a", "field": "", "time": "mid"},
+                {"src": "b.stl",  "id": "fig-b", "field": "", "time": "mid"},
+            ]
+        return {
+            "id": "panel-test",
+            "layout": layout,
+            "height": "800px",
+            "caption": "",
+            "subfigures": subfigures,
+        }
+
+    def test_creates_composite_html(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+            output_path.write_text(f"<html>content-{fig_id}</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            mod.generate_panel_html(self._make_panel(), tmp_path)
+
+        out = tmp_path / "panel-test.html"
+        assert out.exists()
+
+    def test_composite_contains_css_grid(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+            output_path.write_text("<html>x</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            mod.generate_panel_html(self._make_panel("2x1"), tmp_path)
+
+        html = (tmp_path / "panel-test.html").read_text()
+        assert "display:grid" in html
+        assert "grid-template-columns:repeat(2,1fr)" in html
+
+    def test_composite_contains_re_relay_script(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+            output_path.write_text("<html>x</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            mod.generate_panel_html(self._make_panel(), tmp_path)
+
+        html = (tmp_path / "panel-test.html").read_text()
+        assert "top.postMessage" in html           # upward relay
+        assert "4dpaper-camera-ack" in html        # downward ack relay
+        assert "querySelectorAll" in html          # broadcast to child iframes
+
+    def test_composite_contains_subfigure_content(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+            output_path.write_text(f"<html>unique-{fig_id}</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            mod.generate_panel_html(self._make_panel(), tmp_path)
+
+        html = (tmp_path / "panel-test.html").read_text()
+        # Content is escaped for srcdoc — but text like "unique-fig-a" survives escaping
+        assert "unique-fig-a" in html
+        assert "unique-fig-b" in html
+
+    def test_invalid_layout_raises(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+            output_path.write_text("<html>x</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            with pytest.raises(ValueError, match="layout"):
+                mod.generate_panel_html(self._make_panel("bad"), tmp_path)
+
+    def test_3x1_layout_has_three_columns(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+        subs = [{"src": f"{i}.stl", "id": f"fig-{i}", "field": "", "time": "mid"} for i in range(3)]
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+            output_path.write_text("<html>x</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            mod.generate_panel_html(self._make_panel("3x1", subs), tmp_path)
+
+        html = (tmp_path / "panel-test.html").read_text()
+        assert "grid-template-columns:repeat(3,1fr)" in html
+
+
 class TestFieldSyncSnippet:
     def test_contains_field_selector(self):
         mod = _load_4dpaper()
