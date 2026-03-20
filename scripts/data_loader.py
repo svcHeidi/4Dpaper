@@ -129,6 +129,12 @@ class SimulationData:
             self.load_exodus()
         elif self._format == "xdmf":
             self.load_xdmf()
+        elif self._format == "hdf5":
+            self.load_hdf5()
+        elif self._format == "med":
+            self.load_med()
+        elif self._format == "msh":
+            self.load_msh()
 
         return self
 
@@ -272,6 +278,52 @@ class SimulationData:
         self._time_steps = list(reader.time_values) or [0]
         self._reader = reader
         self._format = "xdmf"
+
+    # ── meshio-backed loaders ─────────────────────────────────────────────────
+
+    def _read_via_meshio(self) -> pv.DataSet:
+        """Read self.case_path using meshio and return a PyVista dataset.
+
+        meshio is imported lazily so it is only required when actually used.
+        Install with: pip install meshio
+        """
+        try:
+            import meshio
+        except ImportError:
+            raise ImportError(
+                "meshio is required for this format. "
+                "Install with: pip install meshio"
+            )
+        return pv.from_meshio(meshio.read(str(self.case_path)))
+
+    def load_hdf5(self):
+        """Load a generic HDF5 mesh file (.hdf5) via meshio.
+
+        Note: .h5 files are intentionally unsupported here — PyVista maps .h5
+        to its FLUENTCFFReader. Use .hdf5 for generic HDF5/meshio-backed meshes.
+        Requires: pip install meshio h5py
+        """
+        self._time_steps = [0]
+        self._meshes[(0, "default")] = self._read_via_meshio()
+        self._format = "hdf5"
+
+    def load_med(self):
+        """Load a Salome MED file (.med) via meshio.
+
+        Requires: pip install meshio
+        """
+        self._time_steps = [0]
+        self._meshes[(0, "default")] = self._read_via_meshio()
+        self._format = "med"
+
+    def load_msh(self):
+        """Load a Gmsh mesh file (.msh) via meshio.
+
+        Requires: pip install meshio
+        """
+        self._time_steps = [0]
+        self._meshes[(0, "default")] = self._read_via_meshio()
+        self._format = "msh"
 
     @property
     def time_steps(self) -> list:
