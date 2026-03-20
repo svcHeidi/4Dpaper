@@ -248,10 +248,13 @@ class TestGeneratePanelHtml:
         with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
             mod.generate_panel_html(self._make_panel(), tmp_path)
 
+        import base64, re
         html = (tmp_path / "panel-test.html").read_text()
-        # Content is escaped for srcdoc — but text like "unique-fig-a" survives escaping
-        assert "unique-fig-a" in html
-        assert "unique-fig-b" in html
+        # Content is base64-encoded in data URLs — decode to verify sub-figure content
+        b64_chunks = re.findall(r'data:text/html;base64,([A-Za-z0-9+/=]+)', html)
+        decoded = [base64.b64decode(b).decode() for b in b64_chunks]
+        assert any("unique-fig-a" in d for d in decoded)
+        assert any("unique-fig-b" in d for d in decoded)
 
     def test_invalid_layout_raises(self, tmp_path):
         from unittest.mock import patch

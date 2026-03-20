@@ -899,12 +899,13 @@ window.addEventListener("message",function(e){
         f'width:100%;height:{height};background:#111;'
     )
 
+    import base64 as _b64_panel
     cells = []
     for sub in panel["subfigures"]:
         content = (figures_dir / f"{sub['id']}.html").read_text()
-        escaped = content.replace("&", "&amp;").replace('"', "&quot;")
+        b64 = _b64_panel.b64encode(content.encode()).decode("ascii")
         cells.append(
-            f'<iframe srcdoc="{escaped}" '
+            f'<iframe src="data:text/html;base64,{b64}" '
             f'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
         )
 
