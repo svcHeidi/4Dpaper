@@ -279,6 +279,62 @@ class TestGeneratePanelHtml:
         assert "grid-template-columns:repeat(3,1fr)" in html
 
 
+class TestGeneratePanelPng:
+    """generate_panel_png() composes sub-figure PNGs into a 1920×1080 grid."""
+
+    def _make_panel(self, layout="2x1", n_subs=2):
+        return {
+            "id": "panel-test",
+            "layout": layout,
+            "height": "800px",
+            "caption": "",
+            "subfigures": [
+                {"src": f"{i}.stl", "id": f"fig-{i}", "field": "", "time": "mid"}
+                for i in range(n_subs)
+            ],
+        }
+
+    def _fake_png_gen(self, color):
+        """Return a side_effect that writes a solid-color 1920×1080 PNG."""
+        from PIL import Image
+        def _write(src, field, time_spec, output_path, fig_id=None):
+            img = Image.new("RGB", (1920, 1080), color=color)
+            img.save(str(output_path))
+        return _write
+
+    def test_creates_composite_png(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("red")):
+            mod.generate_panel_png(self._make_panel(), tmp_path)
+        assert (tmp_path / "panel-test.png").exists()
+
+    def test_composite_is_1920x1080(self, tmp_path):
+        from unittest.mock import patch
+        from PIL import Image
+        mod = _load_4dpaper()
+        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("blue")):
+            mod.generate_panel_png(self._make_panel("2x1", 2), tmp_path)
+        img = Image.open(tmp_path / "panel-test.png")
+        assert img.size == (1920, 1080)
+
+    def test_2x2_layout_produces_correct_size(self, tmp_path):
+        from unittest.mock import patch
+        from PIL import Image
+        mod = _load_4dpaper()
+        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("green")):
+            mod.generate_panel_png(self._make_panel("2x2", 4), tmp_path)
+        img = Image.open(tmp_path / "panel-test.png")
+        assert img.size == (1920, 1080)
+
+    def test_invalid_layout_raises(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("red")):
+            with pytest.raises(ValueError, match="layout"):
+                mod.generate_panel_png(self._make_panel("bad"), tmp_path)
+
+
 class TestFieldSyncSnippet:
     def test_contains_field_selector(self):
         mod = _load_4dpaper()

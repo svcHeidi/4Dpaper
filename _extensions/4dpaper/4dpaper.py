@@ -919,6 +919,51 @@ window.addEventListener("message",function(e){
     print(f"[4dpaper] Generated panel (HTML): {out_path}", file=sys.stderr)
 
 
+def generate_panel_png(panel: dict, figures_dir: Path) -> None:
+    """
+    Generate a composite 1920×1080 PNG composed of sub-figure PNGs in a grid.
+
+    Layout convention: "COLSxROWS" e.g. "2x2" = 2 columns 2 rows.
+    Sub-figures are arranged left-to-right, then top-to-bottom (row-major).
+    Output: figures_dir/<panel-id>.png
+    """
+    from PIL import Image
+
+    layout = panel["layout"]
+    try:
+        ncols_s, nrows_s = layout.split("x")
+        ncols, nrows = int(ncols_s), int(nrows_s)
+    except (ValueError, AttributeError):
+        raise ValueError(
+            f"[4dpaper] 4d-panel layout must be 'COLSxROWS' (e.g. '2x2', '3x1'), got: '{layout}'"
+        )
+    if ncols < 1 or nrows < 1:
+        raise ValueError(
+            f"[4dpaper] 4d-panel layout dimensions must be positive integers, got: '{layout}'"
+        )
+
+    cell_w = 1920 // ncols
+    cell_h = 1080 // nrows
+
+    # Generate each sub-figure PNG (reuses caching inside generate_png_figure)
+    for sub in panel["subfigures"]:
+        src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
+        out = figures_dir / f"{sub['id']}.png"
+        generate_png_figure(src, sub["field"], sub["time"], out, fig_id=sub["id"])
+
+    # Compose into 1920×1080 canvas
+    canvas = Image.new("RGB", (1920, 1080), color="#1a1a2e")
+    for idx, sub in enumerate(panel["subfigures"]):
+        row, col = divmod(idx, ncols)
+        img = Image.open(figures_dir / f"{sub['id']}.png").convert("RGB")
+        img = img.resize((cell_w, cell_h), Image.LANCZOS)
+        canvas.paste(img, (col * cell_w, row * cell_h))
+
+    out_path = figures_dir / f"{panel['id']}.png"
+    canvas.save(str(out_path))
+    print(f"[4dpaper] Generated panel (PNG): {out_path}")
+
+
 # ── Video figure generation ───────────────────────────────────────────────────
 
 def _build_video_html_fragment(b64: str, fig_id: str, escaped_preview: str) -> str:
