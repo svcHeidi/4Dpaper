@@ -178,3 +178,45 @@ class TestDetectFormat:
         """`.h5` is intentionally unsupported — conflicts with FLUENT CFF."""
         with pytest.raises(ValueError):
             self._detect(".h5")
+
+
+class TestSingleMeshLoaders:
+    """VTP, STL, OBJ, PLY: one time step, mesh stored under (0, 'default')."""
+
+    def _make_sim(self, suffix):
+        sim = SimulationData.__new__(SimulationData)
+        sim.case_path = Path(f"dummy{suffix}")
+        sim._meshes = {}
+        sim._time_steps = []
+        sim._reader = None
+        sim._format = suffix.lstrip(".")
+        sim._is_decomposed = False
+        sim._proc_readers = []
+        sim._proc_foam_files = []
+        return sim
+
+    @pytest.mark.parametrize("suffix,method", [
+        (".vtp", "load_vtp"),
+        (".stl", "load_stl"),
+        (".obj", "load_obj"),
+        (".ply", "load_ply"),
+    ])
+    def test_loads_single_mesh(self, suffix, method):
+        fake_mesh = MagicMock()
+        sim = self._make_sim(suffix)
+        with patch("data_loader.pv.read", return_value=fake_mesh):
+            getattr(sim, method)()
+        assert sim.time_steps == [0]
+        assert sim.get_mesh(0) is fake_mesh
+
+    @pytest.mark.parametrize("suffix,method", [
+        (".vtp", "load_vtp"),
+        (".stl", "load_stl"),
+        (".obj", "load_obj"),
+        (".ply", "load_ply"),
+    ])
+    def test_sets_format(self, suffix, method):
+        sim = self._make_sim(suffix)
+        with patch("data_loader.pv.read", return_value=MagicMock()):
+            getattr(sim, method)()
+        assert sim._format == suffix.lstrip(".")
