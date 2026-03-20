@@ -272,3 +272,42 @@ class TestReaderLoaders:
         with patch("data_loader.pv.EnSightReader", return_value=fake_reader):
             sim.load_ensight()
         assert sim._time_steps == [0]
+
+
+class TestMeshioLoaders:
+    """HDF5, MED, MSH: use meshio (lazy import) via _read_via_meshio helper."""
+
+    def _make_sim(self, suffix):
+        sim = SimulationData.__new__(SimulationData)
+        sim.case_path = Path(f"dummy{suffix}")
+        sim._meshes = {}
+        sim._time_steps = []
+        sim._reader = None
+        sim._format = None
+        sim._is_decomposed = False
+        sim._proc_readers = []
+        sim._proc_foam_files = []
+        return sim
+
+    @pytest.mark.parametrize("suffix,method,fmt", [
+        (".hdf5", "load_hdf5", "hdf5"),
+        (".med",  "load_med",  "med"),
+        (".msh",  "load_msh",  "msh"),
+    ])
+    def test_loads_single_mesh_via_meshio(self, suffix, method, fmt):
+        fake_pv_mesh = MagicMock()
+        fake_meshio_mesh = MagicMock()
+        sim = self._make_sim(suffix)
+        with patch.dict("sys.modules", {"meshio": MagicMock(read=MagicMock(return_value=fake_meshio_mesh))}):
+            with patch("data_loader.pv.from_meshio", return_value=fake_pv_mesh):
+                getattr(sim, method)()
+        assert sim.time_steps == [0]
+        assert sim.get_mesh(0) is fake_pv_mesh
+        assert sim._format == fmt
+
+    def test_missing_meshio_raises_import_error(self):
+        """If meshio is not installed, a clear ImportError with install hint is raised."""
+        sim = self._make_sim(".hdf5")
+        with patch.dict("sys.modules", {"meshio": None}):
+            with pytest.raises(ImportError, match="pip install meshio"):
+                sim.load_hdf5()
