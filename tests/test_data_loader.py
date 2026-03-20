@@ -370,4 +370,4 @@ class TestRealFiles:
 
     def test_xdmf(self):
         # Requires an XDMF file with time steps and a companion .h5
-        self._assert_mesh_ok(self._load("ellipsoid_0.005.xdmf"))
+        self._assert_mesh_ok(self._load("fiber_directions.xdmf"))
