@@ -863,6 +863,10 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
         raise ValueError(
             f"[4dpaper] 4d-panel layout must be 'COLSxROWS' (e.g. '2x2', '3x1'), got: '{layout}'"
         )
+    if ncols < 1 or nrows < 1:
+        raise ValueError(
+            f"[4dpaper] 4d-panel layout dimensions must be positive integers, got: '{layout}'"
+        )
 
     height = panel.get("height", "800px")
 

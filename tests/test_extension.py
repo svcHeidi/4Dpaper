@@ -221,6 +221,7 @@ class TestGeneratePanelHtml:
         html = (tmp_path / "panel-test.html").read_text()
         assert "display:grid" in html
         assert "grid-template-columns:repeat(2,1fr)" in html
+        assert "grid-template-rows:repeat(1,1fr)" in html
 
     def test_composite_contains_re_relay_script(self, tmp_path):
         from unittest.mock import patch
