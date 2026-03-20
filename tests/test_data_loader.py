@@ -93,3 +93,41 @@ class TestGetMeshFallback:
         sim._proc_foam_files = []
         result = sim.get_mesh(0, part="internalMesh")
         assert result is openfoam_mesh
+
+
+class TestEnableAllArraysGuard:
+    """EnableAllCellArrays must only be called for openfoam formats."""
+
+    def _make_reader_sim(self, fmt):
+        fake_reader = MagicMock()
+        # Make _reader NOT have EnableAllCellArrays to simulate non-OpenFOAM reader
+        del fake_reader._reader.EnableAllCellArrays
+        fake_mesh = MagicMock()
+        fake_mesh.__class__ = MagicMock  # not a MultiBlock
+        fake_reader.read.return_value = fake_mesh
+
+        sim = SimulationData.__new__(SimulationData)
+        sim._meshes = {}
+        sim._time_steps = [0]
+        sim._reader = fake_reader
+        sim._format = fmt
+        sim._is_decomposed = False
+        sim._proc_readers = []
+        sim._proc_foam_files = []
+        return sim
+
+    def test_pvd_reader_does_not_call_enable_all_arrays(self):
+        """get_mesh on a PVD reader must not call EnableAllCellArrays."""
+        sim = self._make_reader_sim("pvd")
+        try:
+            sim.get_mesh(0)
+        except AttributeError as e:
+            pytest.fail(f"get_mesh raised AttributeError for pvd format: {e}")
+
+    def test_ensight_reader_does_not_call_enable_all_arrays(self):
+        """get_mesh on an EnSight reader must not call EnableAllCellArrays."""
+        sim = self._make_reader_sim("ensight")
+        try:
+            sim.get_mesh(0)
+        except AttributeError as e:
+            pytest.fail(f"get_mesh raised AttributeError for ensight format: {e}")

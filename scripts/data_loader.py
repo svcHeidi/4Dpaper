@@ -221,11 +221,11 @@ class SimulationData:
             return self._get_decomposed_mesh(step_index, part)
 
         if self._reader is not None:
-            # Ensure all arrays are enabled
-            vtk_r = self._reader._reader
-            vtk_r.EnableAllCellArrays()
-            vtk_r.EnableAllPointArrays()
-            
+            if self._format in ("openfoam", "openfoam_decomposed"):
+                vtk_r = self._reader._reader
+                vtk_r.EnableAllCellArrays()
+                vtk_r.EnableAllPointArrays()
+
             self._reader.set_active_time_point(step_index)
             mesh = self._reader.read()
             # OpenFOAM reader returns MultiBlock
