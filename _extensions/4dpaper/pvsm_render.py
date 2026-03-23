@@ -127,14 +127,85 @@ def main() -> None:
     last_source = leaves[-1]  # deepest leaf if multiple
     print(f"[pvsm_render] Using source: {last_source.GetXMLName()}", file=sys.stderr)
 
-    # 5. Export geometry as .vtu
+    # Ensure client-side data is populated before we try to read it.
+    last_source.UpdatePipeline()
+
+    # 5. Export geometry as .vtu using client-side VTK XML writers.
+    # ParaView's SaveData / CreateWriter may not have .vtu registered depending on
+    # the pipeline output type (e.g. vtkMultiBlockDataSet from OpenFOAM readers).
+    # We bypass the factory entirely: pull the data from the algorithm's client-side
+    # object, flatten multiblock datasets if needed, and write with vtkmodules directly.
     print(f"[pvsm_render] Saving geometry -> {out_vtu}", file=sys.stderr)
-    SaveData(str(out_vtu), proxy=last_source)
+    try:
+        import vtkmodules.vtkIOXML as xmlio
+        import vtkmodules.vtkFiltersCore as vtkfc
+
+        csobj = last_source.SMProxy.GetClientSideObject()
+        if csobj is None:
+            _die(f"GetClientSideObject() returned None for {last_source.GetXMLName()}")
+
+        raw = csobj.GetOutputDataObject(0)
+        if raw is None:
+            _die("Pipeline output data object is None; UpdatePipeline may be needed.")
+
+        data_class = raw.GetClassName()
+        print(f"[pvsm_render] Output data type: {data_class}", file=sys.stderr)
+
+        # Flatten composite/multiblock to a single dataset
+        if "MultiBlock" in data_class or "Composite" in data_class:
+            # Collect all leaf blocks, preferring UnstructuredGrid
+            leaves = []
+            it = raw.NewIterator()
+            it.InitTraversal()
+            while not it.IsDoneWithTraversal():
+                ds = it.GetCurrentDataObject()
+                if ds is not None and ds.GetNumberOfPoints() > 0:
+                    leaves.append(ds)
+                it.GoToNextItem()
+            if not leaves:
+                _die("MultiBlock dataset has no non-empty leaf blocks.")
+            if len(leaves) == 1:
+                data = leaves[0]
+            else:
+                # Append all blocks into one UnstructuredGrid
+                appender = vtkfc.vtkAppendFilter()
+                for leaf in leaves:
+                    appender.AddInputDataObject(leaf)
+                appender.MergePointsOff()
+                appender.Update()
+                data = appender.GetOutput()
+        else:
+            data = raw
+
+        data_class = data.GetClassName()
+        if "PolyData" in data_class:
+            writer = xmlio.vtkXMLPolyDataWriter()
+            out_actual = out_vtu.with_suffix(".vtp")
+        else:
+            writer = xmlio.vtkXMLUnstructuredGridWriter()
+            out_actual = out_vtu
+
+        writer.SetFileName(str(out_actual))
+        writer.SetInputDataObject(data)
+        ret = writer.Write()
+        if ret == 0:
+            _die(f"VTK XML writer returned 0 (failure) for {out_actual}")
+
+        if out_actual != out_vtu:
+            import shutil
+            shutil.copy2(str(out_actual), str(out_vtu))
+
+    except SystemExit:
+        raise
+    except Exception as exc:
+        _die(f"Could not write geometry to {out_vtu}: {exc}")
 
     # Verify the file has geometry
-    vtu_text = out_vtu.read_text(errors="replace") if out_vtu.exists() else ""
-    if 'NumberOfPoints="0"' in vtu_text or not out_vtu.exists():
-        _die(f"SaveData produced an empty mesh (0 points): {out_vtu}")
+    if not out_vtu.exists():
+        _die(f"Geometry file was not produced: {out_vtu}")
+    vtu_text = out_vtu.read_text(errors="replace")
+    if 'NumberOfPoints="0"' in vtu_text:
+        _die(f"Geometry file has 0 points: {out_vtu}")
 
     # 6. Apply camera override if --camera given
     if args.camera:
