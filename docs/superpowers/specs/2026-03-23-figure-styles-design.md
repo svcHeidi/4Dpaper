@@ -90,7 +90,8 @@ For `background` and `axis_color`:
 3. Hard defaults: `"white"` / `"black"`
 
 **Error handling:**
-- Unknown `style_name` (not in `styles:` block): log warning, fall back to defaults — never a hard error
+- `style_name == ""` (default, no style specified): skip named-style lookup entirely, go straight to `defaults` — no warning logged
+- Unknown `style_name` (non-empty, not in `styles:` block): log warning, fall back to defaults — never a hard error
 - Malformed YAML: log warning, treat as empty file — never a hard error
 - Missing `_4dpaper_styles.yml`: silently use hard defaults
 
@@ -115,13 +116,22 @@ def resolve_style(styles_config: dict, style_name: str, field_name: str) -> dict
 
 ### Modified functions
 
-**`parse_shortcodes(text)`** — add `style` to optional kwargs, default `""`.
+**`parse_shortcodes(text)`** — add `kwargs.setdefault("style", "")` so every returned dict always contains `"style"` (empty string when omitted). Callers use `fig["style"]` directly.
 
-**`generate_html_figure(src_path, field, time_spec, output_path, fig_id, available_fields, camera_preview_only)`** — add three new keyword args:
+**`generate_html_figure(...)`** — append three new keyword args to the existing parameter list (do not drop `available_fields` or `camera_preview_only`):
 ```python
-background: str = "white",
-axis_color: str = "black",
-cmap: str = "coolwarm",
+def generate_html_figure(
+    src_path: Path,
+    field: str,
+    time_spec: str,
+    output_path: Path,
+    fig_id: str | None = None,
+    available_fields: list[str] | None = None,
+    camera_preview_only: bool = False,
+    background: str = "white",       # new
+    axis_color: str = "black",       # new
+    cmap: str = "coolwarm",          # new
+) -> None:
 ```
 Replace hardcoded `"#1a1a2e"` with `background` param, `"coolwarm"` with `cmap` param. Apply `axis_color` to the scalar bar via:
 ```python
@@ -134,9 +144,9 @@ scalar_bar_args={"title": field, "color": axis_color}
 **`generate_png_figure(...)`** — same three new kwargs, same replacements. `"transparent"` is also normalised to `"white"` for PNG export.
 
 **`main()`**:
-1. Load `_4dpaper_styles.yml` once: `styles_config = load_styles(_project_root / "_4dpaper_styles.yml")`
+1. Load `_4dpaper_styles.yml` once: `styles_yml_path = _project_root / "_4dpaper_styles.yml"` then `styles_config = load_styles(styles_yml_path)`
 2. For each `4d-image` shortcode, call `resolve_style(styles_config, fig["style"], fig["field"])` and pass the result into `generate_html_figure()` / `generate_png_figure()`
-3. If `_4dpaper_styles.yml` exists, pass it as `extra_deps=[styles_yml_path]` to `is_cache_valid()` — editing styles triggers regeneration
+3. Build `extra_deps = [styles_yml_path] if styles_yml_path.exists() else []`; pass this to **both** the HTML and PNG `is_cache_valid()` calls — editing styles triggers regeneration of all `4d-image` figures
 
 ---
 
