@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 import pytest
 
+import importlib.util
+
 PVSM_RENDER = Path(__file__).parent.parent / "_extensions" / "4dpaper" / "pvsm_render.py"
 EXAMPLE_PVSM = Path("/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/example_state.pvsm")
 PVPYTHON = Path("/Applications/ParaView-6.0.1.app/Contents/bin/pvpython")
@@ -35,3 +37,44 @@ class TestPvsmRenderCLI:
         )
         assert result.returncode != 0
         assert "not found" in result.stderr.lower() or "error" in result.stderr.lower()
+
+
+def _load_4dpaper():
+    spec = importlib.util.spec_from_file_location(
+        "fourDpaper",
+        Path(__file__).parent.parent / "_extensions" / "4dpaper" / "4dpaper.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestPvsmColorParsing:
+    def test_scalar_name_at_element_4(self):
+        mod = _load_4dpaper()
+        info = mod.parse_pvsm_color_info(EXAMPLE_PVSM)
+        # The example PVSM colors by "Vm"
+        assert info["scalar_name"] == "Vm"
+
+    def test_field_association_is_point_or_cell(self):
+        mod = _load_4dpaper()
+        info = mod.parse_pvsm_color_info(EXAMPLE_PVSM)
+        assert info["field_association"] in ("point", "cell")
+
+    def test_vmin_less_than_vmax(self):
+        mod = _load_4dpaper()
+        info = mod.parse_pvsm_color_info(EXAMPLE_PVSM)
+        assert info["vmin"] < info["vmax"]
+
+    def test_cmap_returned(self):
+        mod = _load_4dpaper()
+        info = mod.parse_pvsm_color_info(EXAMPLE_PVSM)
+        # cmap is either a string name or a matplotlib colormap object
+        assert info["cmap"] is not None
+
+    def test_fallback_on_missing_file(self):
+        mod = _load_4dpaper()
+        info = mod.parse_pvsm_color_info(Path("/nonexistent/file.pvsm"))
+        # Should return safe defaults, not raise
+        assert info["scalar_name"] == ""
+        assert info["cmap"] == "coolwarm"

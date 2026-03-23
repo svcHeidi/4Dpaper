@@ -136,6 +136,142 @@ def parse_panel_shortcodes(text: str) -> list[dict]:
     return results
 
 
+# -- PVSM parsing ---------------------------------------------------------------
+
+def parse_pvsm_color_info(pvsm_path: Path) -> dict:
+    """
+    Extract color/scalar info from a ParaView state (.pvsm) XML file.
+
+    Returns a dict with keys:
+      scalar_name      : str   -- active array name (empty string if not found)
+      field_association: str   -- 'point' or 'cell'
+      vmin             : float -- scalar range minimum
+      vmax             : float -- scalar range maximum
+      cmap             : str or matplotlib colormap -- color map for PyVista
+    """
+    import xml.etree.ElementTree as ET
+    from matplotlib.colors import LinearSegmentedColormap
+
+    _PRESET_MAP = {
+        "Cool to Warm":               "coolwarm",
+        "Cool to Warm (Extended)":    "coolwarm",
+        "Viridis (matplotlib)":       "viridis",
+        "Plasma (matplotlib)":        "plasma",
+        "Inferno (matplotlib)":       "inferno",
+        "Magma (matplotlib)":         "magma",
+        "Rainbow Desaturated":        "rainbow",
+        "Blue to Red Rainbow":        "jet",
+        "erdc_iceFire_H":             "coolwarm",
+    }
+
+    _FALLBACK = {
+        "scalar_name": "",
+        "field_association": "point",
+        "vmin": 0.0,
+        "vmax": 1.0,
+        "cmap": "coolwarm",
+    }
+
+    if not pvsm_path.exists():
+        return _FALLBACK.copy()
+
+    try:
+        tree = ET.parse(str(pvsm_path))
+        root = tree.getroot()
+        sms = root.find("ServerManagerState")
+        if sms is None:
+            return _FALLBACK.copy()
+
+        # -- Find the leaf (terminal) visible source proxy id ---------------------
+        # Walk all representation proxies (any type) that have both an Input
+        # and a ColorArrayName property; pick the last one in XML order.
+        leaf_rep_proxy = None
+        for proxy in sms.findall("Proxy[@group='representations']"):
+            inp_prop = proxy.find("Property[@name='Input']")
+            if inp_prop is None:
+                continue
+            inp_proxy_elem = inp_prop.find("Proxy")
+            if inp_proxy_elem is None:
+                continue
+            # Must have a ColorArrayName property to be useful
+            color_prop_check = proxy.find("Property[@name='ColorArrayName']")
+            if color_prop_check is None:
+                continue
+            leaf_rep_proxy = proxy
+
+        if leaf_rep_proxy is None:
+            return _FALLBACK.copy()
+
+        # -- Extract ColorArrayName -----------------------------------------------
+        scalar_name = ""
+        field_association = "point"
+        color_prop = leaf_rep_proxy.find("Property[@name='ColorArrayName']")
+        if color_prop is not None:
+            elems = color_prop.findall("Element")
+            if len(elems) >= 5:
+                assoc_val = elems[3].get("value", "1")
+                field_association = "point" if assoc_val == "1" else "cell"
+                scalar_name = elems[4].get("value", "")
+
+        # -- Find LookupTable proxy id --------------------------------------------
+        lut_id = ""
+        lut_prop = leaf_rep_proxy.find("Property[@name='LookupTable']")
+        if lut_prop is not None:
+            lut_proxy_elem = lut_prop.find("Proxy")
+            if lut_proxy_elem is not None:
+                lut_id = lut_proxy_elem.get("value", "")
+
+        # -- Extract scalar range + color map from LookupTable --------------------
+        vmin, vmax = 0.0, 1.0
+        cmap = "coolwarm"
+
+        if lut_id:
+            lut_proxy = sms.find(f"Proxy[@id='{lut_id}']")
+            if lut_proxy is not None:
+                # RGBPoints: flat list [scalar, R, G, B, ...]
+                rgb_prop = lut_proxy.find("Property[@name='RGBPoints']")
+                if rgb_prop is not None:
+                    vals = [float(e.get("value", 0)) for e in rgb_prop.findall("Element")]
+                    if len(vals) >= 8:  # at least 2 control points
+                        groups = [vals[i:i+4] for i in range(0, len(vals), 4)]
+                        vmin = groups[0][0]
+                        vmax = groups[-1][0]
+
+                        # Try named preset first
+                        preset_prop = lut_proxy.find("Property[@name='NameOfLastPresetApplied']")
+                        preset_name = ""
+                        if preset_prop is not None:
+                            elem = preset_prop.find("Element")
+                            if elem is not None:
+                                preset_name = elem.get("value", "")
+
+                        if preset_name and preset_name in _PRESET_MAP:
+                            cmap = _PRESET_MAP[preset_name]
+                        else:
+                            # Build colormap from RGBPoints control points
+                            span = vmax - vmin if vmax != vmin else 1.0
+                            norm_colors = [
+                                ((g[0] - vmin) / span, (g[1], g[2], g[3]))
+                                for g in groups
+                            ]
+                            cmap = LinearSegmentedColormap.from_list(
+                                "pvsm",
+                                [(t, c) for t, c in norm_colors],
+                            )
+
+        return {
+            "scalar_name": scalar_name,
+            "field_association": field_association,
+            "vmin": vmin,
+            "vmax": vmax,
+            "cmap": cmap,
+        }
+
+    except Exception as exc:
+        print(f"[4dpaper] WARNING: PVSM color parsing failed ({exc}); using defaults.", file=sys.stderr)
+        return _FALLBACK.copy()
+
+
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 
 def is_cache_valid(
@@ -272,17 +408,30 @@ def _camera_sync_snippet(fig_id: str) -> str:
         f'    clearTimeout(timer);\n'
         f'    timer=setTimeout(function(){{\n'
         f'      var cam=renderer.getActiveCamera();\n'
-        f'      parent.postMessage({{\n'
-        f'        type:"4dpaper-camera",\n'
-        f'        fig_id:FIG_ID,\n'
-        f'        camera:{{\n'
-        f'          position:cam.getPosition(),\n'
-        f'          focal_point:cam.getFocalPoint(),\n'
-        f'          view_up:cam.getViewUp(),\n'
-        f'          parallel_scale:cam.getParallelScale(),\n'
-        f'          parallel_projection:cam.getParallelProjection()?1:0\n'
-        f'        }}\n'
-        f'      }},"*");\n'
+        f'      var camData={{\n'
+        f'        position:cam.getPosition(),\n'
+        f'        focal_point:cam.getFocalPoint(),\n'
+        f'        view_up:cam.getViewUp(),\n'
+        f'        parallel_scale:cam.getParallelScale(),\n'
+        f'        parallel_projection:cam.getParallelProjection()?1:0\n'
+        f'      }};\n'
+        f'      if(window.parent!==window){{\n'
+        f'        parent.postMessage({{type:"4dpaper-camera",fig_id:FIG_ID,camera:camData}},"*");\n'
+        f'      }}else{{\n'
+        f'        fetch("/camera/"+FIG_ID,{{\n'
+        f'          method:"POST",headers:{{"Content-Type":"application/json"}},\n'
+        f'          body:JSON.stringify(camData)\n'
+        f'        }}).then(function(r){{\n'
+        f'          badge.innerHTML="&#128247; Camera synced";\n'
+        f'          badge.style.background=r.ok?"rgba(0,140,0,0.85)":"rgba(180,0,0,0.85)";\n'
+        f'          badge.style.display="block";clearTimeout(hideTimer);\n'
+        f'          if(r.ok)hideTimer=setTimeout(function(){{badge.style.display="none";}},3000);\n'
+        f'        }}).catch(function(){{\n'
+        f'          badge.innerHTML="&#128247; Sync error";\n'
+        f'          badge.style.background="rgba(180,0,0,0.85)";\n'
+        f'          badge.style.display="block";\n'
+        f'        }});\n'
+        f'      }}\n'
         f'    }},300);\n'
         f'  }}\n'
         f'  function waitRenderer(cb){{\n'
@@ -348,13 +497,13 @@ def _field_sync_snippet(
     original_field_js = json.dumps(cur_field).replace("</", "<\\/")
 
     # Hide the switcher if there is only one field to choose from
-    hide_if_single = "display:none;" if len(available_fields) <= 1 else ""
+    display_val = "none" if len(available_fields) <= 1 else "flex"
 
     return (
-        f'<div style="position:fixed;bottom:8px;left:8px;z-index:9999;{hide_if_single}'
+        f'<div style="position:fixed;bottom:8px;left:8px;z-index:9999;'
         f'background:rgba(30,30,30,0.85);'
         f'padding:8px;border-radius:6px;font-family:sans-serif;font-size:12px;color:#eee;'
-        f'box-shadow:0 4px 12px rgba(0,0,0,0.5);display:flex;gap:8px;align-items:center;">\n'
+        f'box-shadow:0 4px 12px rgba(0,0,0,0.5);display:{display_val};gap:8px;align-items:center;">\n'
         f'  <label>Field:\n'
         f'    <select id="field-sel-{fig_id_safe}"'
         f' style="background:#333;color:#fff;border:1px solid #555;border-radius:3px;">\n'
@@ -676,6 +825,7 @@ def generate_html_figure(
     output_path: Path,
     fig_id: str | None = None,
     available_fields: list[str] | None = None,
+    camera_preview_only: bool = False,
 ) -> None:
     """
     Generate a self-contained vtk.js HTML figure using PyVista.
@@ -831,14 +981,17 @@ def generate_html_figure(
                 file=sys.stderr,
             )
         else:
-            inj_html = (
-                _camera_sync_snippet(fig_id)
-                + "\n"
-                + _field_sync_snippet(fig_id, fields_to_embed, field, field_data_b64, field_ranges)
-                + "\n"
-                + _time_sync_snippet(fig_id, time_labels, time_data_b64, time_global_range, idx, field)
-                + "\n</body>"
-            )
+            if camera_preview_only:
+                inj_html = _camera_sync_snippet(fig_id) + "\n</body>"
+            else:
+                inj_html = (
+                    _camera_sync_snippet(fig_id)
+                    + "\n"
+                    + _field_sync_snippet(fig_id, fields_to_embed, field, field_data_b64, field_ranges)
+                    + "\n"
+                    + _time_sync_snippet(fig_id, time_labels, time_data_b64, time_global_range, idx, field)
+                    + "\n</body>"
+                )
             html = html.replace("</body>", inj_html, 1)
     output_path.write_text(html)
 
@@ -969,74 +1122,34 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
 
 # ── Video figure generation ───────────────────────────────────────────────────
 
-def _build_video_html_fragment(b64: str, fig_id: str, escaped_preview: str) -> str:
+def _build_video_html_fragment(b64: str, fig_id: str) -> str:
     """
-    Build the HTML fragment for a video figure with an embedded camera-setup modal.
+    Build a self-contained HTML document for a video figure.
 
-    The modal contains a vtk.js interactive preview (deferred srcdoc) so the user
-    can rotate to the desired camera angle. Rotating fires the camera sync snippet
-    inside the preview, which postMessages to the parent page relay (injected by
-    fourd_video in shortcodes.lua) and saves state/camera_<fig_id>.json.
+    The "Camera View" button is injected at the paper level (analysis_report.html)
+    by shortcodes.lua, so it is never inside this iframe and cannot be blocked by
+    the video element's compositor layer.
 
     Parameters
     ----------
     b64: base64-encoded MP4 bytes (for the data URI)
     fig_id: figure identifier string
-    escaped_preview: the preview HTML with & → &amp; and " → &quot; (safe for
-                     embedding in a double-quoted HTML attribute)
     """
-    onclick = (
-        f"var f=document.getElementById('cam-iframe-{fig_id}');"
-        "if(!f.getAttribute('data-loaded'))"
-        "{f.srcdoc=f.getAttribute('data-srcdoc');f.setAttribute('data-loaded','1');}"
-        f"document.getElementById('cam-modal-{fig_id}').style.display='flex';"
-    )
-    close_onclick = f"document.getElementById('cam-modal-{fig_id}').style.display='none'"
     return (
-        f'<div style="position:relative;display:inline-block;width:100%;max-width:900px;">\n'
+        f'<!DOCTYPE html>\n'
+        f'<html style="height:100%;margin:0;padding:0;">\n'
+        f'<head><meta charset="utf-8">'
+        f'<style>html,body{{margin:0;padding:0;overflow:hidden;height:100%;width:100%;}}</style>'
+        f'</head>\n'
+        f'<body>\n'
+        f'<div style="position:relative;width:100%;height:100%;">\n'
         f'  <video src="data:video/mp4;base64,{b64}"\n'
         f'    controls loop autoplay muted playsinline\n'
-        f'    style="width:100%;height:600px;border-radius:4px;display:block;">\n'
+        f'    style="width:100%;height:100%;border-radius:4px;display:block;object-fit:contain;">\n'
         f'  </video>\n'
-        f'  <button id="cam-open-{fig_id}"\n'
-        f'    onclick="{onclick}"\n'
-        f'    style="position:absolute;top:8px;right:8px;background:rgba(20,20,50,0.85);'
-        f'color:#fff;border:1px solid #555;border-radius:4px;padding:5px 10px;'
-        f'cursor:pointer;font-size:12px;font-family:monospace;">\n'
-        f'    &#128247; Camera View\n'
-        f'  </button>\n'
         f'</div>\n'
-        f'<!-- Camera view modal -->\n'
-        f'<div id="cam-modal-{fig_id}"\n'
-        f'  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);'
-        f'z-index:10000;justify-content:center;align-items:center;">\n'
-        f'  <div style="background:#1a1a2e;border-radius:8px;padding:16px;'
-        f'width:min(940px,96vw);box-shadow:0 8px 32px rgba(0,0,0,0.6);">\n'
-        f'    <div style="display:flex;justify-content:space-between;'
-        f'align-items:center;margin-bottom:8px;">\n'
-        f'      <span style="color:#ccc;font-size:12px;font-family:monospace;">\n'
-        f'        &#128247; Rotate to set camera &mdash; syncs automatically on mouse release\n'
-        f'        &mdash; then click <b>Rebuild HTML</b>\n'
-        f'      </span>\n'
-        f'      <button onclick="{close_onclick}"\n'
-        f'        style="background:none;border:none;color:#999;font-size:20px;'
-        f'cursor:pointer;padding:0 4px;">\n'
-        f'        &#10005;\n'
-        f'      </button>\n'
-        f'    </div>\n'
-        f'    <iframe id="cam-iframe-{fig_id}"\n'
-        f'      data-srcdoc="{escaped_preview}"\n'
-        f'      srcdoc=""\n'
-        f'      width="900" height="600"\n'
-        f'      frameborder="0"\n'
-        f'      style="border:none;border-radius:4px;display:block;">\n'
-        f'    </iframe>\n'
-        f'    <p style="color:#666;font-size:10px;margin:4px 0 0;'
-        f'text-align:right;font-family:monospace;">\n'
-        f'      fig id: {fig_id}\n'
-        f'    </p>\n'
-        f'  </div>\n'
-        f'</div>'
+        f'</body>\n'
+        f'</html>'
     )
 
 
@@ -1181,7 +1294,8 @@ def generate_video_figure(
         pl.close()
         print(f"[4dpaper] Generated (frame PNG): {frame_path}", file=sys.stderr)
 
-    # Generate interactive vtk.js preview for the camera-setup modal
+    # Generate interactive vtk.js preview served at /state/figures/<id>-preview.html
+    # The paper page relay opens this as an overlay when "Camera View" is clicked.
     if preview_html_path is None:
         preview_html_path = video_html_path.parent / f"{fig_id}-preview.html"
     try:
@@ -1189,21 +1303,18 @@ def generate_video_figure(
             src_path, field, time_spec,
             preview_html_path,
             fig_id=fig_id,
-            available_fields=[field] if field else [],
+            available_fields=[],
+            camera_preview_only=True,
         )
-        preview_raw = preview_html_path.read_text()
-        escaped_preview = preview_raw.replace("&", "&amp;").replace('"', "&quot;")
     except Exception as exc:
         print(
-            f"[4dpaper] Warning: could not generate preview for {fig_id}: {exc}. "
-            "Camera modal will be empty.",
+            f"[4dpaper] Warning: could not generate preview for {fig_id}: {exc}.",
             file=sys.stderr,
         )
-        escaped_preview = ""
 
-    # Build self-contained HTML fragment with base64-encoded MP4 data URI
+    # Build self-contained HTML document with base64-encoded MP4 data URI
     b64 = base64.b64encode(mp4_path.read_bytes()).decode("ascii")
-    video_html = _build_video_html_fragment(b64, fig_id, escaped_preview)
+    video_html = _build_video_html_fragment(b64, fig_id)
     video_html_path.parent.mkdir(parents=True, exist_ok=True)
     video_html_path.write_text(video_html)
     print(f"[4dpaper] Generated (video HTML): {video_html_path}", file=sys.stderr)
@@ -1326,8 +1437,8 @@ def main() -> None:
             try:
                 generate_png_figure(src, field, time_spec, out_png, fig_id=fig_id)
             except Exception as exc:
-                print(f"[4dpaper] ERROR generating {fig_id}.png: {exc}")
-                sys.exit(1)
+                print(f"[4dpaper] WARNING: could not generate {fig_id}.png: {exc}")
+                print(f"[4dpaper]   PNG is needed for PDF export only — HTML render continues.")
 
     # ── Video shortcode processing ─────────────────────────────────────────────
     for vid in videos:
