@@ -69,6 +69,7 @@ Add to the returned HTML+JS:
 
    lockBtn.addEventListener("click", function() {
      var newVal = !locked;
+     var expected = newVal;  // capture at toggle time; `locked` may change before ack arrives
      setLocked(newVal); // optimistic update
      if (window.parent !== window) {
        parent.postMessage({type:"4dpaper-lock-toggle", fig_id:FIG_ID, locked:newVal}, "*");
@@ -76,7 +77,7 @@ Add to the returned HTML+JS:
        fetch("/camera-lock/" + FIG_ID, {
          method:"POST", headers:{"Content-Type":"application/json"},
          body:JSON.stringify({locked:newVal})
-       }).catch(function(){ setLocked(!newVal); }); // revert on error
+       }).catch(function(){ setLocked(!expected); }); // revert on error
      }
    });
    ```
@@ -87,7 +88,11 @@ Add to the returned HTML+JS:
      setLocked(!!e.data.locked);
    }
    if (e.data.type === "4dpaper-lock-ack" && e.data.fig_id === FIG_ID) {
-     if (e.data.status !== "ok") setLocked(!locked); // revert on error
+     // NOTE: use e.data.expected (not local `locked`) to avoid stale state on rapid toggles.
+     // The relay path cannot carry `expected` — on error, set to opposite of the acked locked value.
+     // For the relay path, we accept the minor race: reverting on a fast double-click may land
+     // in the wrong state. To eliminate it entirely, track per-toggle sequence numbers (future).
+     if (e.data.status !== "ok") setLocked(!locked); // best-effort revert
    }
    ```
 
@@ -248,7 +253,22 @@ window.addEventListener("message", function(e) {
 </script>
 ```
 
-Independent mode keeps the existing `re_relay` unchanged.
+**Independent mode `re_relay`** — add lock message pass-through (lock messages come from subfigure children; must reach `top`):
+
+```js
+if (e.data.type === "4dpaper-lock-query" || e.data.type === "4dpaper-lock-toggle") {
+  top.postMessage(e.data, "*");
+}
+if (e.data.type === "4dpaper-lock-state" || e.data.type === "4dpaper-lock-ack") {
+  // Forward responses back down to all children
+  var iframes = document.querySelectorAll("iframe");
+  for (var k = 0; k < iframes.length; k++) {
+    iframes[k].contentWindow.postMessage(e.data, "*");
+  }
+}
+```
+
+**Sync mode `re_relay`** — add the same lock pass-through inside its `window.addEventListener` block (alongside the existing `4dpaper-camera` and `4dpaper-field-update` branches).
 
 **`_camera_sync_snippet` ack filter** — change the existing ack check from:
 ```js
@@ -338,6 +358,7 @@ for sub in panel["subfigures"]:
     ...
 
 # New: for sync panels, single panel-level camera JSON
+panel_id = panel["id"]   # already assigned earlier in loop
 if panel.get("camera_mode") == "sync":
     cam_deps = [_project_root / "state" / f"camera_{panel_id}.json"]
 else:
@@ -449,9 +470,25 @@ for ts in ts_raw:
 
 After merging, timeseries dicts flow through `generate_panel_html` / `generate_panel_png` exactly as `4d-panel` dicts do.
 
+### Lua rendering strategy for sync panels and timeseries
+
+The Python-generated composite HTML (`state/figures/<panel_id>.html`) contains:
+- All subfigure iframes
+- The sync `re_relay` script that rewrites `fig_id → panel_id` and broadcasts `4dpaper-camera-apply`
+
+For this relay to execute, Lua must render the **composite HTML as a single iframe**, not render subfigure iframes individually.
+
+**Rule:**
+- `camera_mode == "independent"` (default for `4d-panel`): Lua renders subfigure iframes directly inline. Composite HTML is not used. Lock messages are forwarded by the independent re_relay.
+- `camera_mode == "sync"` (explicit on `4d-panel`) or `fourd_timeseries` (always sync): Lua renders a **single iframe** pointing to/embedding `state/figures/<id>.html` (the composite HTML). The composite's sync `re_relay` handles all camera coordination internally.
+
+For `fourd_timeseries`, this means it does **not** probe for `<id>-0.html`, `<id>-1.html` directly. Instead it probes for `state/figures/<id>.html` (the composite) and embeds it as one full-height iframe. The placeholder "not yet rendered" message fires if the composite is absent.
+
 ### `shortcodes.lua` — `fourd_timeseries`
 
-`fourd_timeseries` implements its own sub-figure discovery loop using the auto-naming convention `<id>-0`, `<id>-1`, ... (probing for files on disk). This is different from `fourd_panel` which reads explicit `id1`, `id2`, ... kwargs. The grid layout is `N×1` where N is the number of discovered files.
+`fourd_timeseries` looks for the Python-generated composite HTML (`state/figures/<id>.html`) and embeds it as a **single iframe**. It does not probe for individual subfigure files.
+
+Unlike `fourd_panel` (which knows `id1`, `id2`, ... from explicit kwargs), `fourd_timeseries` has no explicit subfigure list, making the composite-iframe approach the only viable Lua path.
 
 ```lua
 local function fourd_timeseries(args, kwargs)
@@ -465,40 +502,30 @@ local function fourd_timeseries(args, kwargs)
   end
 
   if quarto.doc.isFormat("html") then
-    -- Probe state/figures/<id>-0.html, <id>-1.html, ... until absent
-    local cells = {}
-    local i = 0
-    while true do
-      local sub_id  = id .. "-" .. i
-      local fig_path = "state/figures/" .. sub_id .. ".html"
-      local f = io.open(fig_path, "r")
-      if not f then break end
-      f:close()
-      local cell_iframe
-      if _app_mode then
-        cell_iframe = '<iframe src="/state/figures/' .. sub_id .. '.html" ' ..
-                      'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
-      else
-        local fh = io.open(fig_path, "r")
-        local content = fh:read("*all"); fh:close()
-        local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-        cell_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
-                      'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
-      end
-      table.insert(cells, cell_iframe)
-      i = i + 1
-    end
+    -- Timeseries is always sync — embed the Python-generated composite HTML as one iframe.
+    -- The composite contains subfigure iframes + the sync re_relay script.
+    local composite_path = "state/figures/" .. id .. ".html"
+    local f = io.open(composite_path, "r")
 
-    if #cells == 0 then
+    if not f then
       return pandoc.RawBlock("html",
         '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;">' ..
         '⚠ 4D Timeseries <code>' .. id .. '</code> not yet rendered — ' ..
         'click <strong>Rebuild HTML</strong> in the dashboard.</div>')
     end
 
-    local ncols = #cells
-    local grid_style = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
-                       'grid-template-rows:1fr;gap:4px;width:100%;height:' .. height .. ';background:#111;'
+    local composite_iframe
+    if _app_mode then
+      f:close()
+      composite_iframe = '<iframe src="/state/figures/' .. id .. '.html" ' ..
+                         'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
+    else
+      local content = f:read("*all"); f:close()
+      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+      composite_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
+                         'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
+    end
+
     local relay_script = ""
     if not _relay_injected then
       _relay_injected = true
@@ -506,7 +533,7 @@ local function fourd_timeseries(args, kwargs)
     end
     return pandoc.RawBlock("html",
       '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-      '<div style="' .. grid_style .. '">' .. table.concat(cells) .. '</div>\n' ..
+      composite_iframe .. '\n' ..
       (caption ~= "" and
         '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
         or "") ..
@@ -539,7 +566,7 @@ Registered: `["4d-timeseries"] = fourd_timeseries`.
 | File | Change |
 |------|--------|
 | `_extensions/4dpaper/4dpaper.py` | `_camera_sync_snippet` (lock button + apply handler), `generate_png_figure` (`camera_fig_id` param), `generate_panel_html` (sync `re_relay`), `generate_panel_png` (`camera_fig_id` for sync), `parse_panel_shortcodes` (`camera_mode`), `parse_timeseries_shortcodes` (new), `_expand_timeseries_steps` (new), `main()` (timeseries expansion + merged into panels) |
-| `_extensions/4dpaper/shortcodes.lua` | `_RELAY_SCRIPT` (camera ack routing fix + lock-query/toggle handlers), new `fourd_timeseries`, registered in return table |
+| `_extensions/4dpaper/shortcodes.lua` | `_RELAY_SCRIPT` (camera ack routing fix + lock-query/toggle handlers), `fourd_panel` (sync mode → single composite iframe; independent mode keeps existing subfigure iframes but adds lock pass-through to re_relay), new `fourd_timeseries` (single composite iframe always), registered in return table |
 | `dashboard/camera_plugin.py` | `CameraLockHandler` (new), `ROUTES` updated |
 | `tests/test_camera_lock.py` | New: `CameraLockHandler` GET/POST, lock JS snippet shape, `sendCamera` guard |
 | `tests/test_panel_sync.py` | New: `parse_panel_shortcodes` camera_mode, `generate_panel_png` camera routing, `re_relay` sync logic |
