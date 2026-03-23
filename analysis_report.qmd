@@ -44,7 +44,7 @@ In the HTML version this is a fully interactive 3D viewer — you can rotate,
 zoom, and inspect the mesh. In the PDF version it is a high-resolution static
 render from the camera angle you locked in the dashboard.
 
-{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" fields="Vm,activationTime,activationVelocity" id="fig-vm" caption="Transmembrane potential $V_m$ at mid-activation" >}}
+{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" fields="Vm,activationTime,activationVelocity" id="fig-vm" style="vm-dark" caption="Transmembrane potential $V_m$ at mid-activation" >}}
 
 ## Activation Time
 
