@@ -128,11 +128,12 @@ def parse_panel_shortcodes(text: str) -> list[dict]:
             print(f"[4dpaper] Warning: 4d-panel '{kwargs['id']}' has no sub-figures — skipping.", file=sys.stderr)
             continue
         results.append({
-            "id":         kwargs["id"],
-            "layout":     kwargs.get("layout", "1x1"),
-            "height":     kwargs.get("height", "800px"),
-            "caption":    kwargs.get("caption", ""),
-            "subfigures": subfigures,
+            "id":          kwargs["id"],
+            "layout":      kwargs.get("layout", "1x1"),
+            "height":      kwargs.get("height", "800px"),
+            "caption":     kwargs.get("caption", ""),
+            "camera_mode": kwargs.get("camera", "independent"),
+            "subfigures":  subfigures,
         })
     return results
 
@@ -1319,7 +1320,44 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
         generate_html_figure(src, sub["field"], sub["time"], out, fig_id=sub["id"], available_fields=af)
 
     # Bidirectional re-relay: forwards camera/field UP to top, acks DOWN to children
-    re_relay = """\
+    camera_mode = panel.get("camera_mode", "independent")
+    panel_id = panel["id"]
+
+    if camera_mode == "sync":
+        re_relay = f"""\
+<script>
+var PANEL_ID="{panel_id}";
+window.addEventListener("message",function(e){{
+  if(!e.data)return;
+  if(e.data.type==="4dpaper-camera"){{
+    var msg=Object.assign({{}},e.data,{{fig_id:PANEL_ID}});
+    top.postMessage(msg,"*");
+    var iframes=document.querySelectorAll("iframe");
+    for(var i=0;i<iframes.length;i++){{
+      iframes[i].contentWindow.postMessage({{type:"4dpaper-camera-apply",camera:e.data.camera}},"*");
+    }}
+  }}
+  if(e.data.type==="4dpaper-camera-ack"){{
+    var camAck=Object.assign({{}},e.data,{{fig_id:"*"}});
+    var iframes2=document.querySelectorAll("iframe");
+    for(var j=0;j<iframes2.length;j++){{iframes2[j].contentWindow.postMessage(camAck,"*");}}
+  }}
+  if(e.data.type==="4dpaper-field-ack"){{
+    var iframes3=document.querySelectorAll("iframe");
+    for(var k=0;k<iframes3.length;k++){{iframes3[k].contentWindow.postMessage(e.data,"*");}}
+  }}
+  if(e.data.type==="4dpaper-field-update"){{top.postMessage(e.data,"*");}}
+  if(e.data.type==="4dpaper-lock-query"||e.data.type==="4dpaper-lock-toggle"){{
+    top.postMessage(e.data,"*");
+  }}
+  if(e.data.type==="4dpaper-lock-state"||e.data.type==="4dpaper-lock-ack"){{
+    var iframes4=document.querySelectorAll("iframe");
+    for(var l=0;l<iframes4.length;l++){{iframes4[l].contentWindow.postMessage(e.data,"*");}}
+  }}
+}});
+</script>"""
+    else:
+        re_relay = """\
 <script>
 window.addEventListener("message",function(e){
   if(!e.data)return;
@@ -1329,6 +1367,13 @@ window.addEventListener("message",function(e){
   if(e.data.type==="4dpaper-camera-ack"||e.data.type==="4dpaper-field-ack"){
     var iframes=document.querySelectorAll("iframe");
     for(var i=0;i<iframes.length;i++){iframes[i].contentWindow.postMessage(e.data,"*");}
+  }
+  if(e.data.type==="4dpaper-lock-query"||e.data.type==="4dpaper-lock-toggle"){
+    top.postMessage(e.data,"*");
+  }
+  if(e.data.type==="4dpaper-lock-state"||e.data.type==="4dpaper-lock-ack"){
+    var iframes2=document.querySelectorAll("iframe");
+    for(var k=0;k<iframes2.length;k++){iframes2[k].contentWindow.postMessage(e.data,"*");}
   }
 });
 </script>"""
