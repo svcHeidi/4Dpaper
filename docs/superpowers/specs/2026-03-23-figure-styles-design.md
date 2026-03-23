@@ -4,7 +4,7 @@
 
 **Scope:** `4d-image` only for this implementation. Other figure types (`4d-video`, `4d-panel`, `4d-pvsm`) are out of scope.
 
-**Tech Stack:** PyYAML (already available), PyVista `scalar_bar_args` + `add_axes`, existing `is_cache_valid()` `extra_deps` parameter, `4dpaper.py` / `shortcodes.lua` unchanged except targeted additions.
+**Tech Stack:** PyYAML (already available), PyVista `scalar_bar_args`, existing `is_cache_valid()` `extra_deps` parameter, `4dpaper.py` changed with targeted additions only. `shortcodes.lua` is not modified.
 
 ---
 
@@ -14,7 +14,7 @@
 
 ```yaml
 defaults:
-  background: "transparent"
+  background: "white"
   axis_color: "black"
   cmap: "coolwarm"
 
@@ -28,7 +28,7 @@ styles:
       activationVelocity: plasma
 
   publication:
-    background: "transparent"
+    background: "white"
     axis_color: "black"
     fields:
       Vm: RdBu
@@ -40,19 +40,21 @@ styles:
 **`defaults` block** (all optional — hard defaults used if absent):
 | Key | Type | Hard default |
 |-----|------|--------------|
-| `background` | CSS color string or `"transparent"` | `"transparent"` |
+| `background` | CSS color string (`"white"`, `"#1a1a2e"`, etc.) | `"white"` |
 | `axis_color` | CSS color string | `"black"` |
 | `cmap` | matplotlib colormap name | `"coolwarm"` |
 
 **`styles` block** — named templates, each optionally overriding any default key plus a `fields:` mapping:
 | Key | Type | Description |
 |-----|------|-------------|
-| `background` | CSS color string or `"transparent"` | Overrides `defaults.background` |
+| `background` | CSS color string | Overrides `defaults.background` |
 | `axis_color` | CSS color string | Overrides `defaults.axis_color` |
 | `cmap` | matplotlib colormap name | Fallback cmap if field not in `fields:` |
 | `fields` | dict[str, str] | Per-field colormap overrides |
 
-The file is optional. If absent, all figures render with the hard defaults (transparent background, black axis text, coolwarm colormap) — same behavior as today.
+The file is optional. If absent, all figures render with the hard defaults (white background, black axis text, coolwarm colormap).
+
+**Note on `"transparent"` background:** PyVista cannot produce a truly transparent background in either HTML or PNG export — `"transparent"` is mapped to `"white"` before being passed to `pl.background_color`. True CSS transparency at the iframe level is a future enhancement requiring `shortcodes.lua` changes. Users who want a light-coloured figure should use `"white"` or `"#ffffff"` explicitly.
 
 ---
 
@@ -85,7 +87,7 @@ For `cmap`:
 For `background` and `axis_color`:
 1. `styles[style_name].background` / `styles[style_name].axis_color`
 2. `defaults.background` / `defaults.axis_color`
-3. Hard defaults: `"transparent"` / `"black"`
+3. Hard defaults: `"white"` / `"black"`
 
 **Error handling:**
 - Unknown `style_name` (not in `styles:` block): log warning, fall back to defaults — never a hard error
@@ -117,18 +119,19 @@ def resolve_style(styles_config: dict, style_name: str, field_name: str) -> dict
 
 **`generate_html_figure(src_path, field, time_spec, output_path, fig_id, available_fields, camera_preview_only)`** — add three new keyword args:
 ```python
-background: str = "transparent",
+background: str = "white",
 axis_color: str = "black",
 cmap: str = "coolwarm",
 ```
-Replace hardcoded `"#1a1a2e"` with `background` param, `"coolwarm"` with `cmap` param. Apply `axis_color` to scalar bar and axes via:
+Replace hardcoded `"#1a1a2e"` with `background` param, `"coolwarm"` with `cmap` param. Apply `axis_color` to the scalar bar via:
 ```python
 scalar_bar_args={"title": field, "color": axis_color}
-pl.add_axes(color=axis_color)
 ```
-When `background == "transparent"`, pass `None` to `pl.background_color` (PyVista treats `None` as transparent/white for HTML export).
+`axis_color` controls the scalar bar text/label colour only. PyVista does not expose a single API for colouring all axis elements; this is the extent of axis colour control in this implementation.
 
-**`generate_png_figure(...)`** — same three new kwargs, same replacements. For PNG export, `transparent` background means passing `None` to `pl.background_color`.
+`"transparent"` background is normalised to `"white"` before being passed to `pl.background_color`.
+
+**`generate_png_figure(...)`** — same three new kwargs, same replacements. `"transparent"` is also normalised to `"white"` for PNG export.
 
 **`main()`**:
 1. Load `_4dpaper_styles.yml` once: `styles_config = load_styles(_project_root / "_4dpaper_styles.yml")`
@@ -139,9 +142,7 @@ When `background == "transparent"`, pass `None` to `pl.background_color` (PyVist
 
 ## Cache Invalidation
 
-`_4dpaper_styles.yml` mtime is added as an `extra_dep` on all `4d-image` figures when the file exists. Editing the styles file triggers regeneration of all figures that have a `style=` param (and only those, since others pass `extra_deps=[]`).
-
-Actually, to keep it simple: if `_4dpaper_styles.yml` exists, pass it as an extra dep for ALL `4d-image` figures — even those without `style=`, since a change to `defaults:` could affect them. This is conservative but correct.
+If `_4dpaper_styles.yml` exists, pass it as an `extra_dep` for **all** `4d-image` figures — even those without `style=`, since a change to `defaults:` could affect them. This is conservative but correct and requires no per-figure branching.
 
 ---
 
@@ -157,7 +158,7 @@ A starter template committed to the repo:
 # styles:   named templates referenced via style="name"
 
 defaults:
-  background: "transparent"
+  background: "white"
   axis_color: "black"
   cmap: "coolwarm"
 
