@@ -85,7 +85,12 @@ class CameraLockHandler(tornado.web.RequestHandler):
             self.set_status(400)
             self.write({"status": "error"})
             return
-        body = json.loads(self.request.body)
+        try:
+            body = json.loads(self.request.body)
+        except json.JSONDecodeError as exc:
+            self.set_status(400)
+            self.write({"status": "error", "detail": f"invalid JSON: {exc}"})
+            return
         lock_path = _PROJECT_ROOT / "state" / f"camera_{fig_id}_lock.json"
         lock_path.write_text(json.dumps({"locked": bool(body.get("locked", False))}))
         self.write({"status": "ok"})
