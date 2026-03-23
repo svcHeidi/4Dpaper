@@ -112,3 +112,18 @@ class TestSyncPanelCacheInvalidation:
         # The panel loop must branch on camera_mode for sync
         assert "camera_mode" in source
         assert "shared_cam" in source
+
+
+class TestFourdPanelLua:
+    def test_fourd_panel_reads_camera_kwarg(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert 'kwargs["camera"]' in content
+
+    def test_fourd_panel_has_sync_branch(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert 'camera_mode == "sync"' in content
+
+    def test_fourd_panel_sync_embeds_composite_html(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        # The sync branch reads the composite HTML file (not individual subfigure files)
+        assert 'state/figures/" .. id .. ".html"' in content

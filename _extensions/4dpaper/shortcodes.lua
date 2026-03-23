@@ -327,6 +327,7 @@ local function fourd_panel(args, kwargs)
   local caption = pandoc.utils.stringify(kwargs["caption"] or pandoc.Str(""))
   local height  = pandoc.utils.stringify(kwargs["height"]  or pandoc.Str("800px"))
   local layout  = pandoc.utils.stringify(kwargs["layout"]  or pandoc.Str("1x1"))
+  local camera_mode = pandoc.utils.stringify(kwargs["camera"]  or pandoc.Str("independent"))
 
   if id == "" then
     return pandoc.RawBlock("html",
@@ -337,6 +338,44 @@ local function fourd_panel(args, kwargs)
   -- Each sub-figure is a direct srcdoc iframe (same depth as fourd_image).
   -- This avoids triple-nesting (page → composite srcdoc → data: iframe).
   if quarto.doc.isFormat("html") then
+    -- Inject relay script once per page
+    local relay_script = ""
+    if not _relay_injected then
+      _relay_injected = true
+      relay_script = _RELAY_SCRIPT
+    end
+
+    if camera_mode == "sync" then
+      -- Sync mode: embed composite HTML as single iframe so sync re_relay executes.
+      local composite_path = "state/figures/" .. id .. ".html"
+      local f = io.open(composite_path, "r")
+      if not f then
+        return pandoc.RawBlock("html",
+          '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;">' ..
+          '⚠ 4D Panel <code>' .. id .. '</code> not yet rendered — ' ..
+          'click <strong>Rebuild HTML</strong> in the dashboard.</div>')
+      end
+      local composite_iframe
+      if _app_mode then
+        f:close()
+        composite_iframe = '<iframe src="/state/figures/' .. id .. '.html" ' ..
+                           'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
+      else
+        local content = f:read("*all"); f:close()
+        local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+        composite_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
+                           'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
+      end
+      return pandoc.RawBlock("html",
+        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+        composite_iframe .. '\n' ..
+        (caption ~= "" and
+          '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
+          or "") ..
+        '</figure>\n' .. relay_script)
+    end
+
+    -- Independent mode: existing inline-subfigure grid below
     local ncols = tonumber(layout:match("^(%d+)x")) or 1
     local nrows = tonumber(layout:match("x(%d+)$")) or 1
 
@@ -392,13 +431,6 @@ local function fourd_panel(args, kwargs)
       'grid-template-rows:repeat(' .. nrows .. ',1fr);' ..
       'gap:4px;width:100%;height:' .. height .. ';background:#111;'
     )
-
-    -- Inject relay script once per page (shared guard with fourd_image/fourd_video)
-    local relay_script = ""
-    if not _relay_injected then
-      _relay_injected = true
-      relay_script = _RELAY_SCRIPT
-    end
 
     return pandoc.RawBlock("html",
       '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
