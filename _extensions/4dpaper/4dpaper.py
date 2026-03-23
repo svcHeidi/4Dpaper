@@ -328,6 +328,71 @@ def is_cache_valid(
     return True
 
 
+# -- Style template loading and resolution ------------------------------------
+
+def load_styles(path: Path) -> dict:
+    """
+    Load _4dpaper_styles.yml. Returns {} on missing or malformed file.
+    Never raises — warnings go to stderr.
+    """
+    if not path.exists():
+        return {}
+    try:
+        import yaml
+        with path.open() as f:
+            data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            print(f"[4dpaper] WARNING: {path} is not a YAML mapping — ignoring styles.", file=sys.stderr)
+            return {}
+        return data
+    except Exception as exc:
+        print(f"[4dpaper] WARNING: could not load {path}: {exc} — ignoring styles.", file=sys.stderr)
+        return {}
+
+
+def resolve_style(styles_config: dict, style_name: str, field_name: str) -> dict:
+    """
+    Resolve {background, axis_color, cmap} from styles config.
+
+    Pure function — no I/O. Safe to call with empty styles_config.
+    'transparent' background is normalised to 'white' (PyVista limitation).
+    """
+    _HARD = {"background": "white", "axis_color": "black", "cmap": "coolwarm"}
+
+    defaults = styles_config.get("defaults", {}) if styles_config else {}
+    styles   = styles_config.get("styles",   {}) if styles_config else {}
+
+    # Start from hard defaults, override with file-level defaults
+    resolved = {
+        "background": defaults.get("background", _HARD["background"]),
+        "axis_color": defaults.get("axis_color", _HARD["axis_color"]),
+        "cmap":       defaults.get("cmap",       _HARD["cmap"]),
+    }
+
+    # Apply named style overrides (skip silently if style_name is "")
+    if style_name:
+        if style_name not in styles:
+            print(
+                f"[4dpaper] WARNING: style '{style_name}' not found in styles config — using defaults.",
+                file=sys.stderr,
+            )
+        else:
+            tmpl = styles[style_name]
+            if "background"  in tmpl: resolved["background"]  = tmpl["background"]
+            if "axis_color"  in tmpl: resolved["axis_color"]  = tmpl["axis_color"]
+            if "cmap"        in tmpl: resolved["cmap"]        = tmpl["cmap"]
+            # Per-field cmap override
+            field_cmaps = tmpl.get("fields", {})
+            if field_name and field_name in field_cmaps:
+                resolved["cmap"] = field_cmaps[field_name]
+
+    # Normalise 'transparent' → 'white' (PyVista does not support transparent backgrounds)
+    if resolved["background"] == "transparent":
+        resolved["background"] = "white"
+
+    return resolved
+
+
 # ── Camera orientation transfer ───────────────────────────────────────────────
 
 
