@@ -15,6 +15,122 @@ local _relay_injected = false
 -- being inlined as srcdoc — pandoc processes ~50KB instead of ~15MB, ~10x faster.
 local _app_mode = os.getenv("FOURD_APP_MODE") == "1"
 
+-- ── Shared relay script (injected once per page) ──────────────────────────
+-- Handles two concerns:
+--  1. Camera overlay: position:fixed inside THIS document (analysis_report.html).
+--     The overlay covers the full paper-preview pane — no cross-frame DOM injection.
+--  2. Figure message relay: handles camera/field messages from child iframes.
+local _RELAY_SCRIPT = [=[
+<script>
+(function(){
+  /* ── Debug bar: shows message chain status without DevTools ─────── */
+  (function(){
+    if (document.getElementById('fourd-dbg')) return;
+    var d=document.createElement('div');
+    d.id='fourd-dbg';
+    d.style.cssText='position:fixed;bottom:4px;right:4px;z-index:2147483646;'+
+      'background:rgba(0,0,0,0.82);color:#0f0;font-size:10px;font-family:monospace;'+
+      'padding:4px 8px;border-radius:4px;max-width:320px;pointer-events:none;';
+    d.textContent='[4d] relay ready';
+    document.body.appendChild(d);
+  })();
+  function _dbg(msg){
+    var d=document.getElementById('fourd-dbg');
+    if(d)d.textContent='[4d] '+msg;
+    console.log('[4dpaper]',msg);
+  }
+
+  /* ── Camera overlay: lives in this document (paper preview) ──────── */
+  if (!document.getElementById('fourd-cam-overlay')) {
+    function _mk(t,c,h){var e=document.createElement(t);if(c)e.style.cssText=c;if(h)e.innerHTML=h;return e;}
+    var _ov=_mk('div',
+      'display:none;position:fixed;top:0;left:0;width:100%;height:100%;'+
+      'z-index:2147483647;background:rgba(0,0,0,0.85);'+
+      'align-items:center;justify-content:center;padding:24px;box-sizing:border-box;');
+    _ov.id='fourd-cam-overlay';
+    var _in=_mk('div',
+      'width:100%;max-width:1200px;height:100%;display:flex;flex-direction:column;'+
+      'background:#1a1a2e;border-radius:8px;padding:12px;'+
+      'box-sizing:border-box;box-shadow:0 8px 32px rgba(0,0,0,0.6);');
+    var _hd=_mk('div','display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-shrink:0;');
+    var _tx=_mk('span','color:#aaa;font-size:12px;font-family:monospace;',
+      '\uD83D\uDCF7 Camera Setup \u2014 rotate the figure to your desired viewpoint');
+    var _cb=_mk('button','background:none;border:none;color:#999;font-size:20px;cursor:pointer;padding:0 4px;flex-shrink:0;','\u2715');
+    _cb.onclick=function(){_ov.style.display='none';};
+    _hd.appendChild(_tx); _hd.appendChild(_cb);
+    var _sb=_mk('div',
+      'display:flex;justify-content:space-between;align-items:center;'+
+      'margin-bottom:6px;flex-shrink:0;padding:6px 10px;background:#0d1117;border-radius:4px;');
+    _sb.id='fourd-cam-stbar';
+    var _st=_mk('span','color:#888;font-size:11px;font-family:monospace;',
+      'Rotate then release \u2014 camera position saves automatically');
+    _st.id='fourd-cam-sttxt';
+    var _sr=_mk('span','color:#555;font-size:11px;font-family:monospace;',
+      'After saving \u2192 click \u201cRebuild HTML\u201d to apply');
+    _sb.appendChild(_st); _sb.appendChild(_sr);
+    var _fr=_mk('iframe','flex:1;min-height:0;width:100%;border:none;border-radius:4px;display:block;');
+    _fr.id='fourd-cam-iframe'; _fr.frameBorder='0';
+    var _ft=_mk('p','color:#555;font-size:10px;margin:4px 0 0;text-align:right;font-family:monospace;flex-shrink:0;');
+    _ft.id='fourd-cam-figid';
+    _in.appendChild(_hd); _in.appendChild(_sb); _in.appendChild(_fr); _in.appendChild(_ft);
+    _ov.appendChild(_in);
+    document.body.appendChild(_ov);
+    _dbg('overlay created in document');
+  }
+
+  /* ── Message handler: camera open, camera sync, field update ─────── */
+  window.addEventListener("message",function(e){
+    if(!e.data)return;
+    _dbg('msg received: '+e.data.type);
+
+    if(e.data.type==="4dpaper-open-camera"){
+      _dbg('opening camera for '+e.data.fig_id);
+      var _o=document.getElementById('fourd-cam-overlay');
+      var _f=document.getElementById('fourd-cam-iframe');
+      var _lb=document.getElementById('fourd-cam-figid');
+      var _ss=document.getElementById('fourd-cam-sttxt');
+      if(_lb)_lb.textContent='fig id: '+e.data.fig_id;
+      if(_f)_f.src=e.data.preview_src+'?t='+Date.now();
+      if(_ss){_ss.textContent='Rotate then release \u2014 camera position saves automatically';_ss.style.color='#888';}
+      if(_o){_o.style.display='flex';_dbg('overlay shown for '+e.data.fig_id);}
+      else{_dbg('ERROR: overlay element not found!');}
+
+    } else if(e.data.type==="4dpaper-camera"){
+      var figId=e.data.fig_id;
+      var _f2=document.getElementById('fourd-cam-iframe');
+      var _ss2=document.getElementById('fourd-cam-sttxt');
+      fetch('/camera/'+figId,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(e.data.camera)
+      }).then(function(r){
+        if(_ss2){
+          if(r.ok){_ss2.textContent='\u2713 Camera saved \u2014 click \u201cRebuild HTML\u201d to apply';_ss2.style.color='#4caf50';}
+          else{_ss2.textContent='\u2717 Save failed (server error)';_ss2.style.color='#f44336';}
+        }
+        if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(
+          {type:'4dpaper-camera-ack',fig_id:figId,status:r.ok?'ok':'error'},'*');
+      }).catch(function(){
+        if(_ss2){_ss2.textContent='\u2717 Save failed (network error)';_ss2.style.color='#f44336';}
+        if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(
+          {type:'4dpaper-camera-ack',fig_id:figId,status:'error'},'*');
+      });
+
+    } else if(e.data.type==="4dpaper-field-update"){
+      var figId2=e.data.fig_id;
+      fetch('/field/'+figId2,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(e.data.data)
+      }).then(function(r){
+        if(r.ok&&e.source)e.source.postMessage({type:'4dpaper-field-ack',fig_id:figId2,status:'ok'},'*');
+      }).catch(function(){
+        if(e.source)e.source.postMessage({type:'4dpaper-field-ack',fig_id:figId2,status:'error'},'*');
+      });
+    }
+  });
+})();
+</script>
+]=]
+
 local function fourd_image(args, kwargs)
   local id      = pandoc.utils.stringify(kwargs["id"] or pandoc.Str(""))
   local caption = pandoc.utils.stringify(kwargs["caption"] or pandoc.Str(""))
@@ -43,48 +159,7 @@ local function fourd_image(args, kwargs)
     local relay_script = ""
     if not _relay_injected then
       _relay_injected = true
-      relay_script = [[
-<script>
-(function(){
-  window.addEventListener("message",function(e){
-    if(!e.data)return;
-    if(e.data.type==="4dpaper-camera"){
-      var figId=e.data.fig_id;
-      var camera=e.data.camera;
-      fetch("/camera/"+figId,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(camera)
-      }).then(function(r){
-        if(r.ok&&e.source){
-          e.source.postMessage({type:"4dpaper-camera-ack",fig_id:figId,status:"ok"},"*");
-        }
-      }).catch(function(){
-        if(e.source){
-          e.source.postMessage({type:"4dpaper-camera-ack",fig_id:figId,status:"error"},"*");
-        }
-      });
-    } else if(e.data.type==="4dpaper-field-update"){
-      var figId=e.data.fig_id;
-      var payload=e.data.data;
-      fetch("/field/"+figId,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(payload)
-      }).then(function(r){
-        if(r.ok&&e.source){
-          e.source.postMessage({type:"4dpaper-field-ack",fig_id:figId,status:"ok"},"*");
-        }
-      }).catch(function(){
-        if(e.source){
-          e.source.postMessage({type:"4dpaper-field-ack",fig_id:figId,status:"error"},"*");
-        }
-      });
-    }
-  });
-})();
-</script>
-]]
+      relay_script = _RELAY_SCRIPT
     end
 
     local iframe
@@ -157,48 +232,7 @@ local function fourd_video(args, kwargs)
     local relay_script = ""
     if not _relay_injected then
       _relay_injected = true
-      relay_script = [[
-<script>
-(function(){
-  window.addEventListener("message",function(e){
-    if(!e.data)return;
-    if(e.data.type==="4dpaper-camera"){
-      var figId=e.data.fig_id;
-      var camera=e.data.camera;
-      fetch("/camera/"+figId,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(camera)
-      }).then(function(r){
-        if(r.ok&&e.source){
-          e.source.postMessage({type:"4dpaper-camera-ack",fig_id:figId,status:"ok"},"*");
-        }
-      }).catch(function(){
-        if(e.source){
-          e.source.postMessage({type:"4dpaper-camera-ack",fig_id:figId,status:"error"},"*");
-        }
-      });
-    } else if(e.data.type==="4dpaper-field-update"){
-      var figId=e.data.fig_id;
-      var payload=e.data.data;
-      fetch("/field/"+figId,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(payload)
-      }).then(function(r){
-        if(r.ok&&e.source){
-          e.source.postMessage({type:"4dpaper-field-ack",fig_id:figId,status:"ok"},"*");
-        }
-      }).catch(function(){
-        if(e.source){
-          e.source.postMessage({type:"4dpaper-field-ack",fig_id:figId,status:"error"},"*");
-        }
-      });
-    }
-  });
-})();
-</script>
-]]
+      relay_script = _RELAY_SCRIPT
     end
 
     local cap_html = caption ~= "" and
@@ -207,8 +241,32 @@ local function fourd_video(args, kwargs)
 
     local body
     if _app_mode then
-      body = '<iframe src="/state/figures/' .. id .. '-video.html" width="100%" height="600px" ' ..
-             'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
+      local cam_onclick =
+        "(function(){" ..
+        "var o=document.getElementById('fourd-cam-overlay');" ..
+        "var lb=document.getElementById('fourd-cam-figid');" ..
+        "var f=document.getElementById('fourd-cam-iframe');" ..
+        "var ss=document.getElementById('fourd-cam-sttxt');" ..
+        "if(lb)lb.textContent='fig id: " .. id .. "';" ..
+        "if(f)f.src='/state/figures/" .. id .. "-preview.html?t='+Date.now();" ..
+        "if(ss){ss.textContent='Rotate - saves automatically';ss.style.color='#0a8';}" ..
+        "if(o)o.style.display='flex';" ..
+        "})()"
+      -- Use JS to set iframe src with Date.now() so the browser never serves
+      -- a cached version of the video HTML after a rebuild.
+      local iframe_id = 'fourd-vid-' .. id
+      body = '<div style="position:relative;display:inline-block;width:100%;">' ..
+             '<iframe id="' .. iframe_id .. '" src="" width="100%" height="600px" ' ..
+             'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>' ..
+             '<script>(function(){' ..
+             'var f=document.getElementById("' .. iframe_id .. '");' ..
+             'if(f)f.src="/state/figures/' .. id .. '-video.html?t="+Date.now();' ..
+             '})();</script>' ..
+             '<button onclick="' .. cam_onclick .. '" ' ..
+             'style="position:absolute;top:8px;right:8px;z-index:10;' ..
+             'background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:4px;' ..
+             'padding:4px 10px;font-size:12px;cursor:pointer;">&#128247; Camera View</button>' ..
+             '</div>'
     else
       local f = io.open(html_path, "r")
       body = f:read("*all")
@@ -314,48 +372,7 @@ local function fourd_panel(args, kwargs)
     local relay_script = ""
     if not _relay_injected then
       _relay_injected = true
-      relay_script = [[
-<script>
-(function(){
-  window.addEventListener("message",function(e){
-    if(!e.data)return;
-    if(e.data.type==="4dpaper-camera"){
-      var figId=e.data.fig_id;
-      var camera=e.data.camera;
-      fetch("/camera/"+figId,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(camera)
-      }).then(function(r){
-        if(r.ok&&e.source){
-          e.source.postMessage({type:"4dpaper-camera-ack",fig_id:figId,status:"ok"},"*");
-        }
-      }).catch(function(){
-        if(e.source){
-          e.source.postMessage({type:"4dpaper-camera-ack",fig_id:figId,status:"error"},"*");
-        }
-      });
-    } else if(e.data.type==="4dpaper-field-update"){
-      var figId=e.data.fig_id;
-      var payload=e.data.data;
-      fetch("/field/"+figId,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(payload)
-      }).then(function(r){
-        if(r.ok&&e.source){
-          e.source.postMessage({type:"4dpaper-field-ack",fig_id:figId,status:"ok"},"*");
-        }
-      }).catch(function(){
-        if(e.source){
-          e.source.postMessage({type:"4dpaper-field-ack",fig_id:figId,status:"error"},"*");
-        }
-      });
-    }
-  });
-})();
-</script>
-]]
+      relay_script = _RELAY_SCRIPT
     end
 
     return pandoc.RawBlock("html",
@@ -385,8 +402,105 @@ local function fourd_panel(args, kwargs)
   end
 end
 
+local function fourd_pvsm(args, kwargs)
+  local id      = pandoc.utils.stringify(kwargs["id"]      or pandoc.Str(""))
+  local caption = pandoc.utils.stringify(kwargs["caption"] or pandoc.Str(""))
+
+  if id == "" then
+    return pandoc.RawBlock("html",
+      '<div style="color:red">&#9888; 4d-pvsm: missing required attribute <code>id</code></div>')
+  end
+
+  -- HTML output
+  if quarto.doc.isFormat("html") then
+    local html_path = "state/figures/" .. id .. ".html"
+    local exists = io.open(html_path, "r")
+    if exists then exists:close() end
+
+    if not exists then
+      return pandoc.RawBlock("html",
+        '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;' ..
+        'border-radius:4px;margin:1rem 0">' ..
+        '<strong>&#9888; 4D PVSM figure not yet rendered</strong><br>' ..
+        'Figure ID: <code>' .. id .. '</code><br>' ..
+        '<small>Click <strong>Rebuild HTML</strong> in the dashboard to generate.</small>' ..
+        '</div>')
+    end
+
+    local relay_script = ""
+    if not _relay_injected then
+      _relay_injected = true
+      relay_script = _RELAY_SCRIPT
+    end
+
+    local cap_html = caption ~= "" and
+      '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
+      or ""
+
+    local body
+    if _app_mode then
+      -- Camera button at paper level (same as fourd_video) to avoid compositor issues.
+      local cam_onclick =
+        "(function(){" ..
+        "var o=document.getElementById('fourd-cam-overlay');" ..
+        "var lb=document.getElementById('fourd-cam-figid');" ..
+        "var f=document.getElementById('fourd-cam-iframe');" ..
+        "var ss=document.getElementById('fourd-cam-sttxt');" ..
+        "if(lb)lb.textContent='fig id: " .. id .. "';" ..
+        "if(f)f.src='/state/figures/" .. id .. "-preview.html?t='+Date.now();" ..
+        "if(ss){ss.textContent='Rotate - saves automatically';ss.style.color='#0a8';}" ..
+        "if(o)o.style.display='flex';" ..
+        "})()"
+      local iframe_id = 'fourd-pvsm-' .. id
+      body = '<div style="position:relative;display:inline-block;width:100%;">' ..
+             '<iframe id="' .. iframe_id .. '" src="" width="100%" height="600px" ' ..
+             'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>' ..
+             '<script>(function(){' ..
+             'var f=document.getElementById("' .. iframe_id .. '");' ..
+             'if(f)f.src="/state/figures/' .. id .. '.html?t="+Date.now();' ..
+             '})();</script>' ..
+             '<button onclick="' .. cam_onclick .. '" ' ..
+             'style="position:absolute;top:8px;right:8px;z-index:10;' ..
+             'background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:4px;' ..
+             'padding:4px 10px;font-size:12px;cursor:pointer;">&#128247; Camera View</button>' ..
+             '</div>'
+    else
+      -- Export mode: inline as srcdoc for self-contained HTML
+      local f = io.open(html_path, "r")
+      local content = f:read("*all")
+      f:close()
+      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+      body = '<iframe srcdoc="' .. escaped .. '" width="100%" height="600px" ' ..
+             'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
+    end
+
+    return pandoc.RawBlock("html",
+      '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+      body .. '\n' .. cap_html ..
+      '</figure>\n' ..
+      relay_script)
+
+  -- PDF / LaTeX output
+  else
+    local fig_path = "state/figures/" .. id .. ".png"
+    local f = io.open(fig_path, "r")
+    if f then
+      f:close()
+      local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, { width = "90%" }))
+      return pandoc.Para({ img })
+    else
+      return pandoc.Para({
+        pandoc.Str("[PVSM figure "),
+        pandoc.Code(id),
+        pandoc.Str(" - run 'Rebuild HTML' from the dashboard to generate this figure]"),
+      })
+    end
+  end
+end
+
 return {
   ["4d-image"] = fourd_image,
   ["4d-video"] = fourd_video,
   ["4d-panel"] = fourd_panel,
+  ["4d-pvsm"]  = fourd_pvsm,
 }

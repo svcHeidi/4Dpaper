@@ -67,3 +67,8 @@ Write your conclusions here.
     id1="fig-vm" field1="Vm"
     src2="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
     id2="fig-at" field2="activationTime" >}}
+
+
+## PVSM Figure Test
+
+{{< 4d-pvsm src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/example_state.pvsm" id="fig-pvsm-vm" caption="Transmembrane voltage - ParaView pipeline" >}}
