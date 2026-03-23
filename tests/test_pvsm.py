@@ -144,3 +144,32 @@ class TestPvsmCacheAndParsing:
         output.write_text("y")  # output is newest
 
         assert mod.is_cache_valid(output, src, extra_deps=[extra])
+
+
+class TestGenerateHtmlFromVtu:
+    def test_generates_html_from_vtu(self, tmp_path):
+        """generate_html_from_vtu produces a vtk.js HTML file from a .vtu mesh."""
+        import pyvista as pv
+        mod = _load_4dpaper()
+
+        # Create a synthetic mesh and save as .vtu
+        mesh = pv.Sphere().cast_to_unstructured_grid()
+        mesh.point_data["Vm"] = mesh.points[:, 2]  # z-coordinate as scalar
+        vtu_path = tmp_path / "test.vtu"
+        mesh.save(str(vtu_path))
+
+        out_html = tmp_path / "test.html"
+        mod.generate_html_from_vtu(
+            vtu_path=vtu_path,
+            out_html=out_html,
+            fig_id="test-fig",
+            scalar_name="Vm",
+            clim=[-1.0, 1.0],
+            cmap="coolwarm",
+            field_association="point",
+            preview=True,  # skip camera JSON lookup
+        )
+
+        assert out_html.exists()
+        content = out_html.read_text()
+        assert "renderWindow" in content or "vtkRenderWindow" in content or len(content) > 1000

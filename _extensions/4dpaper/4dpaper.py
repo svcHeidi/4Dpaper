@@ -1026,6 +1026,54 @@ def generate_html_figure(
     print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
 
 
+def generate_html_from_vtu(
+    vtu_path: Path,
+    out_html: Path,
+    fig_id: str,
+    scalar_name: str,
+    clim: list[float],
+    cmap,
+    field_association: str,
+    preview: bool = False,
+) -> None:
+    """
+    Export a PyVista HTML figure from a .vtu geometry file.
+
+    Uses off_screen=False so that export_html() initialises the WebGL exporter
+    correctly -- same pattern as generate_html_figure().
+    """
+    import pyvista as pv
+
+    mesh = pv.read(str(vtu_path))
+
+    pl = pv.Plotter(off_screen=False)
+    pl.background_color = "#1a1a2e"
+
+    add_kwargs: dict = dict(cmap=cmap, preference=field_association)
+    if scalar_name and scalar_name in {**mesh.point_data, **mesh.cell_data}:
+        add_kwargs["scalars"] = scalar_name
+        add_kwargs["clim"] = clim
+
+    pl.add_mesh(mesh, **add_kwargs)
+
+    if not preview:
+        camera_path = _project_root / "state" / f"camera_{fig_id}.json"
+        if camera_path.exists():
+            try:
+                cam = json.loads(camera_path.read_text())
+                _apply_camera_from_dict(pl, fig_id, cam)
+            except Exception as exc:
+                print(f"[4dpaper] WARNING: could not apply camera for {fig_id}: {exc}", file=sys.stderr)
+        else:
+            pl.isometric_view()
+    else:
+        pl.isometric_view()
+
+    out_html.parent.mkdir(parents=True, exist_ok=True)
+    pl.export_html(str(out_html))
+    pl.close()
+
+
 def generate_panel_html(panel: dict, figures_dir: Path) -> None:
     """
     Generate a composite HTML file embedding multiple vtk.js figures in a CSS grid.
