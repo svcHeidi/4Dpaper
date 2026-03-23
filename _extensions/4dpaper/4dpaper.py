@@ -1838,18 +1838,26 @@ def main() -> None:
     # ── Panel shortcode processing ─────────────────────────────────────────────
     for panel in panels:
         panel_id = panel["id"]
+        camera_mode = panel.get("camera_mode", "independent")
         out_html = figures_dir / f"{panel_id}.html"
         out_png  = figures_dir / f"{panel_id}.png"
 
-        # Determine max mtime of all sub-figure source files and camera JSONs
+        # Determine max mtime of all sub-figure source files and camera deps
         sub_mtimes = []
         for sub in panel["subfigures"]:
             src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
             if src.exists():
                 sub_mtimes.append(src.stat().st_mtime)
-            cam = _project_root / "state" / f"camera_{sub['id']}.json"
-            if cam.exists():
-                sub_mtimes.append(cam.stat().st_mtime)
+        # Camera deps: sync panels use one shared file; independent use per-subfigure files
+        if camera_mode == "sync":
+            shared_cam = _project_root / "state" / f"camera_{panel_id}.json"
+            if shared_cam.exists():
+                sub_mtimes.append(shared_cam.stat().st_mtime)
+        else:
+            for sub in panel["subfigures"]:
+                cam = _project_root / "state" / f"camera_{sub['id']}.json"
+                if cam.exists():
+                    sub_mtimes.append(cam.stat().st_mtime)
         script_mtime = _here.stat().st_mtime
         sub_mtimes.append(script_mtime)
         for qmd in qmd_files:

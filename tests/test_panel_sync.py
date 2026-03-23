@@ -102,3 +102,13 @@ class TestGeneratePanelPngSyncCamera:
         source = inspect.getsource(mod.generate_panel_png)
         assert "camera_mode" in source
         assert "camera_fig_id" in source
+
+
+class TestSyncPanelCacheInvalidation:
+    def test_main_source_uses_panel_camera_for_sync(self):
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.main)
+        # The panel loop must branch on camera_mode for sync
+        assert "camera_mode" in source
+        assert "shared_cam" in source
