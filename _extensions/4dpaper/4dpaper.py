@@ -1511,14 +1511,16 @@ def main() -> None:
     figures = []
     videos = []
     panels = []
+    pvsm_figs = []
     for qmd in qmd_files:
         text = qmd.read_text()
         figures.extend(parse_shortcodes(text))
         videos.extend(parse_video_shortcodes(text))
         panels.extend(parse_panel_shortcodes(text))
+        pvsm_figs.extend(parse_pvsm_shortcodes(text))
 
-    if not figures and not videos and not panels:
-        print("[4dpaper] No 4d-image, 4d-video, or 4d-panel shortcodes found.", file=sys.stderr)
+    if not figures and not videos and not panels and not pvsm_figs:
+        print("[4dpaper] No 4d-image, 4d-video, 4d-panel, or 4d-pvsm shortcodes found.", file=sys.stderr)
         return
 
     figures_dir = _project_root / "state" / "figures"
@@ -1687,6 +1689,48 @@ def main() -> None:
             except Exception as exc:
                 print(f"[4dpaper] ERROR generating panel {panel_id}.png: {exc}")
                 sys.exit(1)
+
+    # -- PVSM shortcode processing -----------------------------------------------
+    _pvsm_render_script = _here.parent / "pvsm_render.py"
+    _pvpython_path = Path("/Applications/ParaView-6.0.1.app/Contents/bin/pvpython")
+
+    for pvsm_fig in pvsm_figs:
+        fig_id   = pvsm_fig["id"]
+        pvsm_src = Path(pvsm_fig["src"]) if Path(pvsm_fig["src"]).is_absolute() \
+                   else _project_root / pvsm_fig["src"]
+        data_str = pvsm_fig.get("data", "").strip()
+        data_path = Path(data_str) if data_str else None
+        time_spec = pvsm_fig.get("time", "").strip() or None
+
+        out_html    = figures_dir / f"{fig_id}.html"
+        out_png     = figures_dir / f"{fig_id}.png"
+        camera_path = _project_root / "state" / f"camera_{fig_id}.json"
+
+        extra_deps = [_pvsm_render_script]
+        script_newer = out_html.exists() and _here.stat().st_mtime > out_html.stat().st_mtime
+        cache_ok = (
+            not script_newer
+            and is_cache_valid(out_html, pvsm_src, camera_path=camera_path, extra_deps=extra_deps)
+            and is_cache_valid(out_png,  pvsm_src, camera_path=camera_path, extra_deps=extra_deps)
+        )
+
+        if cache_ok:
+            print(f"[4dpaper] {fig_id} PVSM outputs are up to date -- skipping.", file=sys.stderr)
+            continue
+
+        print(f"[4dpaper] Generating PVSM figure for {fig_id} ...", file=sys.stderr)
+        try:
+            generate_pvsm_figure(
+                pvsm_path=pvsm_src,
+                fig_id=fig_id,
+                figures_dir=figures_dir,
+                data_path=data_path,
+                time_spec=time_spec,
+                pvpython_path=_pvpython_path,
+            )
+        except Exception as exc:
+            print(f"[4dpaper] ERROR generating PVSM figure {fig_id}: {exc}", file=sys.stderr)
+            sys.exit(1)
 
 
 if __name__ == "__main__":
