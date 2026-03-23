@@ -84,6 +84,7 @@ def parse_shortcodes(text: str) -> list[dict]:
         kwargs.setdefault("time", "mid")
         kwargs.setdefault("field", "")
         kwargs.setdefault("fields", "")  # comma-separated list for live switching
+        kwargs.setdefault("style", "")   # named style template
         results.append(kwargs)
     return results
 

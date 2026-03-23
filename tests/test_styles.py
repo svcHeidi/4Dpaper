@@ -115,3 +115,25 @@ class TestResolveStyle:
         config = {"defaults": {"background": "transparent", "axis_color": "black", "cmap": "coolwarm"}, "styles": {}}
         result = mod.resolve_style(config, "", "Vm")
         assert result["background"] == "white"
+
+
+class TestParseShortcodesStyle:
+    def test_style_param_parsed(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-image src="case.foam" id="fig-vm" field="Vm" style="vm-dark" >}}'
+        result = mod.parse_shortcodes(text)
+        assert len(result) == 1
+        assert result[0]["style"] == "vm-dark"
+
+    def test_style_defaults_to_empty_string(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-image src="case.foam" id="fig-vm" field="Vm" >}}'
+        result = mod.parse_shortcodes(text)
+        assert result[0]["style"] == ""
+
+    def test_style_key_always_present(self):
+        """Every returned dict must have 'style' key even when omitted."""
+        mod = _load_4dpaper()
+        text = '{{< 4d-image src="case.foam" id="fig-vm" >}}'
+        result = mod.parse_shortcodes(text)
+        assert "style" in result[0]
