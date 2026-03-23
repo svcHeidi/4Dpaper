@@ -137,3 +137,53 @@ class TestParseShortcodesStyle:
         text = '{{< 4d-image src="case.foam" id="fig-vm" >}}'
         result = mod.parse_shortcodes(text)
         assert "style" in result[0]
+
+
+class TestGeneratorsAcceptStyleParams:
+    def test_generate_png_figure_accepts_style_params(self):
+        """generate_png_figure must accept background, axis_color, cmap kwargs."""
+        import inspect
+        mod = _load_4dpaper()
+        sig = inspect.signature(mod.generate_png_figure)
+        params = sig.parameters
+        assert "background" in params
+        assert "axis_color" in params
+        assert "cmap" in params
+        assert params["background"].default == "white"
+        assert params["axis_color"].default == "black"
+        assert params["cmap"].default == "coolwarm"
+
+    def test_generate_html_figure_accepts_style_params(self):
+        """generate_html_figure must accept background, axis_color, cmap kwargs."""
+        import inspect
+        mod = _load_4dpaper()
+        sig = inspect.signature(mod.generate_html_figure)
+        params = sig.parameters
+        assert "background" in params
+        assert "axis_color" in params
+        assert "cmap" in params
+        assert params["background"].default == "white"
+        assert params["axis_color"].default == "black"
+        assert params["cmap"].default == "coolwarm"
+
+    def test_generate_png_figure_hardcoded_values_replaced(self):
+        """generate_png_figure body must not contain hardcoded '#1a1a2e' or cmap='coolwarm'."""
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.generate_png_figure)
+        assert "#1a1a2e" not in source, \
+            "Hardcoded background '#1a1a2e' must be replaced with background param"
+        # After fix, body uses `cmap=cmap` (variable). Hardcoded literal would appear as cmap="coolwarm".
+        # Note: the signature default `cmap: str = "coolwarm"` uses ': str =' not '=', so won't match.
+        assert 'cmap="coolwarm"' not in source, \
+            "Hardcoded cmap='coolwarm' in add_mesh call must be replaced with cmap param"
+
+    def test_generate_html_figure_hardcoded_values_replaced(self):
+        """generate_html_figure body must not contain hardcoded '#1a1a2e' or cmap='coolwarm'."""
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.generate_html_figure)
+        assert "#1a1a2e" not in source, \
+            "Hardcoded background '#1a1a2e' must be replaced with background param"
+        assert 'cmap="coolwarm"' not in source, \
+            "Hardcoded cmap='coolwarm' in add_mesh call must be replaced with cmap param"

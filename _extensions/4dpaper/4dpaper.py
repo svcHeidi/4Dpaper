@@ -850,6 +850,9 @@ def generate_png_figure(
     time_spec: str,
     output_path: Path,
     fig_id: str | None = None,
+    background: str = "white",
+    axis_color: str = "black",
+    cmap: str = "coolwarm",
 ) -> None:
     """
     Generate a static PNG figure using PyVista.
@@ -886,15 +889,15 @@ def generate_png_figure(
     surface = mesh.extract_surface(algorithm='dataset_surface')
 
     pl = pv.Plotter(off_screen=True, window_size=(1920, 1080))
-    pl.background_color = "#1a1a2e"
+    pl.background_color = background if background != "transparent" else "white"
 
     if field and (field in surface.point_data or field in surface.cell_data):
         pl.add_mesh(
             surface,
             scalars=field,
-            cmap="coolwarm",
+            cmap=cmap,
             smooth_shading=True,
-            scalar_bar_args={"title": field},
+            scalar_bar_args={"title": field, "color": axis_color},
         )
     else:
         pl.add_mesh(surface, color="#aaaaaa", opacity=0.9)
@@ -920,6 +923,9 @@ def generate_html_figure(
     fig_id: str | None = None,
     available_fields: list[str] | None = None,
     camera_preview_only: bool = False,
+    background: str = "white",
+    axis_color: str = "black",
+    cmap: str = "coolwarm",
 ) -> None:
     """
     Generate a self-contained vtk.js HTML figure using PyVista.
@@ -957,15 +963,15 @@ def generate_html_figure(
     surface = mesh.extract_surface(algorithm='dataset_surface')
 
     pl = pv.Plotter(off_screen=True, window_size=(900, 600))
-    pl.background_color = "#1a1a2e"
+    pl.background_color = background if background != "transparent" else "white"
 
     if field and (field in surface.point_data or field in surface.cell_data):
         pl.add_mesh(
             surface,
             scalars=field,
-            cmap="coolwarm",
+            cmap=cmap,
             smooth_shading=True,
-            scalar_bar_args={"title": field},
+            scalar_bar_args={"title": field, "color": axis_color},
         )
     else:
         pl.add_mesh(surface, color="#aaaaaa", opacity=0.9)
