@@ -78,3 +78,69 @@ class TestPvsmColorParsing:
         # Should return safe defaults, not raise
         assert info["scalar_name"] == ""
         assert info["cmap"] == "coolwarm"
+
+
+class TestPvsmCacheAndParsing:
+    def test_parse_pvsm_shortcodes_finds_basic(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-pvsm src="fig-vm.pvsm" id="fig-vm" >}}'
+        result = mod.parse_pvsm_shortcodes(text)
+        assert len(result) == 1
+        assert result[0]["id"] == "fig-vm"
+        assert result[0]["src"] == "fig-vm.pvsm"
+
+    def test_parse_pvsm_shortcodes_optional_params(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-pvsm src="fig.pvsm" id="fig-a" data="case.foam" time="last" caption="Hi" >}}'
+        result = mod.parse_pvsm_shortcodes(text)
+        assert result[0]["data"] == "case.foam"
+        assert result[0]["time"] == "last"
+        assert result[0]["caption"] == "Hi"
+
+    def test_parse_pvsm_shortcodes_defaults(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-pvsm src="fig.pvsm" id="fig-a" >}}'
+        result = mod.parse_pvsm_shortcodes(text)
+        assert result[0]["data"] == ""
+        assert result[0]["time"] == ""
+        assert result[0]["caption"] == ""
+
+    def test_parse_pvsm_shortcodes_skips_missing_id(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-pvsm src="fig.pvsm" >}}'
+        result = mod.parse_pvsm_shortcodes(text)
+        assert result == []
+
+    def test_parse_pvsm_shortcodes_skips_missing_src(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-pvsm id="fig-a" >}}'
+        result = mod.parse_pvsm_shortcodes(text)
+        assert result == []
+
+    def test_is_cache_valid_extra_deps_triggers_regen(self, tmp_path):
+        import time
+        mod = _load_4dpaper()
+        output = tmp_path / "out.html"
+        src = tmp_path / "src.foam"
+        extra = tmp_path / "script.py"
+
+        src.write_text("x")
+        output.write_text("y")
+        time.sleep(0.02)
+        extra.write_text("z")  # extra_dep is newer than output
+
+        assert not mod.is_cache_valid(output, src, extra_deps=[extra])
+
+    def test_is_cache_valid_extra_deps_no_regen_when_older(self, tmp_path):
+        import time
+        mod = _load_4dpaper()
+        extra = tmp_path / "script.py"
+        extra.write_text("z")
+        time.sleep(0.02)
+        src = tmp_path / "src.foam"
+        src.write_text("x")
+        time.sleep(0.02)
+        output = tmp_path / "out.html"
+        output.write_text("y")  # output is newest
+
+        assert mod.is_cache_valid(output, src, extra_deps=[extra])

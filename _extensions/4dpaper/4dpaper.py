@@ -138,6 +138,30 @@ def parse_panel_shortcodes(text: str) -> list[dict]:
 
 # -- PVSM parsing ---------------------------------------------------------------
 
+def parse_pvsm_shortcodes(text: str) -> list[dict]:
+    """
+    Parse {{< 4d-pvsm key="value" ... >}} shortcodes from QMD text.
+
+    Required: id, src. Optional: data, time, caption.
+    Shortcodes missing 'id' or 'src' are silently skipped.
+    """
+    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    pattern = r'\{\{<\s*4d-pvsm\s+(.*?)\s*>\}\}'
+    results = []
+    for match in re.finditer(pattern, stripped, re.DOTALL):
+        raw = match.group(1)
+        kwargs: dict[str, str] = {}
+        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+            kwargs[key] = val
+        if "id" not in kwargs or "src" not in kwargs:
+            continue
+        kwargs.setdefault("data", "")
+        kwargs.setdefault("time", "")
+        kwargs.setdefault("caption", "")
+        results.append(kwargs)
+    return results
+
+
 def parse_pvsm_color_info(pvsm_path: Path) -> dict:
     """
     Extract color/scalar info from a ParaView state (.pvsm) XML file.
@@ -279,10 +303,11 @@ def is_cache_valid(
     src_path: Path,
     camera_path: Path | None = None,
     field_path: Path | None = None,
+    extra_deps: list[Path] | None = None,
 ) -> bool:
     """
-    Return True if fig_path exists, is newer than src_path, and is newer
-    than camera_path (if given and present).
+    Return True if fig_path exists, is newer than src_path, camera_path,
+    field_path, and all extra_deps (if given and present).
 
     Returns True (assume valid) if src_path does not exist.
     """
@@ -296,6 +321,9 @@ def is_cache_valid(
             return False
     if field_path is not None and field_path.exists():
         if fig_mtime <= field_path.stat().st_mtime:
+            return False
+    for dep in (extra_deps or []):
+        if dep.exists() and fig_mtime <= dep.stat().st_mtime:
             return False
     return True
 
