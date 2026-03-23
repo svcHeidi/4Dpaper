@@ -173,3 +173,40 @@ class TestGenerateHtmlFromVtu:
         assert out_html.exists()
         content = out_html.read_text()
         assert "renderWindow" in content or "vtkRenderWindow" in content or len(content) > 1000
+
+
+class TestPvsmSmoke:
+    @pytest.mark.skipif(not pvpython_available(), reason="requires pvpython + example PVSM")
+    def test_generate_pvsm_figure_end_to_end(self, tmp_path):
+        """Full pipeline: PVSM -> .vtu + .png + .html."""
+        mod = _load_4dpaper()
+
+        out_vtu     = tmp_path / "fig-vm-pipeline.vtu"
+        out_png     = tmp_path / "fig-vm.png"
+        out_html    = tmp_path / "fig-vm.html"
+        out_preview = tmp_path / "fig-vm-preview.html"
+
+        mod.generate_pvsm_figure(
+            pvsm_path=EXAMPLE_PVSM,
+            fig_id="fig-vm",
+            figures_dir=tmp_path,
+            data_path=None,
+            time_spec=None,
+            pvpython_path=PVPYTHON,
+        )
+
+        # geometry produced and non-empty
+        import pyvista as pv
+        assert out_vtu.exists(), "VTU not produced"
+        mesh = pv.read(str(out_vtu))
+        assert mesh.n_points > 0, "VTU has 0 points"
+
+        # screenshot produced and large enough
+        assert out_png.exists(), "PNG not produced"
+        assert out_png.stat().st_size > 50_000, "PNG suspiciously small"
+
+        # HTML figures produced and contain vtk.js marker
+        for html_out in (out_html, out_preview):
+            assert html_out.exists(), f"{html_out.name} not produced"
+            content = html_out.read_text()
+            assert len(content) > 5000, f"{html_out.name} suspiciously small"

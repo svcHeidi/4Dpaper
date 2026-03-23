@@ -1074,6 +1074,94 @@ def generate_html_from_vtu(
     pl.close()
 
 
+def generate_pvsm_figure(
+    pvsm_path: Path,
+    fig_id: str,
+    figures_dir: Path,
+    data_path: Path | None = None,
+    time_spec: str | None = None,
+    pvpython_path: Path | None = None,
+) -> None:
+    """
+    Generate HTML + PNG figures from a ParaView state file.
+
+    Step 1: pvpython subprocess -> {fig_id}-pipeline.vtu + {fig_id}.png
+    Step 2: PyVista in-process -> {fig_id}.html + {fig_id}-preview.html
+    """
+    import subprocess
+
+    if pvpython_path is None:
+        pvpython_path = Path("/Applications/ParaView-6.0.1.app/Contents/bin/pvpython")
+    if not pvpython_path.exists():
+        raise RuntimeError(
+            f"pvpython not found at {pvpython_path}. "
+            "Set the correct path in config or install ParaView."
+        )
+
+    pvsm_render_script = _here.parent / "pvsm_render.py"
+    out_vtu     = figures_dir / f"{fig_id}-pipeline.vtu"
+    out_png     = figures_dir / f"{fig_id}.png"
+    out_html    = figures_dir / f"{fig_id}.html"
+    out_preview = figures_dir / f"{fig_id}-preview.html"
+    camera_path = _project_root / "state" / f"camera_{fig_id}.json"
+
+    # -- Step 1: pvpython subprocess -------------------------------------------
+    cmd = [
+        str(pvpython_path), str(pvsm_render_script),
+        "--pvsm",    str(pvsm_path),
+        "--out-vtu", str(out_vtu),
+        "--out-png", str(out_png),
+    ]
+    if data_path:
+        cmd += ["--data", str(data_path)]
+    if time_spec:
+        cmd += ["--time", str(time_spec)]
+    if camera_path.exists():
+        cmd += ["--camera", str(camera_path)]
+
+    print(f"[4dpaper] Running pvpython for {fig_id} ...", file=sys.stderr)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.stdout:
+        print(result.stdout, end="", file=sys.stderr)
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"pvpython failed for {fig_id} (exit {result.returncode}). "
+            "See output above."
+        )
+
+    if not out_vtu.exists():
+        raise RuntimeError(f"pvpython did not produce {out_vtu}")
+
+    # -- Step 2: PyVista HTML export -------------------------------------------
+    color_info = parse_pvsm_color_info(pvsm_path)
+
+    print(f"[4dpaper] Generating {fig_id}.html from VTU ...", file=sys.stderr)
+    generate_html_from_vtu(
+        vtu_path=out_vtu,
+        out_html=out_html,
+        fig_id=fig_id,
+        scalar_name=color_info["scalar_name"],
+        clim=[color_info["vmin"], color_info["vmax"]],
+        cmap=color_info["cmap"],
+        field_association=color_info["field_association"],
+        preview=False,
+    )
+
+    print(f"[4dpaper] Generating {fig_id}-preview.html ...", file=sys.stderr)
+    generate_html_from_vtu(
+        vtu_path=out_vtu,
+        out_html=out_preview,
+        fig_id=fig_id,
+        scalar_name=color_info["scalar_name"],
+        clim=[color_info["vmin"], color_info["vmax"]],
+        cmap=color_info["cmap"],
+        field_association=color_info["field_association"],
+        preview=True,
+    )
+
+
 def generate_panel_html(panel: dict, figures_dir: Path) -> None:
     """
     Generate a composite HTML file embedding multiple vtk.js figures in a CSS grid.
