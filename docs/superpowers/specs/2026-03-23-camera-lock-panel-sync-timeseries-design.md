@@ -82,17 +82,15 @@ Add to the returned HTML+JS:
    });
    ```
 
-3. **Extend the existing `window.addEventListener("message", ...)` handler** (add inside the existing listener, alongside the camera-ack branch):
+3. **Restructure the existing `window.addEventListener("message", ...)` handler** — the current listener bails out immediately for any non-`4dpaper-camera-ack` message type (early `return`), making it impossible to add new branches. Replace the single-purpose early-exit pattern with a multi-branch listener:
    ```js
    if (e.data.type === "4dpaper-lock-state" && e.data.fig_id === FIG_ID) {
      setLocked(!!e.data.locked);
    }
    if (e.data.type === "4dpaper-lock-ack" && e.data.fig_id === FIG_ID) {
-     // NOTE: use e.data.expected (not local `locked`) to avoid stale state on rapid toggles.
-     // The relay path cannot carry `expected` — on error, set to opposite of the acked locked value.
-     // For the relay path, we accept the minor race: reverting on a fast double-click may land
-     // in the wrong state. To eliminate it entirely, track per-toggle sequence numbers (future).
-     if (e.data.status !== "ok") setLocked(!locked); // best-effort revert
+     // Best-effort revert on error. Minor race: a fast double-click may leave `locked` in
+     // the wrong state after the first ack arrives. Accepted; fix via sequence numbers if needed.
+     if (e.data.status !== "ok") setLocked(!locked);
    }
    ```
 
@@ -220,6 +218,8 @@ The existing `4dpaper-camera` handler sends `4dpaper-camera-ack` only to `_f2.co
 Add `"camera_mode": kwargs.get("camera", "independent")` to the returned dict.
 
 ### `generate_panel_html()` — sync re_relay
+
+The existing `re_relay` string in `generate_panel_html` (currently unconditional) becomes the `camera_mode == "independent"` branch — update it to add the lock pass-through described in the independent re_relay section above. Then add a new `camera_mode == "sync"` branch that generates the sync re_relay below.
 
 For `camera_mode == "sync"`, generate a different `re_relay` script (Python f-string with `{panel_id}` substituted):
 
@@ -362,6 +362,8 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
         # Style params: panels have no style config; rely on generate_png_figure defaults.
         generate_png_figure(src, sub["field"], sub["time"], out,
                             fig_id=sub["id"], camera_fig_id=cam_id)
+    # PIL compositing block (current lines ~1346–1356): unchanged — stitch sub-PNGs into
+    # a single composite PNG at figures_dir / f"{panel['id']}.png". Retain as-is.
 ```
 
 ### Cache invalidation for sync panels in `main()`
@@ -382,7 +384,7 @@ for sub in panel["subfigures"]:
     src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
 
     if out.exists():
-        dep_mtimes = [src.stat().st_mtime, py_file_mtime]
+        dep_mtimes = [src.stat().st_mtime, script_mtime]
         if camera_mode == "sync":
             if shared_cam.exists():
                 dep_mtimes.append(shared_cam.stat().st_mtime)
@@ -541,13 +543,14 @@ def _expand_timeseries_steps(ts: dict, n_steps: int) -> list[int]:
 Timeseries shortcodes are collected alongside panels and expanded before the panel processing loop:
 
 ```python
-# Collect all shortcode types
+# Collect all shortcode types — replaces the existing 4-term early-exit guard at line ~1594
 figures   = parse_shortcodes(text)
 videos    = parse_video_shortcodes(text)
 panels    = parse_panel_shortcodes(text)
 pvsm_figs = parse_pvsm_shortcodes(text)
 ts_raw    = parse_timeseries_shortcodes(text)
 
+# Replace existing: `if not figures and not videos and not panels and not pvsm_figs:`
 if not any([figures, videos, panels, pvsm_figs, ts_raw]):
     print("[4dpaper] No shortcodes found.", file=sys.stderr)
     return
@@ -643,7 +646,7 @@ local function fourd_timeseries(args, kwargs)
     local f = io.open(fig_path, "r")
     if f then
       f:close()
-      local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, {width = "100%"}))
+      local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, {width = "90%"}))
       return pandoc.Para({img})
     else
       return pandoc.Para({
