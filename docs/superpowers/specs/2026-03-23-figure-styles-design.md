@@ -144,7 +144,7 @@ scalar_bar_args={"title": field, "color": axis_color}
 **`generate_png_figure(...)`** — same three new kwargs, same replacements. `"transparent"` is also normalised to `"white"` for PNG export.
 
 **`main()`**:
-1. Load `_4dpaper_styles.yml` once: `styles_yml_path = _project_root / "_4dpaper_styles.yml"` then `styles_config = load_styles(styles_yml_path)`
+1. Load `_4dpaper_styles.yml` once: `styles_yml_path = _project_root / "_4dpaper_styles.yml"` then `styles_config = load_styles(styles_yml_path)`. Note: `_project_root = Path(__file__).resolve().parent.parent.parent` (three levels up from `_extensions/4dpaper/4dpaper.py` to the repo root).
 2. For each `4d-image` shortcode, call `resolve_style(styles_config, fig["style"], fig["field"])` and pass the result into `generate_html_figure()` / `generate_png_figure()`
 3. Build `extra_deps = [styles_yml_path] if styles_yml_path.exists() else []`; pass this to **both** the HTML and PNG `is_cache_valid()` calls — editing styles triggers regeneration of all `4d-image` figures
 
