@@ -239,28 +239,45 @@ window.addEventListener("message", function(e) {
         {type: "4dpaper-camera-apply", camera: e.data.camera}, "*");
     }
   }
-  if (e.data.type === "4dpaper-camera-ack" || e.data.type === "4dpaper-field-ack") {
-    // Rewrite fig_id to "*" so each subfigure's _camera_sync_snippet accepts it.
-    // Each snippet checks: if (e.data.fig_id !== FIG_ID && e.data.fig_id !== "*") return;
-    var ack = Object.assign({}, e.data, {fig_id: "*"});
+  if (e.data.type === "4dpaper-camera-ack") {
+    // Rewrite fig_id to "*" so ALL subfigure _camera_sync_snippets show the badge.
+    // (All subfigures share the same camera in sync mode.)
+    var camAck = Object.assign({}, e.data, {fig_id: "*"});
     var iframes2 = document.querySelectorAll("iframe");
     for (var j = 0; j < iframes2.length; j++) {
-      iframes2[j].contentWindow.postMessage(ack, "*");
+      iframes2[j].contentWindow.postMessage(camAck, "*");
+    }
+  }
+  if (e.data.type === "4dpaper-field-ack") {
+    // Keep original fig_id — field selection is per-subfigure; only the sender's badge updates.
+    var iframes3 = document.querySelectorAll("iframe");
+    for (var k = 0; k < iframes3.length; k++) {
+      iframes3[k].contentWindow.postMessage(e.data, "*");
     }
   }
   if (e.data.type === "4dpaper-field-update") { top.postMessage(e.data, "*"); }
+  // Lock messages: pass up to top, pass down to children
+  if (e.data.type === "4dpaper-lock-query" || e.data.type === "4dpaper-lock-toggle") {
+    top.postMessage(e.data, "*");
+  }
+  if (e.data.type === "4dpaper-lock-state" || e.data.type === "4dpaper-lock-ack") {
+    var iframes4 = document.querySelectorAll("iframe");
+    for (var l = 0; l < iframes4.length; l++) {
+      iframes4[l].contentWindow.postMessage(e.data, "*");
+    }
+  }
 });
 </script>
 ```
 
-**Independent mode `re_relay`** — add lock message pass-through (lock messages come from subfigure children; must reach `top`):
+**Independent mode `re_relay`** — independent panels are rendered as inline subfigure iframes in Lua (no composite iframe). Lock messages from subfigures post **directly** to the Quarto page's `_RELAY_SCRIPT` (no intermediate re_relay hop). Therefore the independent re_relay in the composite HTML needs no lock pass-through for the normal paper rendering path. However, for consistency when the composite HTML is viewed standalone (direct URL), add the same lock pass-through to the independent re_relay:
 
 ```js
+// Lock pass-through (standalone composite HTML path only)
 if (e.data.type === "4dpaper-lock-query" || e.data.type === "4dpaper-lock-toggle") {
   top.postMessage(e.data, "*");
 }
 if (e.data.type === "4dpaper-lock-state" || e.data.type === "4dpaper-lock-ack") {
-  // Forward responses back down to all children
   var iframes = document.querySelectorAll("iframe");
   for (var k = 0; k < iframes.length; k++) {
     iframes[k].contentWindow.postMessage(e.data, "*");
@@ -268,7 +285,7 @@ if (e.data.type === "4dpaper-lock-state" || e.data.type === "4dpaper-lock-ack") 
 }
 ```
 
-**Sync mode `re_relay`** — add the same lock pass-through inside its `window.addEventListener` block (alongside the existing `4dpaper-camera` and `4dpaper-field-update` branches).
+**`_field_sync_snippet` ack filter**: no change needed. `4dpaper-field-ack` in sync re_relay keeps the original `fig_id` (see above), so the existing `if (e.data.fig_id !== FIG_ID) return;` check in `_field_sync_snippet` correctly routes field acks to the right subfigure.
 
 **`_camera_sync_snippet` ack filter** — change the existing ack check from:
 ```js
@@ -349,23 +366,104 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
 
 ### Cache invalidation for sync panels in `main()`
 
-The existing panel loop (line ~1743) checks per-subfigure camera JSONs. For sync panels, replace per-subfigure camera checks with a single panel-level camera path:
+The existing panel PNG loop uses a manual `max_dep_mtime` comparison (not `is_cache_valid`). The relevant section iterates subfigures and skips re-generation if the output PNG is newer than all deps. Replace the per-subfigure camera path logic:
 
 ```python
-# Existing: per-subfigure camera JSONs
-for sub in panel["subfigures"]:
-    cam = _project_root / "state" / f"camera_{sub['id']}.json"
-    ...
+panel_id = panel["id"]
+camera_mode = panel.get("camera_mode", "independent")
 
-# New: for sync panels, single panel-level camera JSON
-panel_id = panel["id"]   # already assigned earlier in loop
-if panel.get("camera_mode") == "sync":
-    cam_deps = [_project_root / "state" / f"camera_{panel_id}.json"]
-else:
-    cam_deps = [_project_root / "state" / f"camera_{sub['id']}.json"
-                for sub in panel["subfigures"]]
-# Pass cam_deps to is_cache_valid() via extra_deps
+# For sync panels: one shared camera file for all subfigures.
+# For independent panels: each subfigure has its own camera file.
+if camera_mode == "sync":
+    shared_cam = _project_root / "state" / f"camera_{panel_id}.json"
+
+for sub in panel["subfigures"]:
+    out = figures_dir / f"{sub['id']}.png"
+    src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
+
+    if out.exists():
+        dep_mtimes = [src.stat().st_mtime, py_file_mtime]
+        if camera_mode == "sync":
+            if shared_cam.exists():
+                dep_mtimes.append(shared_cam.stat().st_mtime)
+        else:
+            sub_cam = _project_root / "state" / f"camera_{sub['id']}.json"
+            if sub_cam.exists():
+                dep_mtimes.append(sub_cam.stat().st_mtime)
+        if out.stat().st_mtime >= max(dep_mtimes):
+            continue  # cache valid — skip this subfigure
+
+    generate_png_figure(...)  # as before
 ```
+
+### `shortcodes.lua` — updated `fourd_panel`
+
+`fourd_panel` branches on `camera` kwarg:
+
+- **`camera="sync"`** (or any explicit sync value): read `state/figures/<id>.html` (the Python-generated composite HTML containing subfigure iframes + sync re_relay) and embed as a **single iframe**. The composite handles all sync logic internally.
+- **`camera="independent"` (default, omitted)**: existing behaviour — build a grid of subfigure iframes inline. Lock messages flow directly to `_RELAY_SCRIPT` without needing re_relay.
+
+```lua
+local function fourd_panel(args, kwargs)
+  local id          = pandoc.utils.stringify(kwargs["id"]     or pandoc.Str(""))
+  local caption     = pandoc.utils.stringify(kwargs["caption"] or pandoc.Str(""))
+  local height      = pandoc.utils.stringify(kwargs["height"]  or pandoc.Str("500px"))
+  local camera_mode = pandoc.utils.stringify(kwargs["camera"]  or pandoc.Str("independent"))
+
+  if id == "" then
+    return pandoc.RawBlock("html",
+      '<div style="color:red">⚠ 4d-panel: missing required attribute <code>id</code></div>')
+  end
+
+  if quarto.doc.isFormat("html") then
+    local relay_script = ""
+    if not _relay_injected then
+      _relay_injected = true
+      relay_script = _RELAY_SCRIPT
+    end
+
+    if camera_mode == "sync" then
+      -- Sync mode: embed composite HTML as single iframe so sync re_relay executes.
+      local composite_path = "state/figures/" .. id .. ".html"
+      local f = io.open(composite_path, "r")
+      if not f then
+        return pandoc.RawBlock("html",
+          '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;">' ..
+          '⚠ 4D Panel <code>' .. id .. '</code> not yet rendered — ' ..
+          'click <strong>Rebuild HTML</strong> in the dashboard.</div>')
+      end
+      local composite_iframe
+      if _app_mode then
+        f:close()
+        composite_iframe = '<iframe src="/state/figures/' .. id .. '.html" ' ..
+                           'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
+      else
+        local content = f:read("*all"); f:close()
+        local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+        composite_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
+                           'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
+      end
+      return pandoc.RawBlock("html",
+        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+        composite_iframe .. '\n' ..
+        (caption ~= "" and
+          '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
+          or "") ..
+        '</figure>\n' .. relay_script)
+    else
+      -- Independent mode: existing inline-subfigure grid (existing implementation unchanged).
+      -- Build N-cell grid by reading id1, id2, ... kwargs until absent.
+      -- (existing fourd_panel body here — see current shortcodes.lua for this branch)
+    end
+
+  else
+    -- PDF: single composite PNG (existing logic unchanged)
+    -- state/figures/<id>.png — written by generate_panel_png
+  end
+end
+```
+
+The `-- (existing fourd_panel body here)` placeholder means: **keep the current `fourd_panel` independent-mode Lua code exactly as-is** for the independent branch. Only add the `camera_mode == "sync"` branch above it, guarded by the `if camera_mode == "sync"` check.
 
 ---
 
