@@ -902,6 +902,7 @@ def generate_png_figure(
     time_spec: str,
     output_path: Path,
     fig_id: str | None = None,
+    camera_fig_id: str | None = None,
     background: str = "white",
     axis_color: str = "black",
     cmap: str = "coolwarm",
@@ -959,8 +960,9 @@ def generate_png_figure(
         )
 
     # Apply saved camera if available, else fall back to isometric view.
-    camera_path = (_project_root / "state" / f"camera_{fig_id}.json" if fig_id else None)
-    apply_camera_state(pl, fig_id or "unnamed", camera_path)
+    _cam_id = camera_fig_id or fig_id
+    camera_path = (_project_root / "state" / f"camera_{_cam_id}.json" if _cam_id else None)
+    apply_camera_state(pl, _cam_id or "unnamed", camera_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pl.screenshot(str(output_path))
     pl.close()
@@ -1433,11 +1435,14 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
     cell_w = 1920 // ncols
     cell_h = 1080 // nrows
 
-    # Generate each sub-figure PNG (reuses caching inside generate_png_figure)
+    camera_mode = panel.get("camera_mode", "independent")
+    # Generate each sub-figure PNG
     for sub in panel["subfigures"]:
         src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
         out = figures_dir / f"{sub['id']}.png"
-        generate_png_figure(src, sub["field"], sub["time"], out, fig_id=sub["id"])
+        cam_id = panel["id"] if camera_mode == "sync" else sub["id"]
+        generate_png_figure(src, sub["field"], sub["time"], out,
+                            fig_id=sub["id"], camera_fig_id=cam_id)
 
     # Compose into 1920×1080 canvas
     canvas = Image.new("RGB", (1920, 1080), color="#1a1a2e")

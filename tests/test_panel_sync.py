@@ -77,3 +77,28 @@ class TestGeneratePanelHtml:
         source = inspect.getsource(mod.generate_panel_html)
         assert "4dpaper-lock-query" in source
         assert "4dpaper-lock-state" in source
+
+
+class TestGeneratePngFigureCameraFigId:
+    def test_camera_fig_id_param_exists(self):
+        import inspect
+        mod = _load_4dpaper()
+        sig = inspect.signature(mod.generate_png_figure)
+        assert "camera_fig_id" in sig.parameters
+        assert sig.parameters["camera_fig_id"].default is None
+
+    def test_camera_fig_id_used_in_lookup(self):
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.generate_png_figure)
+        assert "camera_fig_id" in source
+        assert "_cam_id" in source
+
+
+class TestGeneratePanelPngSyncCamera:
+    def test_sync_mode_uses_panel_id_for_camera(self):
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.generate_panel_png)
+        assert "camera_mode" in source
+        assert "camera_fig_id" in source
