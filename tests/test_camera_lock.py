@@ -115,3 +115,22 @@ def test_snippet_handles_lock_ack_message():
     mod = _load_4dpaper()
     snippet = mod._camera_sync_snippet("fig-vm")
     assert "4dpaper-lock-ack" in snippet
+
+
+def test_relay_script_sends_ack_to_source():
+    """_RELAY_SCRIPT camera handler must send ack to both _f2 and e.source."""
+    content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+    assert "e.source.postMessage" in content
+    assert "4dpaper-camera-ack" in content
+
+
+def test_relay_script_has_lock_query_handler():
+    content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+    assert "4dpaper-lock-query" in content
+    assert "4dpaper-lock-state" in content
+
+
+def test_relay_script_has_lock_toggle_handler():
+    content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+    assert "4dpaper-lock-toggle" in content
+    assert "4dpaper-lock-ack" in content

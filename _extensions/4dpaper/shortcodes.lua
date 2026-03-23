@@ -107,12 +107,14 @@ local _RELAY_SCRIPT = [=[
           if(r.ok){_ss2.textContent='\u2713 Camera saved \u2014 click \u201cRebuild HTML\u201d to apply';_ss2.style.color='#4caf50';}
           else{_ss2.textContent='\u2717 Save failed (server error)';_ss2.style.color='#f44336';}
         }
-        if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(
-          {type:'4dpaper-camera-ack',fig_id:figId,status:r.ok?'ok':'error'},'*');
+        var ack={type:'4dpaper-camera-ack',fig_id:figId,status:r.ok?'ok':'error'};
+        if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack,'*');
+        if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack,'*');
       }).catch(function(){
         if(_ss2){_ss2.textContent='\u2717 Save failed (network error)';_ss2.style.color='#f44336';}
-        if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(
-          {type:'4dpaper-camera-ack',fig_id:figId,status:'error'},'*');
+        var ack={type:'4dpaper-camera-ack',fig_id:figId,status:'error'};
+        if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack,'*');
+        if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack,'*');
       });
 
     } else if(e.data.type==="4dpaper-field-update"){
@@ -124,6 +126,29 @@ local _RELAY_SCRIPT = [=[
         if(r.ok&&e.source)e.source.postMessage({type:'4dpaper-field-ack',fig_id:figId2,status:'ok'},'*');
       }).catch(function(){
         if(e.source)e.source.postMessage({type:'4dpaper-field-ack',fig_id:figId2,status:'error'},'*');
+      });
+    } else if(e.data.type==="4dpaper-lock-query"){
+      var lockFigId=e.data.fig_id;
+      fetch("/camera-lock/"+lockFigId)
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(e.source)e.source.postMessage(
+            {type:"4dpaper-lock-state",fig_id:lockFigId,locked:!!d.locked},"*");
+        }).catch(function(){
+          if(e.source)e.source.postMessage(
+            {type:"4dpaper-lock-state",fig_id:lockFigId,locked:false},"*");
+        });
+    } else if(e.data.type==="4dpaper-lock-toggle"){
+      var lockFigId2=e.data.fig_id;
+      fetch("/camera-lock/"+lockFigId2,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({locked:!!e.data.locked})
+      }).then(function(r){
+        if(e.source)e.source.postMessage(
+          {type:"4dpaper-lock-ack",fig_id:lockFigId2,status:r.ok?"ok":"error"},"*");
+      }).catch(function(){
+        if(e.source)e.source.postMessage(
+          {type:"4dpaper-lock-ack",fig_id:lockFigId2,status:"error"},"*");
       });
     }
   });
