@@ -1598,11 +1598,17 @@ def main() -> None:
     figures_dir = _project_root / "state" / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
+    # Load style templates once for all figures
+    styles_yml_path = _project_root / "_4dpaper_styles.yml"
+    styles_config = load_styles(styles_yml_path)
+    styles_extra_deps = [styles_yml_path] if styles_yml_path.exists() else []
+
     for fig in figures:
         fig_id = fig["id"]
         src = Path(fig["src"]) if Path(fig["src"]).is_absolute() else _project_root / fig["src"]
         field = fig["field"]
         time_spec = fig.get("time", "mid")
+        style = resolve_style(styles_config, fig["style"], field)
 
         # Parse available_fields from shortcode attribute "fields" (comma-separated).
         # Falls back to [field] (single field, no switcher) if not specified.
@@ -1635,7 +1641,7 @@ def main() -> None:
             out_html.exists()
             and _here.stat().st_mtime > out_html.stat().st_mtime
         )
-        if not script_newer and is_cache_valid(out_html, src, field_path=field_state_path):
+        if not script_newer and is_cache_valid(out_html, src, field_path=field_state_path, extra_deps=styles_extra_deps):
             print(f"[4dpaper] {fig_id}.html is up to date — skipping.", file=sys.stderr)
         else:
             print(f"[4dpaper] Generating {fig_id}.html …", file=sys.stderr)
@@ -1643,6 +1649,9 @@ def main() -> None:
                 generate_html_figure(
                     src, field, time_spec, out_html,
                     fig_id=fig_id, available_fields=available_fields,
+                    background=style["background"],
+                    axis_color=style["axis_color"],
+                    cmap=style["cmap"],
                 )
             except Exception as exc:
                 print(f"[4dpaper] ERROR generating {fig_id}.html: {exc}", file=sys.stderr)
@@ -1667,13 +1676,18 @@ def main() -> None:
                 f"Rotate the figure in the HTML preview to save a camera position."
             )
         # Always regenerate PNG when a camera file exists...
-        png_fresh = is_cache_valid(out_png, src, camera_path=camera_path, field_path=field_state_path)
+        png_fresh = is_cache_valid(out_png, src, camera_path=camera_path, field_path=field_state_path, extra_deps=styles_extra_deps)
         if png_fresh:
             print(f"[4dpaper] {fig_id}.png is up to date — skipping.")
         else:
             print(f"[4dpaper] Generating {fig_id}.png …")
             try:
-                generate_png_figure(src, field, time_spec, out_png, fig_id=fig_id)
+                generate_png_figure(
+                    src, field, time_spec, out_png, fig_id=fig_id,
+                    background=style["background"],
+                    axis_color=style["axis_color"],
+                    cmap=style["cmap"],
+                )
             except Exception as exc:
                 print(f"[4dpaper] WARNING: could not generate {fig_id}.png: {exc}")
                 print(f"[4dpaper]   PNG is needed for PDF export only — HTML render continues.")

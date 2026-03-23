@@ -187,3 +187,40 @@ class TestGeneratorsAcceptStyleParams:
             "Hardcoded background '#1a1a2e' must be replaced with background param"
         assert 'cmap="coolwarm"' not in source, \
             "Hardcoded cmap='coolwarm' in add_mesh call must be replaced with cmap param"
+
+
+class TestCacheInvalidationWithStyles:
+    def test_styles_yml_change_triggers_regen(self, tmp_path):
+        """Touching _4dpaper_styles.yml should invalidate the figure cache."""
+        import time
+        mod = _load_4dpaper()
+
+        styles_yml = tmp_path / "_4dpaper_styles.yml"
+        src        = tmp_path / "case.foam"
+        output     = tmp_path / "fig.html"
+
+        styles_yml.write_text("defaults:\n  cmap: coolwarm\n")
+        src.write_text("x")
+        time.sleep(0.02)
+        output.write_text("<html/>")   # output is newest
+        time.sleep(0.02)
+        styles_yml.touch()             # now styles_yml is newest
+
+        result = mod.is_cache_valid(output, src, extra_deps=[styles_yml])
+        assert result is False
+
+    def test_styles_yml_older_than_output_no_regen(self, tmp_path):
+        import time
+        mod = _load_4dpaper()
+
+        styles_yml = tmp_path / "_4dpaper_styles.yml"
+        src        = tmp_path / "case.foam"
+        output     = tmp_path / "fig.html"
+
+        styles_yml.write_text("defaults:\n  cmap: coolwarm\n")
+        src.write_text("x")
+        time.sleep(0.02)
+        output.write_text("<html/>")   # output is newest
+
+        result = mod.is_cache_valid(output, src, extra_deps=[styles_yml])
+        assert result is True
