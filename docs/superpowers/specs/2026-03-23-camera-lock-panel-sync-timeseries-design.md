@@ -235,9 +235,12 @@ window.addEventListener("message", function(e) {
     }
   }
   if (e.data.type === "4dpaper-camera-ack" || e.data.type === "4dpaper-field-ack") {
+    // Rewrite fig_id to "*" so each subfigure's _camera_sync_snippet accepts it.
+    // Each snippet checks: if (e.data.fig_id !== FIG_ID && e.data.fig_id !== "*") return;
+    var ack = Object.assign({}, e.data, {fig_id: "*"});
     var iframes2 = document.querySelectorAll("iframe");
     for (var j = 0; j < iframes2.length; j++) {
-      iframes2[j].contentWindow.postMessage(e.data, "*");
+      iframes2[j].contentWindow.postMessage(ack, "*");
     }
   }
   if (e.data.type === "4dpaper-field-update") { top.postMessage(e.data, "*"); }
@@ -246,6 +249,16 @@ window.addEventListener("message", function(e) {
 ```
 
 Independent mode keeps the existing `re_relay` unchanged.
+
+**`_camera_sync_snippet` ack filter** — change the existing ack check from:
+```js
+if (e.data.fig_id !== FIG_ID) return;
+```
+to:
+```js
+if (e.data.fig_id !== FIG_ID && e.data.fig_id !== "*") return;
+```
+This allows the sync panel's wildcard ack to reach subfigure badges while still filtering unrelated acks in independent-panel and standalone contexts.
 
 ### `_camera_sync_snippet()` — apply incoming camera (all figures)
 
@@ -309,9 +322,9 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
         src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
         out = figures_dir / f"{sub['id']}.png"
         cam_id = panel["id"] if camera_mode == "sync" else sub["id"]
+        # Style params: panels have no style config; rely on generate_png_figure defaults.
         generate_png_figure(src, sub["field"], sub["time"], out,
-                            fig_id=sub["id"], camera_fig_id=cam_id,
-                            background=..., axis_color=..., cmap=...)
+                            fig_id=sub["id"], camera_fig_id=cam_id)
 ```
 
 ### Cache invalidation for sync panels in `main()`
@@ -395,6 +408,9 @@ def _expand_timeseries_steps(ts: dict, n_steps: int) -> list[int]:
         if result:
             return result
         # All tokens invalid — fall through to steps= logic
+    if n_steps <= 1:
+        print(f"[4dpaper] WARNING: timeseries '{ts['id']}' source has only {n_steps} step(s) — generating single frame.", file=sys.stderr)
+        return [0]
     N = max(2, int(ts.get("steps", "4")))
     return [round(i * (n_steps - 1) / (N - 1)) for i in range(N)]
 ```
@@ -535,7 +551,8 @@ Registered: `["4d-timeseries"] = fourd_timeseries`.
 
 - **Lock endpoint unavailable** (dashboard not running): `fetch()` failure is silently caught; button stays in default unlocked state.
 - **Unknown `camera` value on `4d-panel`**: treated as `"independent"` (no warning).
-- **`steps="1"`**: treated as `steps="2"` — `max(2, ...)` in `_expand_timeseries_steps`.
+- **`steps="1"`**: if `n_steps > 1`, treated as `steps="2"` via `max(2, ...)`. If `n_steps <= 1`, returns `[0]` (single frame, warning logged).
+- **Source with 1 step** (`n_steps <= 1`): `_expand_timeseries_steps` warns and returns `[0]` — generates a single-frame panel rather than crashing.
 - **`times` with all-invalid tokens**: falls through to `steps=` logic (not a silent `[0]`).
 - **Panel sync camera file missing** (`camera_<panel_id>.json` not found): isometric view fallback for all subfigures.
 - **Timeseries with zero discovered files in Lua**: renders a "not yet rendered" placeholder, same pattern as `fourd_panel`.
