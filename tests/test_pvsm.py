@@ -210,3 +210,60 @@ class TestPvsmSmoke:
             assert html_out.exists(), f"{html_out.name} not produced"
             content = html_out.read_text()
             assert len(content) > 5000, f"{html_out.name} suspiciously small"
+
+
+class TestPvsmCacheInvalidation:
+    def test_pvsm_render_script_mtime_triggers_regen(self, tmp_path):
+        """Touching pvsm_render.py should make is_cache_valid return False."""
+        import time
+        mod = _load_4dpaper()
+
+        script = tmp_path / "pvsm_render.py"
+        pvsm   = tmp_path / "fig.pvsm"
+        output = tmp_path / "fig.html"
+
+        pvsm.write_text("<ParaView/>")
+        script.write_text("# script")
+        time.sleep(0.02)
+        output.write_text("<html/>")  # output is newest
+        time.sleep(0.02)
+        script.touch()               # now script is newest
+
+        result = mod.is_cache_valid(output, pvsm, extra_deps=[script])
+        assert result is False
+
+    def test_pvsm_change_triggers_regen(self, tmp_path):
+        """Touching the PVSM file should invalidate the cache."""
+        import time
+        mod = _load_4dpaper()
+
+        pvsm   = tmp_path / "fig.pvsm"
+        output = tmp_path / "fig.html"
+
+        pvsm.write_text("<ParaView/>")
+        time.sleep(0.02)
+        output.write_text("<html/>")
+        time.sleep(0.02)
+        pvsm.touch()  # PVSM newer than output
+
+        result = mod.is_cache_valid(output, pvsm)
+        assert result is False
+
+    def test_unrelated_file_does_not_trigger_regen(self, tmp_path):
+        """Touching an unrelated file should not invalidate the cache."""
+        import time
+        mod = _load_4dpaper()
+
+        pvsm    = tmp_path / "fig.pvsm"
+        output  = tmp_path / "fig.html"
+        unrelated = tmp_path / "other.txt"
+
+        pvsm.write_text("<ParaView/>")
+        unrelated.write_text("x")
+        time.sleep(0.02)
+        output.write_text("<html/>")
+        time.sleep(0.02)
+        unrelated.touch()  # only unrelated file is newer
+
+        result = mod.is_cache_valid(output, pvsm)
+        assert result is True
