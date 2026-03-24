@@ -586,12 +586,6 @@ def _controls_strip_snippet(
     )
 
     strip_btns = ""
-    if show_lock_btn:
-        strip_btns += (
-            f'<button id="cs-btn-lock-{fig_id_safe}"'
-            f' onclick="csToggle_{fig_id_safe}(\'lock\')"'
-            f' title="Camera sync" style="{BTN}">&#x1F513;</button>\n'
-        )
     if has_fields:
         strip_btns += (
             f'<button id="cs-btn-field-{fig_id_safe}"'
@@ -605,7 +599,7 @@ def _controls_strip_snippet(
             f' title="Time step" style="{BTN}">&#x1F550;</button>\n'
         )
 
-    if not strip_btns and not show_orientation:
+    if not strip_btns and not show_orientation and not show_lock_btn:
         return ""
 
     corner_widget = ""
@@ -630,15 +624,25 @@ def _controls_strip_snippet(
             f'</div>\n'
         )
 
-    lock_pop = ""
+    lock_widget = ""
+    lock_badge = ""
     if show_lock_btn:
-        lock_pop = (
-            f'<div id="cs-pop-lock-{fig_id_safe}" style="{POP}">\n'
-            f'  <div id="cs-badge-{fig_id_safe}"'
-            f' style="display:none;padding:2px 6px;border-radius:2px;font-size:11px;"></div>\n'
-            f'  <button id="cs-lock-{fig_id_safe}"'
-            f' style="{PBTN}color:#ccc;font-size:11px;padding:3px 8px;">&#x1F513; Unlock</button>\n'
-            f'</div>\n'
+        lock_widget = (
+            f'<div id="cs-lock-widget-{fig_id_safe}"'
+            f' style="position:fixed;top:4px;right:4px;z-index:9999;'
+            f'width:26px;height:26px;background:rgba(20,20,30,0.72);'
+            f'border:1px solid rgba(255,255,255,0.18);border-radius:5px;'
+            f'cursor:pointer;font-size:13px;'
+            f'display:flex;align-items:center;justify-content:center;color:#fff;"'
+            f' title="Lock / unlock figure">&#x1F512;</div>\n'
+        )
+        lock_badge = (
+            f'<div id="cs-lock-badge-{fig_id_safe}"'
+            f' style="display:none;position:fixed;top:4px;right:36px;z-index:9999;'
+            f'background:rgba(20,20,30,0.88);'
+            f'border:1px solid rgba(255,255,255,0.12);'
+            f'border-radius:4px;padding:2px 6px;'
+            f'font-family:monospace;font-size:10px;color:#f88;">locked</div>\n'
         )
 
     field_pop = ""
@@ -687,7 +691,7 @@ def _controls_strip_snippet(
             + strip_btns
             + f'</div>\n'
         )
-    html_block += axes_pop + lock_pop + field_pop + time_pop + corner_widget
+    html_block += axes_pop + lock_widget + lock_badge + field_pop + time_pop + corner_widget
 
     active_field_js = json.dumps(active_field).replace("</", "<\\/")
     field_data_js = json.dumps(field_data_b64 or {}).replace("</", "<\\/")
@@ -709,10 +713,14 @@ def _controls_strip_snippet(
         f'    if(_axpop&&_axpop.style.display!=="none"){{if(_iact)_iact.setEnabled(1);}}'
         f'else{{if(_iact)_iact.setEnabled(0);}}\n'
     ) if show_orientation else ''
+    _locked_gate = (
+        f'    if(_locked){{_showLockedBadge();return;}}\n'
+    ) if show_lock_btn else ''
     _js.append(
-        f'  var _CS_ALL=["axes","lock","field","time"];\n'
+        f'  var _CS_ALL=["axes","field","time"];\n'
         f'  window.csToggle_{fig_id_safe}=function(name){{\n'
-        f'    for(var _i=0;_i<_CS_ALL.length;_i++){{\n'
+        + _locked_gate
+        + f'    for(var _i=0;_i<_CS_ALL.length;_i++){{\n'
         f'      var _el=document.getElementById("cs-pop-"+_CS_ALL[_i]+"-{fig_id_safe}");\n'
         f'      if(!_el)continue;\n'
         f'      _el.style.display=(_CS_ALL[_i]===name&&_el.style.display==="none")?"flex":"none";\n'
@@ -725,20 +733,18 @@ def _controls_strip_snippet(
     _js.append(f'  var _locked=false;\n')
     if show_lock_btn:
         _js.append(
-            f'  var _lockBtn=document.getElementById("cs-lock-{fig_id_safe}");\n'
-            f'  var _badge=document.getElementById("cs-badge-{fig_id_safe}");\n'
-            f'  var _hideTimer=null;\n'
+            f'  var _lockBadgeTimer=null;\n'
+            f'  function _showLockedBadge(){{\n'
+            f'    var b=document.getElementById("cs-lock-badge-{fig_id_safe}");\n'
+            f'    if(!b)return;\n'
+            f'    b.style.display="block";\n'
+            f'    clearTimeout(_lockBadgeTimer);\n'
+            f'    _lockBadgeTimer=setTimeout(function(){{b.style.display="none";}},1500);\n'
+            f'  }}\n'
             f'  function _setLocked(v){{\n'
             f'    _locked=v;\n'
-            f'    if(_lockBtn)_lockBtn.innerHTML=(v?"&#x1F512; Lock":"&#x1F513; Unlock");\n'
-            f'  }}\n'
-            f'  function _showBadge(msg,ok){{\n'
-            f'    if(!_badge)return;\n'
-            f'    _badge.innerHTML=msg;\n'
-            f'    _badge.style.background=ok?"rgba(0,140,0,0.85)":"rgba(180,0,0,0.85)";\n'
-            f'    _badge.style.display="block";\n'
-            f'    clearTimeout(_hideTimer);\n'
-            f'    if(ok)_hideTimer=setTimeout(function(){{_badge.style.display="none";}},3000);\n'
+            f'    var w=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
+            f'    if(w)w.textContent=v?"\U0001F512":"\U0001F513";\n'
             f'  }}\n'
             f'  if(window.parent!==window){{\n'
             f'    parent.postMessage({{type:"4dpaper-lock-query",fig_id:FIG_ID}},"*");\n'
@@ -748,31 +754,26 @@ def _controls_strip_snippet(
             f'      .then(function(d){{_setLocked(!!d.locked);}})\n'
             f'      .catch(function(){{}});\n'
             f'  }}\n'
-            f'  if(_lockBtn)_lockBtn.addEventListener("click",function(){{\n'
-            f'    var nv=!_locked;\n'
-            f'    _setLocked(nv);\n'
-            f'    if(window.parent!==window){{\n'
-            f'      parent.postMessage({{type:"4dpaper-lock-toggle",fig_id:FIG_ID,locked:nv}},"*");\n'
-            f'    }}else{{\n'
-            f'      fetch("/camera-lock/"+FIG_ID,{{'
+            f'  (function(){{\n'
+            f'    var _lw=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
+            f'    if(_lw)_lw.addEventListener("click",function(){{\n'
+            f'      var nv=!_locked;\n'
+            f'      _setLocked(nv);\n'
+            f'      if(window.parent!==window){{\n'
+            f'        parent.postMessage({{type:"4dpaper-lock-toggle",fig_id:FIG_ID,locked:nv}},"*");\n'
+            f'      }}else{{\n'
+            f'        fetch("/camera-lock/"+FIG_ID,{{'
             f'method:"POST",headers:{{"Content-Type":"application/json"}},'
             f'body:JSON.stringify({{locked:nv}})}}).catch(function(){{_setLocked(!nv);}});\n'
-            f'    }}\n'
-            f'  }});\n'
+            f'      }}\n'
+            f'    }});\n'
+            f'  }})();\n'
         )
-    else:
-        # No-op stub so camera-ack handler can always call _showBadge
-        _js.append(f'  function _showBadge(msg,ok){{}}\n')
 
     # postMessage listener (always emitted)
     _js.append(
         f'  window.addEventListener("message",function(e){{\n'
         f'    if(!e.data)return;\n'
-        f'    if(e.data.type==="4dpaper-camera-ack"){{\n'
-        f'      if(e.data.fig_id!==FIG_ID&&e.data.fig_id!=="*")return;\n'
-        f'      _showBadge(e.data.status==="ok"?"&#128247; Camera synced":"&#128247; Sync error",'
-        f'e.data.status==="ok");\n'
-        f'    }}\n'
     )
     if show_lock_btn:
         _js.append(
@@ -799,8 +800,7 @@ def _controls_strip_snippet(
         f'      }}else{{\n'
         f'        fetch("/camera/"+FIG_ID,{{method:"POST",'
         f'headers:{{"Content-Type":"application/json"}},body:JSON.stringify(camData)}})\n'
-        f'          .then(function(r){{_showBadge(r.ok?"&#128247; Camera synced":"&#128247; Sync error",r.ok);}}'
-        f').catch(function(){{_showBadge("&#128247; Sync error",false);}});\n'
+        f'          .catch(function(){{}});\n'
         f'      }}\n'
         f'    }},300);\n'
         f'  }}\n'
@@ -808,6 +808,9 @@ def _controls_strip_snippet(
 
     # Orientation helpers (conditional)
     if show_orientation:
+        _cube_lock_gate = (
+            f'      if(_locked){{_showLockedBadge();return;}}\n'
+        ) if show_lock_btn else ''
         _js.append(
             f'  function _openRotation(){{\n'
             f'    if(_iact)_iact.setEnabled(1);\n'
@@ -820,7 +823,8 @@ def _controls_strip_snippet(
             f'  (function(){{\n'
             f'    var _svgEl=document.getElementById("cs-svg-axes-{fig_id_safe}");\n'
             f'    if(_svgEl)_svgEl.addEventListener("click",function(){{\n'
-            f'      var pop=document.getElementById("cs-pop-axes-{fig_id_safe}");\n'
+            + _cube_lock_gate
+            + f'      var pop=document.getElementById("cs-pop-axes-{fig_id_safe}");\n'
             f'      if(!pop)return;\n'
             f'      if(pop.style.display==="none"||pop.style.display==="")'
             f'{{_openRotation();}}else{{_closeRotation();}}\n'
@@ -1000,18 +1004,17 @@ def _controls_strip_snippet(
             f'              var idx=parseInt(_tSlider.value);\n'
             f'              if(_tVal&&TIME_LABELS[idx]!==undefined)_tVal.textContent=TIME_LABELS[idx];\n'
             f'              if(_tIdx)_tIdx.textContent=idx;\n'
+            f'              var b64=TIME_DATA[idx];if(!b64)return;\n'
+            f'              try{{var a=pd.getPointData().getArrayByName(TIME_FIELD);\n'
+            f'a.setData(_decT(b64),1);a.modified();pd.modified();\n'
+            f'mp.setScalarRange(GLOBAL_RANGE[0],GLOBAL_RANGE[1]);\n'
+            f'window.renderWindow.render();}}'
+            f'catch(e1){{console.error("[4dp] t-step:",e1);}}\n'
             f'              clearTimeout(_tTimer);\n'
             f'              _tTimer=setTimeout(function(){{\n'
-            f'                var b64=TIME_DATA[idx];if(!b64)return;\n'
-            f'                try{{\n'
-            f'                  var arr=pd.getPointData().getArrayByName(TIME_FIELD);\n'
-            f'                  arr.setData(_decT(b64),1);arr.modified();pd.modified();\n'
-            f'                  mp.setScalarRange(GLOBAL_RANGE[0],GLOBAL_RANGE[1]);\n'
-            f'                  window.renderWindow.render();\n'
-            f'                  try{{parent.postMessage({{type:"4dpaper-field-update",'
+            f'                try{{parent.postMessage({{type:"4dpaper-field-update",'
             f'fig_id:FIG_ID,data:{{time:String(idx)}}}},"*");}}'
             f'catch(e2){{}}\n'
-            f'                }}catch(err){{console.error("[4dpaper] time step error:",err);}}\n'
             f'              }},100);\n'
             f'            }});\n'
             f'            return;\n'
