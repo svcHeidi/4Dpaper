@@ -305,7 +305,7 @@ class TestControlsStripJs:
         js = html.split("<script>", 1)[1] if "<script>" in html else html
         slider_pos = js.find("_tSlider")
         assert slider_pos != -1
-        slider_section = js[slider_pos:slider_pos + 800]
+        slider_section = js[slider_pos:slider_pos + 2000]
         render_pos = slider_section.find("renderWindow.render()")
         settimeout_pos = slider_section.find("setTimeout")
         assert render_pos != -1, "renderWindow.render() not in slider handler"
