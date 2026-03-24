@@ -120,9 +120,11 @@ class TestControlsStripHtml:
         """cs-lock-widget at top:4px;right:4px when show_lock_btn=True."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        assert 'id="cs-lock-widget-fig_vm"' in html
-        assert "top:4px" in html
-        assert "right:4px" in html
+        widget_pos = html.find('id="cs-lock-widget-fig_vm"')
+        assert widget_pos != -1, "cs-lock-widget element not found"
+        widget_region = html[widget_pos:widget_pos + 120]
+        assert "top:4px" in widget_region
+        assert "right:4px" in widget_region
 
     def test_lock_widget_absent_when_hide(self):
         mod = _load_4dpaper()
@@ -130,11 +132,13 @@ class TestControlsStripHtml:
         assert 'id="cs-lock-widget-fig_vm"' not in html
 
     def test_lock_badge_present_when_show_lock(self):
-        """Badge element present and starts hidden when show_lock_btn=True."""
+        """Badge element present and starts hidden (display:none) when show_lock_btn=True."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        assert 'id="cs-lock-badge-fig_vm"' in html
-        assert "display:none" in html
+        badge_pos = html.find('id="cs-lock-badge-fig_vm"')
+        assert badge_pos != -1, "cs-lock-badge element not found"
+        badge_region = html[badge_pos:badge_pos + 80]
+        assert "display:none" in badge_region
 
     def test_lock_badge_absent_when_hide(self):
         mod = _load_4dpaper()
@@ -261,13 +265,14 @@ class TestControlsStripJs:
         assert "_setLocked" in html
 
     def test_toggle_checks_locked_flag(self):
-        """if(_locked) guard appears before _CS_ALL loop in csToggle_."""
+        """if(_locked) guard appears before _CS_ALL loop in csToggle_.
+        Verifies ordering only; cannot verify it is a return guard from string inspection alone."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
         toggle_start = js.find("csToggle_fig_vm")
         assert toggle_start != -1, "csToggle_ not found"
-        func_region = js[toggle_start:toggle_start + 300]
+        func_region = js[toggle_start:toggle_start + 500]
         locked_pos = func_region.find("if(_locked)")
         cs_all_pos = func_region.find("_CS_ALL")
         assert locked_pos != -1, "if(_locked) not in csToggle_"
@@ -275,14 +280,18 @@ class TestControlsStripJs:
         assert locked_pos < cs_all_pos, "if(_locked) must come before _CS_ALL loop"
 
     def test_corner_cube_checks_locked_flag(self):
-        """SVG click listener contains if(_locked) when both flags True."""
+        """if(_locked) guard appears before _openRotation in SVG click listener."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=True)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
         svg_var_pos = js.find('getElementById("cs-svg-axes-fig_vm")')
         assert svg_var_pos != -1
         listener_region = js[svg_var_pos:svg_var_pos + 400]
-        assert "if(_locked)" in listener_region
+        locked_pos = listener_region.find("if(_locked)")
+        open_rotation_pos = listener_region.find("_openRotation")
+        assert locked_pos != -1, "if(_locked) guard not found in SVG click listener"
+        assert open_rotation_pos != -1, "_openRotation not found in SVG click listener"
+        assert locked_pos < open_rotation_pos, "if(_locked) must come before _openRotation"
 
     def test_corner_cube_no_locked_gate_when_lock_hidden(self):
         """SVG click listener has NO if(_locked) when show_lock_btn=False."""
@@ -295,7 +304,7 @@ class TestControlsStripJs:
         assert "if(_locked)" not in listener_region
 
     def test_render_before_debounce(self):
-        """renderWindow.render() fires before setTimeout in time slider handler."""
+        """renderWindow.render() fires immediately; only postMessage is debounced."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet(
             "fig-vm",
@@ -303,13 +312,14 @@ class TestControlsStripJs:
             time_global_range=[0.0, 1.0], time_field="Vm",
         )
         js = html.split("<script>", 1)[1] if "<script>" in html else html
-        slider_pos = js.find("_tSlider")
-        assert slider_pos != -1
-        slider_section = js[slider_pos:slider_pos + 2000]
-        render_pos = slider_section.find("renderWindow.render()")
-        settimeout_pos = slider_section.find("setTimeout")
-        assert render_pos != -1, "renderWindow.render() not in slider handler"
-        assert settimeout_pos != -1, "setTimeout not in slider handler"
+        # Anchor to the input event listener, not the variable declaration
+        input_handler_pos = js.find('addEventListener("input"')
+        assert input_handler_pos != -1, "input event listener not found"
+        handler_section = js[input_handler_pos:input_handler_pos + 600]
+        render_pos = handler_section.find("renderWindow.render()")
+        settimeout_pos = handler_section.find("setTimeout")
+        assert render_pos != -1, "renderWindow.render() not in input handler"
+        assert settimeout_pos != -1, "setTimeout not in input handler"
         assert render_pos < settimeout_pos, "renderWindow.render() must precede setTimeout"
 
 
