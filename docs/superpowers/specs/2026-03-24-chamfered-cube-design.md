@@ -1,0 +1,232 @@
+# Chamfered Cube Orientation Widget Design
+
+## Goal
+
+Replace the 28×28 axis-line SVG + preset popup with a 72×72 chamfered-cube orientation widget. The cube tracks camera orientation in real time, shows 14 clickable regions (6 face views + 8 iso corner views), and snaps the camera directly on click — no popup needed.
+
+---
+
+## Single-file change
+
+All changes are inside `_controls_strip_snippet` in `_extensions/4dpaper/4dpaper.py`. No new Python functions, no Lua changes, no new endpoints.
+
+---
+
+## Component 1: HTML structure
+
+### Corner widget size
+
+`cs-corner-{fig_id_safe}` grows from 28×28 to 72×72:
+
+```html
+<div id="cs-corner-{fig_id_safe}"
+     style="position:fixed;bottom:4px;left:4px;z-index:9999;">
+  <svg id="cs-svg-axes-{fig_id_safe}" width="72" height="72"
+       style="background:rgba(10,10,20,0.0);border-radius:4px;
+              display:block;cursor:pointer;"
+       title="Click face for ortho view · click corner for iso view"></svg>
+</div>
+```
+
+The SVG starts empty — `_drawCube()` populates its `innerHTML` every rAF frame.
+
+### Axes popup removed
+
+`cs-pop-axes-{fig_id_safe}` is **no longer emitted**. The `AXES_POP` style constant is removed. The preset buttons (`Iso`, `+X`, `+Y`, `+Z`) are removed from the HTML.
+
+---
+
+## Component 2: Cube projection
+
+### Geometry constants (JS, declared once at snippet scope)
+
+Chamfer amount `c = 0.25` on a unit cube (±1 on each axis).
+
+**6 square faces** — each entry: `{verts: [[x,y,z]×4], normal: [nx,ny,nz], fill, stroke, dir}`
+
+```js
+var _FACES = [
+  {verts:[[ 0.75, 0.75,1],[ 0.75,-0.75,1],[-0.75,-0.75,1],[-0.75, 0.75,1]],
+   normal:[0,0,1],  fill:"#3a3aaa", stroke:"#6666dd", dir:[0,0,1]},
+  {verts:[[ 0.75, 0.75,-1],[ 0.75,-0.75,-1],[-0.75,-0.75,-1],[-0.75, 0.75,-1]],
+   normal:[0,0,-1], fill:"#222266", stroke:"#4444aa", dir:[0,0,-1]},
+  {verts:[[1, 0.75, 0.75],[1,-0.75, 0.75],[1,-0.75,-0.75],[1, 0.75,-0.75]],
+   normal:[1,0,0],  fill:"#8a2222", stroke:"#cc5555", dir:[1,0,0]},
+  {verts:[[-1, 0.75, 0.75],[-1,-0.75, 0.75],[-1,-0.75,-0.75],[-1, 0.75,-0.75]],
+   normal:[-1,0,0], fill:"#441111", stroke:"#883333", dir:[-1,0,0]},
+  {verts:[[ 0.75,1, 0.75],[-0.75,1, 0.75],[-0.75,1,-0.75],[ 0.75,1,-0.75]],
+   normal:[0,1,0],  fill:"#1e6b1e", stroke:"#44aa44", dir:[0,1,0]},
+  {verts:[[ 0.75,-1, 0.75],[-0.75,-1, 0.75],[-0.75,-1,-0.75],[ 0.75,-1,-0.75]],
+   normal:[0,-1,0], fill:"#0d3d0d", stroke:"#226622", dir:[0,-1,0]},
+];
+```
+
+**8 corner triangles** — chamfer vertices are at distance `c=0.25` from each original corner along each edge:
+
+```js
+var _CORNERS = [
+  {verts:[[ 0.75,1,1],[1, 0.75,1],[1,1, 0.75]], normal:[ 1, 1, 1], dir:[ 1, 1, 1]},
+  {verts:[[ 0.75,1,-1],[1, 0.75,-1],[1,1,-0.75]], normal:[ 1, 1,-1], dir:[ 1, 1,-1]},
+  {verts:[[ 0.75,-1,1],[1,-0.75,1],[1,-1, 0.75]], normal:[ 1,-1, 1], dir:[ 1,-1, 1]},
+  {verts:[[-0.75,1,1],[-1, 0.75,1],[-1,1, 0.75]], normal:[-1, 1, 1], dir:[-1, 1, 1]},
+  {verts:[[ 0.75,-1,-1],[1,-0.75,-1],[1,-1,-0.75]], normal:[ 1,-1,-1], dir:[ 1,-1,-1]},
+  {verts:[[-0.75,1,-1],[-1, 0.75,-1],[-1,1,-0.75]], normal:[-1, 1,-1], dir:[-1, 1,-1]},
+  {verts:[[-0.75,-1,1],[-1,-0.75,1],[-1,-1, 0.75]], normal:[-1,-1, 1], dir:[-1,-1, 1]},
+  {verts:[[-0.75,-1,-1],[-1,-0.75,-1],[-1,-1,-0.75]], normal:[-1,-1,-1], dir:[-1,-1,-1]},
+];
+// Corner fill/stroke (all yellow):
+// fill: "#c8a800", stroke: "#ffe033"
+```
+
+The 12 edge rectangles are **not drawn** — they appear as thin dark gaps between faces and corners, acting as natural separators.
+
+### `_drawCube()` algorithm
+
+```js
+function _drawCube() {
+    if (!_renderer || !_svg) return;
+    var cam = _renderer.getActiveCamera();
+    var pos = cam.getPosition(), fp = cam.getFocalPoint(), vup = cam.getViewUp();
+    var vd = _n3([fp[0]-pos[0], fp[1]-pos[1], fp[2]-pos[2]]);   // view direction
+    var right = _n3(_cr(vd, vup));
+    var up = _cr(right, vd);
+    var cx = 36, cy = 36, R = 28;   // SVG centre and scale radius
+
+    // Project 3D point → SVG coords
+    function proj(v) {
+        return [cx + R*_dt(v,right), cy - R*_dt(v,up)];
+    }
+    // Centroid depth for painter's sort
+    function depth(verts) {
+        var d=0;
+        for(var i=0;i<verts.length;i++) d+=_dt(verts[i],vd);
+        return d/verts.length;
+    }
+
+    // Collect visible pieces (facing viewer)
+    var pieces = [];
+    _FACES.forEach(function(f) {
+        if (_dt(f.normal, vd) > 0.05)
+            pieces.push({verts:f.verts, fill:f.fill, stroke:f.stroke,
+                         dir:f.dir, depth:depth(f.verts)});
+    });
+    _CORNERS.forEach(function(c) {
+        if (_dt(c.normal, vd) > 0.05)
+            pieces.push({verts:c.verts, fill:"#c8a800", stroke:"#ffe033",
+                         dir:c.dir, depth:depth(c.verts)});
+    });
+
+    // Sort back-to-front
+    pieces.sort(function(a,b){ return a.depth - b.depth; });
+
+    // Build SVG innerHTML
+    var html = '';
+    pieces.forEach(function(p) {
+        var pts = p.verts.map(function(v){ var s=proj(v); return s[0].toFixed(1)+','+s[1].toFixed(1); }).join(' ');
+        var dirStr = JSON.stringify(p.dir);
+        html += '<polygon points="'+pts+'" fill="'+p.fill+'" stroke="'+p.stroke+'" stroke-width="1.5"'
+              + ' style="cursor:pointer;"'
+              + ' onclick="csSetView_{fig_id_safe}('+dirStr+')"/>';
+    });
+    _svg.innerHTML = html;
+}
+```
+
+`_axLoop` calls `_drawCube()` instead of `_drawAxes()`.
+
+---
+
+## Component 3: `csSetView_` — 14 directions
+
+`csSetView_` is extended to accept a direction array `[dx,dy,dz]` (instead of a string key). It normalises the direction, positions the camera, enables the interactor, and renders:
+
+```js
+window.csSetView_{fig_id_safe} = function(dir) {
+    if (!_renderer) return;
+    var cam = _renderer.getActiveCamera();
+    var fp = cam.getFocalPoint(), dist = cam.getDistance();
+    var pn = _n3(dir);
+    // Choose viewUp: use [0,0,1] unless dir is nearly parallel to Z
+    var up = (Math.abs(pn[2]) > 0.9) ? [0,1,0] : [0,0,1];
+    cam.setPosition(fp[0]+pn[0]*dist, fp[1]+pn[1]*dist, fp[2]+pn[2]*dist);
+    cam.setViewUp(up[0], up[1], up[2]);
+    cam.setFocalPoint(fp[0], fp[1], fp[2]);
+    _renderer.resetCameraClippingRange();
+    if (_iact) _iact.setEnabled(1);   // enable interactor after snap
+    if (window.renderWindow) window.renderWindow.render();
+};
+```
+
+**Removed:** `_openRotation()`, `_closeRotation()`. The interactor is enabled on every `csSetView_` call. Locking is handled exclusively by the lock button.
+
+---
+
+## Component 4: Lock gate on cube clicks
+
+When `show_lock_btn=True`, the `_drawCube()` polygon `onclick` is guarded:
+
+```js
+onclick="if(_locked){_showLockedBadge();return;}csSetView_{fig_id_safe}('+dirStr+')"
+```
+
+When `show_lock_btn=False`, no guard is emitted (same rule as the current SVG click listener).
+
+---
+
+## Interaction summary
+
+| Action | Result |
+|---|---|
+| Click face (+Z/−Z/+X/−X/+Y/−Y) | Snap to orthographic view, interactor enabled |
+| Click corner (any of 8) | Snap to iso view, interactor enabled |
+| Lock button clicked (locked) | All cube clicks blocked, "locked" badge flashes |
+| Drag on figure | Rotate freely (interactor must be enabled) |
+
+---
+
+## Testing
+
+All tests in `tests/test_controls_strip.py`.
+
+### Tests to remove
+
+- `test_axes_popup_above_corner` — popup gone
+- `test_interactor_enabled_on_open` — `_openRotation` gone
+- `test_null_interactor_safe` — `_openRotation`/`_closeRotation` gone
+- `test_preset_closes_popup` — `_closeRotation()` no longer in `csSetView_`
+- `test_click_handler_on_svg` — SVG-level click handler gone (per-polygon onclick instead)
+
+### Tests to update
+
+- `test_corner_cube_present_when_show_orientation` — assert `width="72"` (not `width="28"`)
+- `test_axes_popup_above_corner` → `test_axes_popup_absent` — assert `cs-pop-axes-` NOT in HTML
+- `test_preset_buttons_call_set_view` — remove (buttons are now JS-generated polygons, not static HTML)
+
+### New tests — `TestControlsStripHtml`
+
+- `test_cube_svg_size` — `width="72" height="72"` in snippet when `show_orientation=True`
+- `test_axes_popup_absent` — `cs-pop-axes-` NOT in snippet
+
+### New tests — `TestControlsStripJs`
+
+- `test_draw_cube_function_present` — `_drawCube` in snippet when `show_orientation=True`
+- `test_draw_cube_absent_when_orientation_hidden` — `_drawCube` NOT in snippet when `show_orientation=False`
+- `test_cs_setview_accepts_direction_array` — `csSetView_` function body contains `_n3(dir)` (direction normalisation)
+- `test_interactor_enabled_on_setview` — `setEnabled(1)` present inside `csSetView_` function body
+- `test_open_rotation_absent` — `_openRotation` NOT in snippet
+- `test_close_rotation_absent` — `_closeRotation` NOT in snippet
+- `test_cube_lock_gate_in_draw_cube` — when `show_lock_btn=True`: `_showLockedBadge` present inside `_drawCube` onclick string
+- `test_cube_no_lock_gate_when_lock_hidden` — when `show_lock_btn=False`: `_showLockedBadge` NOT present in `_drawCube` onclick string
+
+---
+
+## What does NOT change
+
+- `generate_html_figure` call signature
+- `show_orientation` parameter semantics
+- `_iact` declaration and polling logic
+- `_n3`, `_cr`, `_dt` math helpers
+- `_axLoop` requestAnimationFrame loop (just calls `_drawCube` instead of `_drawAxes`)
+- Camera sync logic (`_sendCam`, mouseup/touchend listeners)
+- Lock widget and badge
+- Field switcher and time scrubber
