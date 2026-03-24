@@ -1779,7 +1779,8 @@ def main() -> None:
     styles_extra_deps = [styles_yml_path] if styles_yml_path.exists() else []
 
     # Expand timeseries into panel-compatible dicts and merge into panels list
-    from scripts.data_loader import SimulationData as _SimData  # noqa: PLC0415
+    if ts_raw:
+        from scripts.data_loader import SimulationData as _SimData  # noqa: PLC0415
     for ts in ts_raw:
         src = Path(ts["src"]) if Path(ts["src"]).is_absolute() else _project_root / ts["src"]
         try:
