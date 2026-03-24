@@ -50,9 +50,10 @@ class TestControlsStripHtml:
         assert 'id="cs-btn-lock-fig_vm"' not in html
 
     def test_axes_button_present_when_show_orientation(self):
+        """Axes strip button is replaced by corner cube — must be absent."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert 'id="cs-btn-axes-fig_vm"' in html
+        assert 'id="cs-btn-axes-fig_vm"' not in html
 
     def test_axes_button_absent_when_hide(self):
         mod = _load_4dpaper()
@@ -95,6 +96,41 @@ class TestControlsStripHtml:
         assert 'id="cs-pop-lock-fig_vm"' in html
         assert 'id="cs-pop-axes-fig_vm"' in html
 
+    def test_corner_cube_present_when_show_orientation(self):
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        # SVG is now at fixed bottom-left, not inside popup
+        assert 'id="cs-svg-axes-fig_vm"' in html
+        assert "bottom:4px" in html
+        assert "left:4px" in html
+
+    def test_axes_button_absent_from_strip(self):
+        """Axes strip button is removed — cube is the only entry point."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert 'id="cs-btn-axes-fig_vm"' not in html
+
+    def test_axes_popup_above_corner(self):
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        # Popup anchored above the cube, not in the right-edge strip position
+        assert 'id="cs-pop-axes-fig_vm"' in html
+        assert "bottom:36px" in html
+
+    def test_corner_cube_absent_when_orientation_hidden(self):
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
+        assert 'id="cs-svg-axes-fig_vm"' not in html
+        assert 'id="cs-corner-fig_vm"' not in html
+
+    def test_snippet_not_empty_when_only_orientation(self):
+        """Corner cube alone is enough — snippet must not return '' when
+        show_lock_btn=False and no fields/time but show_orientation=True."""
+        mod = _load_4dpaper()
+        result = mod._controls_strip_snippet("fig-vm", show_lock_btn=False, show_orientation=True)
+        assert result != ""
+        assert 'id="cs-svg-axes-fig_vm"' in result
+
 
 class TestControlsStripJs:
     def test_toggle_function_defined(self):
@@ -124,6 +160,56 @@ class TestControlsStripJs:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
         assert "_showBadge" in html
+
+    def test_iact_declared_at_top(self):
+        """var _iact = null must be declared (show_orientation=True)."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert "var _iact=null" in html or "var _iact = null" in html
+
+    def test_interactor_disabled_on_load(self):
+        """setEnabled(0) injected into _wR callback when show_orientation=True."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert "setEnabled(0)" in html
+
+    def test_interactor_not_disabled_when_orientation_hidden(self):
+        """No setEnabled(0) emitted when show_orientation=False (stays free)."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
+        assert "setEnabled(0)" not in html
+
+    def test_interactor_enabled_on_open(self):
+        """`setEnabled(1)` present inside _openRotation."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert "setEnabled(1)" in html
+
+    def test_null_interactor_safe(self):
+        """Both _openRotation and _closeRotation guard with if(_iact)."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        js = html.split("<script>", 1)[1] if "<script>" in html else html
+        assert "if(_iact)_iact.setEnabled(1)" in js or ("_openRotation" in js and "if(_iact)" in js)
+        assert "if(_iact)_iact.setEnabled(0)" in js or ("_closeRotation" in js and "if(_iact)" in js)
+
+    def test_click_handler_on_svg(self):
+        """SVG click listener wired to open/close rotation popup."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert 'cs-svg-axes-fig_vm' in html
+        assert 'addEventListener("click"' in html or "addEventListener('click'" in html
+
+    def test_preset_closes_popup(self):
+        """_closeRotation() must appear inside csSetView_ function body."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        js = html.split("<script>", 1)[1] if "<script>" in html else html
+        # Find the csSetView_ function and confirm _closeRotation() is inside it
+        start = js.find("csSetView_fig_vm")
+        assert start != -1, "csSetView_ not found"
+        func_body = js[start:start + 1200]
+        assert "_closeRotation()" in func_body, "_closeRotation() not inside csSetView_"
 
 
 class TestControlsStripCameraLogic:
