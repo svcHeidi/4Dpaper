@@ -555,9 +555,74 @@ local function fourd_pvsm(args, kwargs)
   end
 end
 
+local function fourd_timeseries(args, kwargs)
+  local id      = pandoc.utils.stringify(kwargs["id"]      or pandoc.Str(""))
+  local caption = pandoc.utils.stringify(kwargs["caption"] or pandoc.Str(""))
+  local height  = pandoc.utils.stringify(kwargs["height"]  or pandoc.Str("400px"))
+
+  if id == "" then
+    return pandoc.RawBlock("html",
+      '<div style="color:red">⚠ 4d-timeseries: missing required attribute <code>id</code></div>')
+  end
+
+  if quarto.doc.isFormat("html") then
+    -- Timeseries is always sync — embed the Python-generated composite HTML as one iframe.
+    local composite_path = "state/figures/" .. id .. ".html"
+    local f = io.open(composite_path, "r")
+
+    if not f then
+      return pandoc.RawBlock("html",
+        '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;">' ..
+        '⚠ 4D Timeseries <code>' .. id .. '</code> not yet rendered — ' ..
+        'click <strong>Rebuild HTML</strong> in the dashboard.</div>')
+    end
+
+    local composite_iframe
+    if _app_mode then
+      f:close()
+      composite_iframe = '<iframe src="/state/figures/' .. id .. '.html" ' ..
+                         'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
+    else
+      local content = f:read("*all"); f:close()
+      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+      composite_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
+                         'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
+    end
+
+    local relay_script = ""
+    if not _relay_injected then
+      _relay_injected = true
+      relay_script = _RELAY_SCRIPT
+    end
+    return pandoc.RawBlock("html",
+      '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+      composite_iframe .. '\n' ..
+      (caption ~= "" and
+        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
+        or "") ..
+      '</figure>\n' .. relay_script)
+
+  else
+    -- PDF: single composite PNG at state/figures/<id>.png
+    local fig_path = "state/figures/" .. id .. ".png"
+    local f = io.open(fig_path, "r")
+    if f then
+      f:close()
+      local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, {width = "90%"}))
+      return pandoc.Para({img})
+    else
+      return pandoc.Para({
+        pandoc.Str("[Timeseries "), pandoc.Code(id),
+        pandoc.Str(" — run 'Export PDF' from the dashboard to generate this figure]"),
+      })
+    end
+  end
+end
+
 return {
-  ["4d-image"] = fourd_image,
-  ["4d-video"] = fourd_video,
-  ["4d-panel"] = fourd_panel,
-  ["4d-pvsm"]  = fourd_pvsm,
+  ["4d-image"]      = fourd_image,
+  ["4d-video"]      = fourd_video,
+  ["4d-panel"]      = fourd_panel,
+  ["4d-pvsm"]       = fourd_pvsm,
+  ["4d-timeseries"] = fourd_timeseries,
 }

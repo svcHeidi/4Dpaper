@@ -300,7 +300,7 @@ class TestGeneratePanelPng:
     def _fake_png_gen(self, color):
         """Return a side_effect that writes a solid-color 1920×1080 PNG."""
         from PIL import Image
-        def _write(src, field, time_spec, output_path, fig_id=None):
+        def _write(src, field, time_spec, output_path, fig_id=None, **kwargs):
             img = Image.new("RGB", (1920, 1080), color=color)
             img.save(str(output_path))
         return _write

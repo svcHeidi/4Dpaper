@@ -128,3 +128,21 @@ class TestMainTimeseriesIntegration:
         mod = _load_4dpaper()
         source = inspect.getsource(mod.main)
         assert "panels.append(ts)" in source
+
+
+class TestFourdTimeseriesLua:
+    def test_fourd_timeseries_function_exists(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert "fourd_timeseries" in content
+
+    def test_fourd_timeseries_registered(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert '["4d-timeseries"]' in content
+
+    def test_fourd_timeseries_embeds_composite_html(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert 'state/figures/" .. id .. ".html"' in content
+
+    def test_fourd_timeseries_pdf_uses_90_percent_width(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert 'width = "90%"' in content
