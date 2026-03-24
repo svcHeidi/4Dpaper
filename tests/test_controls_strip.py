@@ -36,13 +36,12 @@ class TestControlsStripExists:
 class TestControlsStripHtml:
     def test_strip_div_present(self):
         mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        html = mod._controls_strip_snippet(
+            "fig-vm", show_lock_btn=True,
+            fields_to_embed=["Vm", "at"], active_field="Vm",
+            field_data_b64={"Vm": "AA==", "at": "AA=="}, field_ranges={"Vm": [0, 1], "at": [0, 1]},
+        )
         assert 'id="cs-strip-fig_vm"' in html
-
-    def test_lock_button_in_strip_when_show_lock(self):
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        assert 'id="cs-btn-lock-fig_vm"' in html
 
     def test_lock_button_absent_when_hide(self):
         mod = _load_4dpaper()
@@ -93,8 +92,8 @@ class TestControlsStripHtml:
     def test_popup_panels_present_for_active_features(self):
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True, show_orientation=True)
-        assert 'id="cs-pop-lock-fig_vm"' in html
         assert 'id="cs-pop-axes-fig_vm"' in html
+        assert 'id="cs-pop-lock-fig_vm"' not in html
 
     def test_corner_cube_present_when_show_orientation(self):
         mod = _load_4dpaper()
@@ -116,6 +115,50 @@ class TestControlsStripHtml:
         html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
         assert 'id="cs-svg-axes-fig_vm"' not in html
         assert 'id="cs-corner-fig_vm"' not in html
+
+    def test_lock_widget_present_when_show_lock(self):
+        """cs-lock-widget at top:4px;right:4px when show_lock_btn=True."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        assert 'id="cs-lock-widget-fig_vm"' in html
+        assert "top:4px" in html
+        assert "right:4px" in html
+
+    def test_lock_widget_absent_when_hide(self):
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
+        assert 'id="cs-lock-widget-fig_vm"' not in html
+
+    def test_lock_badge_present_when_show_lock(self):
+        """Badge element present and starts hidden when show_lock_btn=True."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        assert 'id="cs-lock-badge-fig_vm"' in html
+        assert "display:none" in html
+
+    def test_lock_badge_absent_when_hide(self):
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
+        assert 'id="cs-lock-badge-fig_vm"' not in html
+
+    def test_lock_popup_absent(self):
+        """cs-pop-lock is no longer emitted."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        assert 'id="cs-pop-lock-fig_vm"' not in html
+
+    def test_lock_button_absent_from_strip(self):
+        """cs-btn-lock is no longer in the right strip."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        assert 'id="cs-btn-lock-fig_vm"' not in html
+
+    def test_lock_widget_absent_show_lock_false_orientation_true(self):
+        """No lock widget or badge when show_lock_btn=False, even with orientation."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False, show_orientation=True)
+        assert 'id="cs-lock-widget-fig_vm"' not in html
+        assert 'id="cs-lock-badge-fig_vm"' not in html
 
     def test_snippet_not_empty_when_only_orientation(self):
         """Corner cube alone is enough — snippet must not return '' when
@@ -148,12 +191,6 @@ class TestControlsStripJs:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
         assert "var _locked=false" in html or "var _locked = false" in html
-
-    def test_show_badge_always_declared(self):
-        """_showBadge must exist even when show_lock_btn=False (called by camera-ack handler)."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
-        assert "_showBadge" in html
 
     def test_iact_declared_at_top(self):
         """var _iact = null must be declared (show_orientation=True)."""
@@ -205,6 +242,76 @@ class TestControlsStripJs:
         func_body = js[start:start + 1200]
         assert "_closeRotation()" in func_body, "_closeRotation() not inside csSetView_"
 
+    def test_show_locked_badge_function_present(self):
+        """_showLockedBadge emitted when show_lock_btn=True."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        assert "_showLockedBadge" in html
+
+    def test_show_locked_badge_absent_when_hide(self):
+        """_showLockedBadge NOT emitted when show_lock_btn=False."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
+        assert "_showLockedBadge" not in html
+
+    def test_set_locked_helper_present(self):
+        """_setLocked helper emitted when show_lock_btn=True."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        assert "_setLocked" in html
+
+    def test_toggle_checks_locked_flag(self):
+        """if(_locked) guard appears before _CS_ALL loop in csToggle_."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        js = html.split("<script>", 1)[1] if "<script>" in html else html
+        toggle_start = js.find("csToggle_fig_vm")
+        assert toggle_start != -1, "csToggle_ not found"
+        func_region = js[toggle_start:toggle_start + 300]
+        locked_pos = func_region.find("if(_locked)")
+        cs_all_pos = func_region.find("_CS_ALL")
+        assert locked_pos != -1, "if(_locked) not in csToggle_"
+        assert cs_all_pos != -1, "_CS_ALL not in csToggle_"
+        assert locked_pos < cs_all_pos, "if(_locked) must come before _CS_ALL loop"
+
+    def test_corner_cube_checks_locked_flag(self):
+        """SVG click listener contains if(_locked) when both flags True."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=True)
+        js = html.split("<script>", 1)[1] if "<script>" in html else html
+        svg_var_pos = js.find('getElementById("cs-svg-axes-fig_vm")')
+        assert svg_var_pos != -1
+        listener_region = js[svg_var_pos:svg_var_pos + 400]
+        assert "if(_locked)" in listener_region
+
+    def test_corner_cube_no_locked_gate_when_lock_hidden(self):
+        """SVG click listener has NO if(_locked) when show_lock_btn=False."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=False)
+        js = html.split("<script>", 1)[1] if "<script>" in html else html
+        svg_var_pos = js.find('getElementById("cs-svg-axes-fig_vm")')
+        assert svg_var_pos != -1
+        listener_region = js[svg_var_pos:svg_var_pos + 400]
+        assert "if(_locked)" not in listener_region
+
+    def test_render_before_debounce(self):
+        """renderWindow.render() fires before setTimeout in time slider handler."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet(
+            "fig-vm",
+            time_labels=["0.0", "0.5"], time_data_b64=["AA==", "BB=="],
+            time_global_range=[0.0, 1.0], time_field="Vm",
+        )
+        js = html.split("<script>", 1)[1] if "<script>" in html else html
+        slider_pos = js.find("_tSlider")
+        assert slider_pos != -1
+        slider_section = js[slider_pos:slider_pos + 800]
+        render_pos = slider_section.find("renderWindow.render()")
+        settimeout_pos = slider_section.find("setTimeout")
+        assert render_pos != -1, "renderWindow.render() not in slider handler"
+        assert settimeout_pos != -1, "setTimeout not in slider handler"
+        assert render_pos < settimeout_pos, "renderWindow.render() must precede setTimeout"
+
 
 class TestControlsStripCameraLogic:
     def test_camera_apply_listener_present(self):
@@ -218,11 +325,6 @@ class TestControlsStripCameraLogic:
         assert "setPosition" in html
         assert "setFocalPoint" in html
         assert "setViewUp" in html
-
-    def test_wildcard_ack_accepted(self):
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        assert 'fig_id!=="*"' in html or 'fig_id !== "*"' in html
 
     def test_send_camera_on_pointerup(self):
         mod = _load_4dpaper()
