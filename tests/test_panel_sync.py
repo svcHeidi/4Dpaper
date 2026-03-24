@@ -18,18 +18,17 @@ def _load_4dpaper():
 class TestSnippetForSync:
     def test_wildcard_ack_accepted(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        # The ack filter must accept wildcard "*" from sync panels
-        assert 'fig_id!=="*"' in snippet or "fig_id !== \"*\"" in snippet
+        snippet = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        assert 'fig_id!=="*"' in snippet or 'fig_id !== "*"' in snippet
 
     def test_camera_apply_listener_present(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
+        snippet = mod._controls_strip_snippet("fig-vm")
         assert "4dpaper-camera-apply" in snippet
 
     def test_camera_apply_sets_camera_position(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
+        snippet = mod._controls_strip_snippet("fig-vm")
         assert "setPosition" in snippet
         assert "setFocalPoint" in snippet
         assert "setViewUp" in snippet
