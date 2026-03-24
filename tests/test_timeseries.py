@@ -139,9 +139,11 @@ class TestFourdTimeseriesLua:
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
         assert '["4d-timeseries"]' in content
 
-    def test_fourd_timeseries_embeds_composite_html(self):
+    def test_fourd_timeseries_reads_manifest(self):
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
-        assert 'state/figures/" .. id .. ".html"' in content
+        # Uses manifest file for subfigure IDs (avoids data: URL iframes which break WebGL)
+        assert '.manifest.json"' in content
+        assert 'data-panel="' in content
 
     def test_fourd_timeseries_pdf_uses_90_percent_width(self):
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()

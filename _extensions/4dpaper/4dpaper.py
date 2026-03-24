@@ -1480,6 +1480,18 @@ window.addEventListener("message",function(e){
     out_path.write_text(composite)
     print(f"[4dpaper] Generated panel (HTML): {out_path}", file=sys.stderr)
 
+    # Write manifest so Lua can embed subfigures as direct srcdoc iframes
+    # (avoids data:text/html;base64 iframes which break vtk.js WebGL rendering).
+    manifest = {
+        "subfigures": [sub["id"] for sub in panel["subfigures"]],
+        "layout": panel.get("layout", "1x1"),
+        "height": panel.get("height", "800px"),
+        "camera_mode": camera_mode,
+    }
+    manifest_path = figures_dir / f"{panel['id']}.manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+    print(f"[4dpaper] Wrote manifest: {manifest_path}", file=sys.stderr)
+
 
 def generate_panel_png(panel: dict, figures_dir: Path) -> None:
     """

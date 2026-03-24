@@ -504,11 +504,15 @@ class TestCameraSyncSnippet:
         snippet = mod._camera_sync_snippet("fig-vm")
         assert "4dpaper-camera" in snippet
 
-    def test_no_fetch_in_snippet(self):
-        """Snippet must NOT contain fetch() — that's now in the relay script."""
+    def test_camera_uses_postmessage_primary_path(self):
+        """Camera saving should use parent.postMessage as the primary path when in an iframe."""
         mod = _load_4dpaper()
         snippet = mod._camera_sync_snippet("fig-vm")
-        assert "fetch(" not in snippet
+        # Primary path: postMessage to relay (when window.parent !== window)
+        assert "parent.postMessage" in snippet
+        assert "4dpaper-camera" in snippet
+        # Lock API uses fetch directly (standalone fallback is acceptable)
+        assert "/camera-lock/" in snippet
 
     def test_ack_listener(self):
         mod = _load_4dpaper()

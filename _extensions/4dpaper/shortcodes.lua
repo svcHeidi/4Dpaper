@@ -96,10 +96,18 @@ local _RELAY_SCRIPT = [=[
       else{_dbg('ERROR: overlay element not found!');}
 
     } else if(e.data.type==="4dpaper-camera"){
-      var figId=e.data.fig_id;
+      /* Check if message comes from a sync-panel subfigure (has data-panel attr) */
+      var panelId=null;
+      var allPanelFrames=document.querySelectorAll("iframe[data-panel]");
+      for(var _pi=0;_pi<allPanelFrames.length;_pi++){
+        if(allPanelFrames[_pi].contentWindow===e.source){
+          panelId=allPanelFrames[_pi].getAttribute("data-panel");break;
+        }
+      }
+      var camId=panelId||e.data.fig_id;
       var _f2=document.getElementById('fourd-cam-iframe');
       var _ss2=document.getElementById('fourd-cam-sttxt');
-      fetch('/camera/'+figId,{
+      fetch('/camera/'+camId,{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(e.data.camera)
       }).then(function(r){
@@ -107,14 +115,30 @@ local _RELAY_SCRIPT = [=[
           if(r.ok){_ss2.textContent='\u2713 Camera saved \u2014 click \u201cRebuild HTML\u201d to apply';_ss2.style.color='#4caf50';}
           else{_ss2.textContent='\u2717 Save failed (server error)';_ss2.style.color='#f44336';}
         }
-        var ack={type:'4dpaper-camera-ack',fig_id:figId,status:r.ok?'ok':'error'};
-        if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack,'*');
-        if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack,'*');
+        if(panelId){
+          /* Sync panel: broadcast camera-apply + ack to all subfigures in this panel */
+          var ack={type:'4dpaper-camera-ack',fig_id:'*',status:r.ok?'ok':'error'};
+          var pFrames=document.querySelectorAll('iframe[data-panel="'+panelId+'"]');
+          for(var _pj=0;_pj<pFrames.length;_pj++){
+            pFrames[_pj].contentWindow.postMessage({type:'4dpaper-camera-apply',camera:e.data.camera},'*');
+            pFrames[_pj].contentWindow.postMessage(ack,'*');
+          }
+        } else {
+          var ack2={type:'4dpaper-camera-ack',fig_id:camId,status:r.ok?'ok':'error'};
+          if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack2,'*');
+          if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack2,'*');
+        }
       }).catch(function(){
         if(_ss2){_ss2.textContent='\u2717 Save failed (network error)';_ss2.style.color='#f44336';}
-        var ack={type:'4dpaper-camera-ack',fig_id:figId,status:'error'};
-        if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack,'*');
-        if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack,'*');
+        if(panelId){
+          var ack3={type:'4dpaper-camera-ack',fig_id:'*',status:'error'};
+          var pFrames2=document.querySelectorAll('iframe[data-panel="'+panelId+'"]');
+          for(var _pk=0;_pk<pFrames2.length;_pk++){pFrames2[_pk].contentWindow.postMessage(ack3,'*');}
+        } else {
+          var ack4={type:'4dpaper-camera-ack',fig_id:camId,status:'error'};
+          if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack4,'*');
+          if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack4,'*');
+        }
       });
 
     } else if(e.data.type==="4dpaper-field-update"){
@@ -346,29 +370,55 @@ local function fourd_panel(args, kwargs)
     end
 
     if camera_mode == "sync" then
-      -- Sync mode: embed composite HTML as single iframe so sync re_relay executes.
-      local composite_path = "state/figures/" .. id .. ".html"
-      local f = io.open(composite_path, "r")
-      if not f then
+      -- Sync mode: embed each subfigure as a direct srcdoc iframe with data-panel attribute.
+      -- This avoids data:text/html;base64 iframes which break vtk.js WebGL rendering.
+      -- The top-level _RELAY_SCRIPT handles panel-sync camera broadcast.
+      local ncols_s = layout:match("^(%d+)x") or "1"
+      local nrows_s = layout:match("x(%d+)$") or "1"
+      local ncols = tonumber(ncols_s) or 1
+      local nrows = tonumber(nrows_s) or 1
+      local sync_cells = {}
+      local n = 1
+      while true do
+        local sub_id_val = kwargs["id" .. n]
+        if not sub_id_val then break end
+        local sub_id = pandoc.utils.stringify(sub_id_val)
+        if sub_id == "" then break end
+        local fig_path = "state/figures/" .. sub_id .. ".html"
+        local cell_iframe
+        if _app_mode then
+          cell_iframe = '<iframe src="/state/figures/' .. sub_id .. '.html" ' ..
+                        'data-panel="' .. id .. '" ' ..
+                        'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
+        else
+          local fh = io.open(fig_path, "r")
+          if fh then
+            local content = fh:read("*all"); fh:close()
+            local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+            cell_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
+                          'data-panel="' .. id .. '" ' ..
+                          'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
+          else
+            cell_iframe = '<div style="background:#222;display:flex;align-items:center;' ..
+                          'justify-content:center;color:#888;font-family:sans-serif;font-size:0.85rem;">' ..
+                          '⚠ ' .. sub_id .. ' not rendered</div>'
+          end
+        end
+        table.insert(sync_cells, cell_iframe)
+        n = n + 1
+      end
+      if #sync_cells == 0 then
         return pandoc.RawBlock("html",
           '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;">' ..
           '⚠ 4D Panel <code>' .. id .. '</code> not yet rendered — ' ..
           'click <strong>Rebuild HTML</strong> in the dashboard.</div>')
       end
-      local composite_iframe
-      if _app_mode then
-        f:close()
-        composite_iframe = '<iframe src="/state/figures/' .. id .. '.html" ' ..
-                           'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
-      else
-        local content = f:read("*all"); f:close()
-        local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-        composite_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
-                           'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
-      end
+      local sync_grid = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
+                        'grid-template-rows:repeat(' .. nrows .. ',1fr);gap:4px;' ..
+                        'width:100%;height:' .. height .. ';background:#111;'
       return pandoc.RawBlock("html",
         '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-        composite_iframe .. '\n' ..
+        '<div style="' .. sync_grid .. '">' .. table.concat(sync_cells) .. '</div>\n' ..
         (caption ~= "" and
           '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
           or "") ..
@@ -566,37 +616,73 @@ local function fourd_timeseries(args, kwargs)
   end
 
   if quarto.doc.isFormat("html") then
-    -- Timeseries is always sync — embed the Python-generated composite HTML as one iframe.
-    local composite_path = "state/figures/" .. id .. ".html"
-    local f = io.open(composite_path, "r")
-
-    if not f then
+    -- Timeseries is always sync — read manifest to get subfigure IDs, then embed
+    -- each as a direct srcdoc iframe with data-panel attribute.
+    -- Avoids data:text/html;base64 iframes which break vtk.js WebGL rendering.
+    local manifest_path = "state/figures/" .. id .. ".manifest.json"
+    local mf = io.open(manifest_path, "r")
+    if not mf then
       return pandoc.RawBlock("html",
         '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;">' ..
         '⚠ 4D Timeseries <code>' .. id .. '</code> not yet rendered — ' ..
         'click <strong>Rebuild HTML</strong> in the dashboard.</div>')
     end
+    local manifest_str = mf:read("*all"); mf:close()
 
-    local composite_iframe
-    if _app_mode then
-      f:close()
-      composite_iframe = '<iframe src="/state/figures/' .. id .. '.html" ' ..
-                         'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
-    else
-      local content = f:read("*all"); f:close()
-      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-      composite_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
-                         'style="width:100%;height:' .. height .. ';border:none;" frameborder="0"></iframe>'
+    -- Simple JSON array parse for "subfigures": ["a","b",...]
+    local subfig_ids = {}
+    for s in manifest_str:gmatch('"subfigures"%s*:%s*%[([^%]]*)%]') do
+      for sub_id in s:gmatch('"([^"]+)"') do
+        table.insert(subfig_ids, sub_id)
+      end
     end
+    -- Layout: Nx1 where N = number of subfigures
+    local ncols = math.max(1, #subfig_ids)
 
     local relay_script = ""
     if not _relay_injected then
       _relay_injected = true
       relay_script = _RELAY_SCRIPT
     end
+
+    if #subfig_ids == 0 then
+      return pandoc.RawBlock("html",
+        '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;">' ..
+        '⚠ 4D Timeseries <code>' .. id .. '</code> manifest empty — ' ..
+        'click <strong>Rebuild HTML</strong> in the dashboard.</div>')
+    end
+
+    local ts_cells = {}
+    for _, sub_id in ipairs(subfig_ids) do
+      local fig_path = "state/figures/" .. sub_id .. ".html"
+      local cell_iframe
+      if _app_mode then
+        cell_iframe = '<iframe src="/state/figures/' .. sub_id .. '.html" ' ..
+                      'data-panel="' .. id .. '" ' ..
+                      'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
+      else
+        local fh = io.open(fig_path, "r")
+        if fh then
+          local content = fh:read("*all"); fh:close()
+          local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+          cell_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
+                        'data-panel="' .. id .. '" ' ..
+                        'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
+        else
+          cell_iframe = '<div style="background:#222;display:flex;align-items:center;' ..
+                        'justify-content:center;color:#888;font-family:sans-serif;font-size:0.85rem;">' ..
+                        '⚠ ' .. sub_id .. ' not rendered</div>'
+        end
+      end
+      table.insert(ts_cells, cell_iframe)
+    end
+
+    local grid_style = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
+                       'grid-template-rows:1fr;gap:4px;' ..
+                       'width:100%;height:' .. height .. ';background:#111;'
     return pandoc.RawBlock("html",
       '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-      composite_iframe .. '\n' ..
+      '<div style="' .. grid_style .. '">' .. table.concat(ts_cells) .. '</div>\n' ..
       (caption ~= "" and
         '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
         or "") ..

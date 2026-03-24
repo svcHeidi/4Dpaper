@@ -114,6 +114,21 @@ class TestSyncPanelCacheInvalidation:
         assert "shared_cam" in source
 
 
+class TestGeneratePanelHtmlWritesManifest:
+    def test_generate_panel_html_source_writes_manifest(self):
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.generate_panel_html)
+        assert "manifest" in source
+        assert ".manifest.json" in source
+
+    def test_relay_script_handles_panel_sync(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        # Relay script must detect data-panel attribute and broadcast to panel members
+        assert 'data-panel' in content
+        assert 'querySelectorAll' in content
+
+
 class TestFourdPanelLua:
     def test_fourd_panel_reads_camera_kwarg(self):
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
@@ -123,7 +138,9 @@ class TestFourdPanelLua:
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
         assert 'camera_mode == "sync"' in content
 
-    def test_fourd_panel_sync_embeds_composite_html(self):
+    def test_fourd_panel_sync_uses_direct_srcdoc_iframes(self):
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
-        # The sync branch reads the composite HTML file (not individual subfigure files)
-        assert 'state/figures/" .. id .. ".html"' in content
+        # The sync branch uses direct srcdoc iframes with data-panel attribute
+        # (avoids data:text/html;base64 iframes which break vtk.js WebGL rendering)
+        assert 'data-panel="' in content
+        assert '"id" .. n' in content  # iterates id1, id2, ... kwargs in sync mode
