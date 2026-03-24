@@ -525,6 +525,108 @@ def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None
         pl.isometric_view()
 
 
+# ── Orientation axes + preset-view snippet ────────────────────────────────────
+
+def _orientation_snippet(fig_id: str) -> str:
+    """
+    Return an HTML+JS snippet that adds a small orientation axes indicator and
+    preset-view buttons in the bottom-left corner of a vtk.js figure.
+
+    The axes are rendered as an SVG updated every animation frame by projecting
+    the world X/Y/Z unit vectors onto the current camera plane — no vtk.js
+    internals required. Preset buttons (Iso, +X, +Y, +Z) set the camera to
+    standard viewpoints without losing the focal point or distance.
+    """
+    fig_id_safe = fig_id.replace("</", "<\\/").replace('"', '')
+    return (
+        f'<div id="orient-widget-{fig_id_safe}" style="'
+        f'position:fixed;bottom:8px;left:8px;z-index:9998;pointer-events:none;'
+        f'display:flex;flex-direction:column;align-items:center;gap:3px;">\n'
+        # SVG axes indicator
+        f'  <svg id="orient-svg-{fig_id_safe}" width="72" height="72"'
+        f' style="background:rgba(20,20,30,0.55);border-radius:6px;display:block;"></svg>\n'
+        # Preset view buttons
+        f'  <div style="display:flex;gap:2px;pointer-events:auto;">\n'
+        f'    <button onclick="_setView_{fig_id_safe}(\'iso\')"'
+        f' style="font-size:9px;padding:1px 5px;background:rgba(40,40,60,0.85);'
+        f'color:#ccc;border:1px solid #555;border-radius:3px;cursor:pointer;">Iso</button>\n'
+        f'    <button onclick="_setView_{fig_id_safe}(\'+X\')"'
+        f' style="font-size:9px;padding:1px 5px;background:rgba(40,40,60,0.85);'
+        f'color:#f88;border:1px solid #555;border-radius:3px;cursor:pointer;">+X</button>\n'
+        f'    <button onclick="_setView_{fig_id_safe}(\'+Y\')"'
+        f' style="font-size:9px;padding:1px 5px;background:rgba(40,40,60,0.85);'
+        f'color:#8f8;border:1px solid #555;border-radius:3px;cursor:pointer;">+Y</button>\n'
+        f'    <button onclick="_setView_{fig_id_safe}(\'+Z\')"'
+        f' style="font-size:9px;padding:1px 5px;background:rgba(40,40,60,0.85);'
+        f'color:#88f;border:1px solid #555;border-radius:3px;cursor:pointer;">+Z</button>\n'
+        f'  </div>\n'
+        f'</div>\n'
+        f'<script>\n'
+        f'(function(){{\n'
+        f'  var _svg=document.getElementById("orient-svg-{fig_id_safe}");\n'
+        f'  var _renderer=null;\n'
+        # Helper: normalise a 3-vector
+        f'  function _norm3(v){{var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);'
+        f'return l<1e-10?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}}\n'
+        f'  function _cross(a,b){{return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}}\n'
+        f'  function _dot(a,b){{return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}}\n'
+        # Draw the SVG axes from the current camera
+        f'  function _drawAxes(){{\n'
+        f'    if(!_renderer)return;\n'
+        f'    var cam=_renderer.getActiveCamera();\n'
+        f'    var pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp();\n'
+        f'    var vd=_norm3([fp[0]-pos[0],fp[1]-pos[1],fp[2]-pos[2]]);\n'
+        f'    var right=_norm3(_cross(vd,vup));\n'
+        f'    var up=_cross(right,vd);\n'
+        f'    var cx=36,cy=36,R=26;\n'
+        # Project world axis A onto screen: (dot(A,right), -dot(A,up))
+        f'    var axes=[{{v:[1,0,0],col:"#f55",lbl:"X"}},{{v:[0,1,0],col:"#5c5",lbl:"Y"}},{{v:[0,0,1],col:"#55f",lbl:"Z"}}];\n'
+        # Sort by depth (draw back-facing axes first)
+        f'    axes.sort(function(a,b){{'
+        f'return _dot(a.v,vd)-_dot(b.v,vd);}});\n'
+        f'    var lines="";\n'
+        f'    for(var i=0;i<axes.length;i++){{\n'
+        f'      var ax=axes[i];\n'
+        f'      var sx=cx+R*_dot(ax.v,right),sy=cy-R*_dot(ax.v,up);\n'
+        f'      var alpha=_dot(ax.v,vd)<0?"0.35":"1";\n'
+        f'      lines+=\'<line x1="\'+cx+\'" y1="\'+cy+\'" x2="\'+sx.toFixed(1)+\'" y2="\'+sy.toFixed(1)+\'"'
+        f' stroke="\'+ax.col+\'" stroke-width="2.5" stroke-opacity="\'+alpha+\'"/>\';\n'
+        f'      lines+=\'<circle cx="\'+sx.toFixed(1)+\'" cy="\'+sy.toFixed(1)+\'" r="4"'
+        f' fill="\'+ax.col+\'" fill-opacity="\'+alpha+\'"/>\';\n'
+        f'      lines+=\'<text x="\'+( sx+(sx-cx>0?6:-10) ).toFixed(1)+\'" y="\'+( sy+(sy-cy>0?8:-4) ).toFixed(1)+\'"'
+        f' font-size="9" fill="\'+ax.col+\'" fill-opacity="\'+alpha+\'" font-family="monospace">\'+ax.lbl+\'</text>\';\n'
+        f'    }}\n'
+        f'    _svg.innerHTML=lines;\n'
+        f'  }}\n'
+        # rAF loop — only runs while tab is visible
+        f'  function _loop(){{_drawAxes();requestAnimationFrame(_loop);}}\n'
+        # Preset-view setter (exposed as global so inline onclick can reach it)
+        f'  window._setView_{fig_id_safe}=function(view){{\n'
+        f'    if(!_renderer)return;\n'
+        f'    var cam=_renderer.getActiveCamera();\n'
+        f'    var fp=cam.getFocalPoint(),dist=cam.getDistance();\n'
+        f'    var dirs={{'
+        f'"iso":{{p:[1,1,1],u:[0,0,1]}},'
+        f'"+X":{{p:[1,0,0],u:[0,0,1]}},'
+        f'"+Y":{{p:[0,1,0],u:[0,0,1]}},'
+        f'"+Z":{{p:[0,0,1],u:[0,1,0]}}'
+        f'}};\n'
+        f'    var d=dirs[view];if(!d)return;\n'
+        f'    var pn=_norm3(d.p);\n'
+        f'    cam.setPosition(fp[0]+pn[0]*dist,fp[1]+pn[1]*dist,fp[2]+pn[2]*dist);\n'
+        f'    cam.setViewUp(d.u[0],d.u[1],d.u[2]);\n'
+        f'    cam.setFocalPoint(fp[0],fp[1],fp[2]);\n'
+        f'    _renderer.resetCameraClippingRange();\n'
+        f'    window.renderWindow.render();\n'
+        f'  }};\n'
+        # Hook into waitRenderer so we get the renderer reference
+        f'  if(typeof waitRenderer==="function"){{'
+        f'waitRenderer(function(r){{_renderer=r;_loop();}});}}\n'
+        f'}})();\n'
+        f'</script>\n'
+    )
+
+
 # ── Camera sync snippet ───────────────────────────────────────────────────────
 
 def _camera_sync_snippet(fig_id: str, show_lock_btn: bool = True) -> str:
@@ -1044,6 +1146,7 @@ def generate_png_figure(
     _cam_id = camera_fig_id or fig_id
     camera_path = (_project_root / "state" / f"camera_{_cam_id}.json" if _cam_id else None)
     apply_camera_state(pl, _cam_id or "unnamed", camera_path)
+    pl.add_axes(interactive=False, line_width=3)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pl.screenshot(str(output_path))
     pl.close()
@@ -1220,7 +1323,12 @@ def generate_html_figure(
             )
         else:
             if camera_preview_only:
-                inj_html = _camera_sync_snippet(fig_id, show_lock_btn=show_lock_btn) + "\n</body>"
+                inj_html = (
+                    _camera_sync_snippet(fig_id, show_lock_btn=show_lock_btn)
+                    + "\n"
+                    + _orientation_snippet(fig_id)
+                    + "\n</body>"
+                )
             else:
                 inj_html = (
                     _camera_sync_snippet(fig_id, show_lock_btn=show_lock_btn)
@@ -1228,6 +1336,8 @@ def generate_html_figure(
                     + _field_sync_snippet(fig_id, fields_to_embed, field, field_data_b64, field_ranges)
                     + "\n"
                     + _time_sync_snippet(fig_id, time_labels, time_data_b64, time_global_range, idx, field)
+                    + "\n"
+                    + _orientation_snippet(fig_id)
                     + "\n</body>"
                 )
             html = html.replace("</body>", inj_html, 1)
@@ -1535,9 +1645,6 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
             f"[4dpaper] 4d-panel layout dimensions must be positive integers, got: '{layout}'"
         )
 
-    cell_w = 1920 // ncols
-    cell_h = 1080 // nrows
-
     camera_mode = panel.get("camera_mode", "independent")
     is_timeseries = panel.get("timeseries", False)
     # Generate each sub-figure PNG
@@ -1545,24 +1652,27 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
         src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
         out = figures_dir / f"{sub['id']}.png"
         cam_id = panel["id"] if camera_mode == "sync" else sub["id"]
-        # For timeseries: only show colorbar on the first subfigure
         show_cb = (sub_idx == 0) if is_timeseries else True
         generate_png_figure(src, sub["field"], sub["time"], out,
                             fig_id=sub["id"], camera_fig_id=cam_id, show_colorbar=show_cb)
 
-    # Compose into 1920×1080 canvas — preserve aspect ratio, centre within cell
-    canvas = Image.new("RGB", (1920, 1080), color="white")
+    # Infer canvas size from actual subfigure dimensions (no fixed 1920×1080).
+    # Each cell is exactly the size of the first subfigure PNG; all subfigures
+    # must have the same dimensions (they are rendered with the same window_size).
+    first_img = Image.open(figures_dir / f"{panel['subfigures'][0]['id']}.png")
+    cell_w, cell_h = first_img.size
+    canvas_w = cell_w * ncols
+    canvas_h = cell_h * nrows
+
+    # Compose: paste each subfigure at its natural size (no scaling needed)
+    canvas = Image.new("RGB", (canvas_w, canvas_h), color="white")
     for idx, sub in enumerate(panel["subfigures"]):
         row, col = divmod(idx, ncols)
         img = Image.open(figures_dir / f"{sub['id']}.png").convert("RGB")
-        sub_w, sub_h = img.size
-        scale = min(cell_w / sub_w, cell_h / sub_h)
-        new_w = max(1, int(sub_w * scale))
-        new_h = max(1, int(sub_h * scale))
-        img = img.resize((new_w, new_h), Image.LANCZOS)
-        x_off = col * cell_w + (cell_w - new_w) // 2
-        y_off = row * cell_h + (cell_h - new_h) // 2
-        canvas.paste(img, (x_off, y_off))
+        # Resize only if this subfigure differs from the expected cell size
+        if img.size != (cell_w, cell_h):
+            img = img.resize((cell_w, cell_h), Image.LANCZOS)
+        canvas.paste(img, (col * cell_w, row * cell_h))
 
     out_path = figures_dir / f"{panel['id']}.png"
     canvas.save(str(out_path))

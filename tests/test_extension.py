@@ -312,23 +312,25 @@ class TestGeneratePanelPng:
             mod.generate_panel_png(self._make_panel(), tmp_path)
         assert (tmp_path / "panel-test.png").exists()
 
-    def test_composite_is_1920x1080(self, tmp_path):
+    def test_composite_2x1_is_correct_size(self, tmp_path):
         from unittest.mock import patch
         from PIL import Image
         mod = _load_4dpaper()
+        # Subfigures are 1920×1080; 2x1 → 2 cols × 1 row = 3840×1080
         with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("blue")):
             mod.generate_panel_png(self._make_panel("2x1", 2), tmp_path)
         img = Image.open(tmp_path / "panel-test.png")
-        assert img.size == (1920, 1080)
+        assert img.size == (1920 * 2, 1080 * 1)
 
     def test_2x2_layout_produces_correct_size(self, tmp_path):
         from unittest.mock import patch
         from PIL import Image
         mod = _load_4dpaper()
+        # Subfigures are 1920×1080; 2x2 → 2 cols × 2 rows = 3840×2160
         with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("green")):
             mod.generate_panel_png(self._make_panel("2x2", 4), tmp_path)
         img = Image.open(tmp_path / "panel-test.png")
-        assert img.size == (1920, 1080)
+        assert img.size == (1920 * 2, 1080 * 2)
 
     def test_invalid_layout_raises(self, tmp_path):
         from unittest.mock import patch
@@ -1221,7 +1223,7 @@ class TestPanelEndToEnd:
         assert "4dpaper-camera-ack" in html, "Bidirectional re-relay script not found"
 
     def test_generate_panel_png_real_files(self, tmp_path):
-        """generate_panel_png creates a 1920x1080 composite PNG from real STL/PLY files."""
+        """generate_panel_png creates composite PNG whose size matches subfig dims × layout."""
         pytest.importorskip("pyvista")
         from PIL import Image
 
@@ -1235,4 +1237,8 @@ class TestPanelEndToEnd:
 
         assert (tmp_path / "panel-e2e.png").exists(), "Composite panel PNG not created"
         img = Image.open(tmp_path / "panel-e2e.png")
-        assert img.size == (1920, 1080), f"Expected (1920, 1080), got {img.size}"
+        sub_img = Image.open(tmp_path / "e2e-stl.png")
+        # 2x1 layout: width = 2 × subfig_width, height = 1 × subfig_height
+        assert img.size == (sub_img.size[0] * 2, sub_img.size[1] * 1), (
+            f"Expected {(sub_img.size[0]*2, sub_img.size[1])}, got {img.size}"
+        )
