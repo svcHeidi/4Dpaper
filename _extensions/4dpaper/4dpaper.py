@@ -527,7 +527,7 @@ def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None
 
 # ── Camera sync snippet ───────────────────────────────────────────────────────
 
-def _camera_sync_snippet(fig_id: str) -> str:
+def _camera_sync_snippet(fig_id: str, show_lock_btn: bool = True) -> str:
     """
     Return an HTML+JS snippet that saves the vtk.js camera on every mouse/touch release.
 
@@ -544,14 +544,19 @@ def _camera_sync_snippet(fig_id: str) -> str:
     """
     fig_id_js = json.dumps(fig_id).replace("</", "<\\/")
     fig_id_safe = fig_id.replace("</", "<\\/")
-    return (
-        # Lock button (top-left)
+    lock_btn_html = (
         f'<button id="lock-btn-{fig_id_safe}" style="position:fixed;top:8px;left:8px;'
         f'background:rgba(0,0,0,0.45);border:none;border-radius:4px;'
         f'font-size:14px;cursor:pointer;padding:4px 6px;z-index:9999;'
         f'color:#fff;opacity:0.7;" title="Lock camera">\U0001f513</button>\n'
+    ) if show_lock_btn else (
+        # Hidden placeholder so JS references (lock-btn-*) don't break
+        f'<button id="lock-btn-{fig_id_safe}" style="display:none;"></button>\n'
+    )
+    return (
+        lock_btn_html
         # Camera sync badge (top-right, hidden until sync)
-        f'<div id="camera-badge-{fig_id_safe}" style="position:fixed;top:8px;right:8px;'
+        + f'<div id="camera-badge-{fig_id_safe}" style="position:fixed;top:8px;right:8px;'
         f'display:none;color:#fff;padding:4px 8px;'
         f'border-radius:4px;font-size:11px;font-family:monospace;'
         f'z-index:9999;pointer-events:none;"></div>\n'
@@ -564,8 +569,10 @@ def _camera_sync_snippet(fig_id: str) -> str:
         f'  var lockBtn=document.getElementById("lock-btn-{fig_id_safe}");\n'
         f'  function setLocked(v){{\n'
         f'    locked=v;\n'
-        f'    lockBtn.textContent=v?"\U0001f512":"\U0001f513";\n'
-        f'    lockBtn.style.opacity=v?"1":"0.7";\n'
+        f'    if(lockBtn.style.display!=="none"){{\n'
+        f'      lockBtn.textContent=v?"\U0001f512":"\U0001f513";\n'
+        f'      lockBtn.style.opacity=v?"1":"0.7";\n'
+        f'    }}\n'
         f'  }}\n'
         f'  if(window.parent!==window){{\n'
         f'    parent.postMessage({{type:"4dpaper-lock-query",fig_id:FIG_ID}},"*");\n'
@@ -978,6 +985,7 @@ def generate_png_figure(
     background: str = "white",
     axis_color: str = "black",
     cmap: str = "coolwarm",
+    show_colorbar: bool = True,
 ) -> None:
     """
     Generate a static PNG figure using PyVista.
@@ -1022,7 +1030,8 @@ def generate_png_figure(
             scalars=field,
             cmap=cmap,
             smooth_shading=True,
-            scalar_bar_args={"title": field, "color": axis_color},
+            show_scalar_bar=show_colorbar,
+            scalar_bar_args={"title": field, "color": axis_color} if show_colorbar else {},
         )
     else:
         pl.add_mesh(surface, color="#aaaaaa", opacity=0.9)
@@ -1052,6 +1061,8 @@ def generate_html_figure(
     background: str = "white",
     axis_color: str = "black",
     cmap: str = "coolwarm",
+    show_colorbar: bool = True,
+    show_lock_btn: bool = True,
 ) -> None:
     """
     Generate a self-contained vtk.js HTML figure using PyVista.
@@ -1097,7 +1108,8 @@ def generate_html_figure(
             scalars=field,
             cmap=cmap,
             smooth_shading=True,
-            scalar_bar_args={"title": field, "color": axis_color},
+            show_scalar_bar=show_colorbar,
+            scalar_bar_args={"title": field, "color": axis_color} if show_colorbar else {},
         )
     else:
         pl.add_mesh(surface, color="#aaaaaa", opacity=0.9)
@@ -1208,10 +1220,10 @@ def generate_html_figure(
             )
         else:
             if camera_preview_only:
-                inj_html = _camera_sync_snippet(fig_id) + "\n</body>"
+                inj_html = _camera_sync_snippet(fig_id, show_lock_btn=show_lock_btn) + "\n</body>"
             else:
                 inj_html = (
-                    _camera_sync_snippet(fig_id)
+                    _camera_sync_snippet(fig_id, show_lock_btn=show_lock_btn)
                     + "\n"
                     + _field_sync_snippet(fig_id, fields_to_embed, field, field_data_b64, field_ranges)
                     + "\n"
@@ -1387,11 +1399,18 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
     height = panel.get("height", "800px")
 
     # Generate each sub-figure HTML (reuses caching inside generate_html_figure)
-    for sub in panel["subfigures"]:
+    is_timeseries = panel.get("timeseries", False)
+    for sub_idx, sub in enumerate(panel["subfigures"]):
         src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
         out = figures_dir / f"{sub['id']}.html"
         af = [f.strip() for f in sub.get("fields", "").split(",") if f.strip()] or None
-        generate_html_figure(src, sub["field"], sub["time"], out, fig_id=sub["id"], available_fields=af)
+        # For timeseries: only show colorbar and lock button on the first panel
+        is_first = sub_idx == 0
+        generate_html_figure(
+            src, sub["field"], sub["time"], out, fig_id=sub["id"], available_fields=af,
+            show_colorbar=is_first if is_timeseries else True,
+            show_lock_btn=is_first if is_timeseries else True,
+        )
 
     # Bidirectional re-relay: forwards camera/field UP to top, acks DOWN to children
     camera_mode = panel.get("camera_mode", "independent")
@@ -1520,21 +1539,30 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
     cell_h = 1080 // nrows
 
     camera_mode = panel.get("camera_mode", "independent")
+    is_timeseries = panel.get("timeseries", False)
     # Generate each sub-figure PNG
-    for sub in panel["subfigures"]:
+    for sub_idx, sub in enumerate(panel["subfigures"]):
         src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
         out = figures_dir / f"{sub['id']}.png"
         cam_id = panel["id"] if camera_mode == "sync" else sub["id"]
+        # For timeseries: only show colorbar on the first subfigure
+        show_cb = (sub_idx == 0) if is_timeseries else True
         generate_png_figure(src, sub["field"], sub["time"], out,
-                            fig_id=sub["id"], camera_fig_id=cam_id)
+                            fig_id=sub["id"], camera_fig_id=cam_id, show_colorbar=show_cb)
 
-    # Compose into 1920×1080 canvas
-    canvas = Image.new("RGB", (1920, 1080), color="#1a1a2e")
+    # Compose into 1920×1080 canvas — preserve aspect ratio, centre within cell
+    canvas = Image.new("RGB", (1920, 1080), color="white")
     for idx, sub in enumerate(panel["subfigures"]):
         row, col = divmod(idx, ncols)
         img = Image.open(figures_dir / f"{sub['id']}.png").convert("RGB")
-        img = img.resize((cell_w, cell_h), Image.LANCZOS)
-        canvas.paste(img, (col * cell_w, row * cell_h))
+        sub_w, sub_h = img.size
+        scale = min(cell_w / sub_w, cell_h / sub_h)
+        new_w = max(1, int(sub_w * scale))
+        new_h = max(1, int(sub_h * scale))
+        img = img.resize((new_w, new_h), Image.LANCZOS)
+        x_off = col * cell_w + (cell_w - new_w) // 2
+        y_off = row * cell_h + (cell_h - new_h) // 2
+        canvas.paste(img, (x_off, y_off))
 
     out_path = figures_dir / f"{panel['id']}.png"
     canvas.save(str(out_path))

@@ -199,7 +199,7 @@ class TestGeneratePanelHtml:
         from unittest.mock import patch
         mod = _load_4dpaper()
 
-        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text(f"<html>content-{fig_id}</html>")
 
         with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
@@ -212,7 +212,7 @@ class TestGeneratePanelHtml:
         from unittest.mock import patch
         mod = _load_4dpaper()
 
-        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text("<html>x</html>")
 
         with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
@@ -227,7 +227,7 @@ class TestGeneratePanelHtml:
         from unittest.mock import patch
         mod = _load_4dpaper()
 
-        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text("<html>x</html>")
 
         with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
@@ -242,7 +242,7 @@ class TestGeneratePanelHtml:
         from unittest.mock import patch
         mod = _load_4dpaper()
 
-        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text(f"<html>unique-{fig_id}</html>")
 
         with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
@@ -260,7 +260,7 @@ class TestGeneratePanelHtml:
         from unittest.mock import patch
         mod = _load_4dpaper()
 
-        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text("<html>x</html>")
 
         with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
@@ -272,7 +272,7 @@ class TestGeneratePanelHtml:
         mod = _load_4dpaper()
         subs = [{"src": f"{i}.stl", "id": f"fig-{i}", "field": "", "time": "mid"} for i in range(3)]
 
-        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None):
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text("<html>x</html>")
 
         with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
