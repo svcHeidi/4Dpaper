@@ -705,7 +705,9 @@ def _controls_strip_snippet(
         _js.append(f'  var _iact=null;\n')
 
     _close_on_toggle = (
-        f'    if(name!=="axes"){{if(_iact)_iact.setEnabled(0);}}\n'
+        f'    var _axpop=document.getElementById("cs-pop-axes-{fig_id_safe}");\n'
+        f'    if(_axpop&&_axpop.style.display!=="none"){{if(_iact)_iact.setEnabled(1);}}'
+        f'else{{if(_iact)_iact.setEnabled(0);}}\n'
     ) if show_orientation else ''
     _js.append(
         f'  var _CS_ALL=["axes","lock","field","time"];\n'
