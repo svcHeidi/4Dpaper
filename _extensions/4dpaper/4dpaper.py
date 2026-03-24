@@ -619,9 +619,18 @@ def _orientation_snippet(fig_id: str) -> str:
         f'    _renderer.resetCameraClippingRange();\n'
         f'    window.renderWindow.render();\n'
         f'  }};\n'
-        # Hook into waitRenderer so we get the renderer reference
-        f'  if(typeof waitRenderer==="function"){{'
-        f'waitRenderer(function(r){{_renderer=r;_loop();}});}}\n'
+        # Inline renderer polling (waitRenderer is scoped inside camera IIFE, not global)
+        f'  (function _waitR(){{\n'
+        f'    var rw=window.renderWindow;\n'
+        f'    if(rw&&rw.getRenderers){{\n'
+        f'      var rs=rw.getRenderers();\n'
+        f'      for(var _i=0;_i<rs.length;_i++){{\n'
+        f'        var _r=rs[_i];\n'
+        f'        if(_r&&_r.getActors&&_r.getActors().length>0){{_renderer=_r;_loop();return;}}\n'
+        f'      }}\n'
+        f'    }}\n'
+        f'    setTimeout(_waitR,200);\n'
+        f'  }})();\n'
         f'}})();\n'
         f'</script>\n'
     )
