@@ -573,18 +573,19 @@ def _controls_strip_snippet(
         "box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none;flex-direction:column;gap:6px;"
         "min-width:120px;"
     )
+    AXES_POP = (
+        "position:fixed;bottom:36px;left:4px;"
+        "z-index:9998;background:rgba(20,20,30,0.88);"
+        "border:1px solid rgba(255,255,255,0.12);border-radius:6px;"
+        "padding:8px;font-family:monospace;font-size:11px;color:#eee;"
+        "box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none;flex-direction:column;gap:6px;"
+    )
     PBTN = (
         "font-size:9px;padding:1px 5px;background:rgba(40,40,60,0.85);"
         "border:1px solid #555;border-radius:3px;cursor:pointer;"
     )
 
     strip_btns = ""
-    if show_orientation:
-        strip_btns += (
-            f'<button id="cs-btn-axes-{fig_id_safe}"'
-            f' onclick="csToggle_{fig_id_safe}(\'axes\')"'
-            f' title="Orientation / Preset views" style="{BTN}">&#x1F9ED;</button>\n'
-        )
     if show_lock_btn:
         strip_btns += (
             f'<button id="cs-btn-lock-{fig_id_safe}"'
@@ -604,20 +605,27 @@ def _controls_strip_snippet(
             f' title="Time step" style="{BTN}">&#x1F550;</button>\n'
         )
 
-    if not strip_btns:
+    if not strip_btns and not show_orientation:
         return ""
 
+    corner_widget = ""
     axes_pop = ""
     if show_orientation:
+        corner_widget = (
+            f'<div id="cs-corner-{fig_id_safe}"'
+            f' style="position:fixed;bottom:4px;left:4px;z-index:9999;">\n'
+            f'  <svg id="cs-svg-axes-{fig_id_safe}" width="28" height="28"'
+            f' style="background:rgba(10,10,20,0.55);border:1px solid rgba(255,255,255,0.12);'
+            f'border-radius:4px;display:block;cursor:pointer;" title="Click to rotate"></svg>\n'
+            f'</div>\n'
+        )
         axes_pop = (
-            f'<div id="cs-pop-axes-{fig_id_safe}" style="{POP}">\n'
-            f'  <svg id="cs-svg-axes-{fig_id_safe}" width="72" height="72"'
-            f' style="background:rgba(10,10,20,0.6);border-radius:4px;display:block;"></svg>\n'
+            f'<div id="cs-pop-axes-{fig_id_safe}" style="{AXES_POP}">\n'
             f'  <div style="display:flex;gap:2px;flex-wrap:wrap;">\n'
             f'    <button onclick="csSetView_{fig_id_safe}(\'iso\')" style="{PBTN}color:#ccc">Iso</button>\n'
-            f'    <button onclick="csSetView_{fig_id_safe}(\'+X\')" style="{PBTN}color:#f88">+X</button>\n'
-            f'    <button onclick="csSetView_{fig_id_safe}(\'+Y\')" style="{PBTN}color:#8f8">+Y</button>\n'
-            f'    <button onclick="csSetView_{fig_id_safe}(\'+Z\')" style="{PBTN}color:#88f">+Z</button>\n'
+            f'    <button onclick="csSetView_{fig_id_safe}(\'+X\')" style="{PBTN}color:#f66">+X</button>\n'
+            f'    <button onclick="csSetView_{fig_id_safe}(\'+Y\')" style="{PBTN}color:#6f6">+Y</button>\n'
+            f'    <button onclick="csSetView_{fig_id_safe}(\'+Z\')" style="{PBTN}color:#66f">+Z</button>\n'
             f'  </div>\n'
             f'</div>\n'
         )
@@ -671,13 +679,15 @@ def _controls_strip_snippet(
             f'</div>\n'
         )
 
-    html_block = (
-        f'<div id="cs-strip-{fig_id_safe}" style="position:fixed;right:4px;top:50%;'
-        f'transform:translateY(-50%);z-index:9999;display:flex;flex-direction:column;gap:4px;">\n'
-        + strip_btns
-        + f'</div>\n'
-        + axes_pop + lock_pop + field_pop + time_pop
-    )
+    html_block = ""
+    if strip_btns:
+        html_block += (
+            f'<div id="cs-strip-{fig_id_safe}" style="position:fixed;right:4px;top:50%;'
+            f'transform:translateY(-50%);z-index:9999;display:flex;flex-direction:column;gap:4px;">\n'
+            + strip_btns
+            + f'</div>\n'
+        )
+    html_block += axes_pop + lock_pop + field_pop + time_pop + corner_widget
 
     active_field_js = json.dumps(active_field).replace("</", "<\\/")
     field_data_js = json.dumps(field_data_b64 or {}).replace("</", "<\\/")
@@ -691,6 +701,12 @@ def _controls_strip_snippet(
 
     _js.append(f'  var FIG_ID={fig_id_js};\n')
 
+    if show_orientation:
+        _js.append(f'  var _iact=null;\n')
+
+    _close_on_toggle = (
+        f'    if(name!=="axes"){{if(_iact)_iact.setEnabled(0);}}\n'
+    ) if show_orientation else ''
     _js.append(
         f'  var _CS_ALL=["axes","lock","field","time"];\n'
         f'  window.csToggle_{fig_id_safe}=function(name){{\n'
@@ -699,7 +715,8 @@ def _controls_strip_snippet(
         f'      if(!_el)continue;\n'
         f'      _el.style.display=(_CS_ALL[_i]===name&&_el.style.display==="none")?"flex":"none";\n'
         f'    }}\n'
-        f'  }};\n'
+        + _close_on_toggle
+        + f'  }};\n'
     )
 
     # _locked ALWAYS declared (used by _sendCam regardless of show_lock_btn)
@@ -790,6 +807,23 @@ def _controls_strip_snippet(
     # Orientation helpers (conditional)
     if show_orientation:
         _js.append(
+            f'  function _openRotation(){{\n'
+            f'    if(_iact)_iact.setEnabled(1);\n'
+            f'    document.getElementById("cs-pop-axes-{fig_id_safe}").style.display="flex";\n'
+            f'  }}\n'
+            f'  function _closeRotation(){{\n'
+            f'    if(_iact)_iact.setEnabled(0);\n'
+            f'    document.getElementById("cs-pop-axes-{fig_id_safe}").style.display="none";\n'
+            f'  }}\n'
+            f'  (function(){{\n'
+            f'    var _svgEl=document.getElementById("cs-svg-axes-{fig_id_safe}");\n'
+            f'    if(_svgEl)_svgEl.addEventListener("click",function(){{\n'
+            f'      var pop=document.getElementById("cs-pop-axes-{fig_id_safe}");\n'
+            f'      if(!pop)return;\n'
+            f'      if(pop.style.display==="none"||pop.style.display==="")'
+            f'{{_openRotation();}}else{{_closeRotation();}}\n'
+            f'    }});\n'
+            f'  }})();\n'
             f'  var _renderer=null;\n'
             f'  function _n3(v){{var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);'
             f'return l<1e-10?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}}\n'
@@ -802,8 +836,8 @@ def _controls_strip_snippet(
             f'    var pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp();\n'
             f'    var vd=_n3([fp[0]-pos[0],fp[1]-pos[1],fp[2]-pos[2]]);\n'
             f'    var right=_n3(_cr(vd,vup)),up=_cr(right,vd);\n'
-            f'    var cx=36,cy=36,R=26;\n'
-            f'    var axes=[{{v:[1,0,0],col:"#f55",lbl:"X"}},{{v:[0,1,0],col:"#5c5",lbl:"Y"}},{{v:[0,0,1],col:"#55f",lbl:"Z"}}];\n'
+            f'    var cx=14,cy=14,R=10;\n'
+            f'    var axes=[{{v:[1,0,0],col:"#f66",lbl:"x"}},{{v:[0,1,0],col:"#6f6",lbl:"y"}},{{v:[0,0,1],col:"#66f",lbl:"z"}}];\n'
             f'    axes.sort(function(a,b){{return _dt(a.v,vd)-_dt(b.v,vd);}});\n'
             f'    var lines="";\n'
             f'    for(var i=0;i<axes.length;i++){{\n'
@@ -811,11 +845,11 @@ def _controls_strip_snippet(
             f'      var sx=cx+R*_dt(ax.v,right),sy=cy-R*_dt(ax.v,up);\n'
             f'      var al=_dt(ax.v,vd)<0?"0.35":"1";\n'
             f'      lines+=\'<line x1="\'+cx+\'" y1="\'+cy+\'" x2="\'+sx.toFixed(1)+\'" y2="\'+sy.toFixed(1)+\'"'
-            f' stroke="\'+ax.col+\'" stroke-width="2.5" stroke-opacity="\'+al+\'"/>\';\n'
-            f'      lines+=\'<circle cx="\'+sx.toFixed(1)+\'" cy="\'+sy.toFixed(1)+\'" r="4"'
+            f' stroke="\'+ax.col+\'" stroke-width="2" stroke-opacity="\'+al+\'"/>\';\n'
+            f'      lines+=\'<circle cx="\'+sx.toFixed(1)+\'" cy="\'+sy.toFixed(1)+\'" r="3"'
             f' fill="\'+ax.col+\'" fill-opacity="\'+al+\'"/>\';\n'
-            f'      lines+=\'<text x="\'+( sx+(sx-cx>0?6:-10) ).toFixed(1)+\'" y="\'+( sy+(sy-cy>0?8:-4) ).toFixed(1)+\'"'
-            f' font-size="9" fill="\'+ax.col+\'" fill-opacity="\'+al+\'" font-family="monospace">\'+ax.lbl+\'</text>\';\n'
+            f'      lines+=\'<text x="\'+( sx+(sx-cx>0?4:-8) ).toFixed(1)+\'" y="\'+( sy+(sy-cy>0?7:-3) ).toFixed(1)+\'"'
+            f' font-size="7" fill="\'+ax.col+\'" fill-opacity="\'+al+\'" font-family="monospace">\'+ax.lbl+\'</text>\';\n'
             f'    }}\n'
             f'    _svg.innerHTML=lines;\n'
             f'  }}\n'
@@ -833,6 +867,7 @@ def _controls_strip_snippet(
             f'    cam.setFocalPoint(fp[0],fp[1],fp[2]);\n'
             f'    _renderer.resetCameraClippingRange();\n'
             f'    if(window.renderWindow)window.renderWindow.render();\n'
+            f'    _closeRotation();\n'
             f'  }};\n'
         )
     else:
@@ -840,6 +875,10 @@ def _controls_strip_snippet(
 
     # Renderer polling
     _axLoop_call = f'          _axLoop();\n' if show_orientation else ''
+    _iact_lock = (
+        f'          _iact=window.renderWindow.getInteractor();\n'
+        f'          if(_iact)_iact.setEnabled(0);\n'
+    ) if show_orientation else ''
     _js.append(
         f'  (function _wR(){{\n'
         f'    var rw=window.renderWindow;\n'
@@ -849,8 +888,9 @@ def _controls_strip_snippet(
         f'        var _r=rs[_ri];\n'
         f'        if(_r&&_r.getActors&&_r.getActors().length>0){{\n'
         f'          _renderer=_r;\n'
-        + _axLoop_call +
-        f'          document.addEventListener("pointerup",function(){{_sendCam(_renderer);}});\n'
+        + _axLoop_call
+        + _iact_lock
+        + f'          document.addEventListener("pointerup",function(){{_sendCam(_renderer);}});\n'
         f'          document.addEventListener("mouseup",function(){{_sendCam(_renderer);}});\n'
         f'          document.addEventListener("touchend",function(){{_sendCam(_renderer);}});\n'
         f'          window.addEventListener("message",function(e){{\n'
