@@ -49,7 +49,7 @@ class TestControlsStripHtml:
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
         assert 'id="cs-btn-lock-fig_vm"' not in html
 
-    def test_axes_button_present_when_show_orientation(self):
+    def test_axes_button_absent_when_show_orientation(self):
         """Axes strip button is replaced by corner cube — must be absent."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
@@ -103,12 +103,6 @@ class TestControlsStripHtml:
         assert 'id="cs-svg-axes-fig_vm"' in html
         assert "bottom:4px" in html
         assert "left:4px" in html
-
-    def test_axes_button_absent_from_strip(self):
-        """Axes strip button is removed — cube is the only entry point."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert 'id="cs-btn-axes-fig_vm"' not in html
 
     def test_axes_popup_above_corner(self):
         mod = _load_4dpaper()
