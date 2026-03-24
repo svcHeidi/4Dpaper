@@ -16,7 +16,25 @@ All changes are inside `_controls_strip_snippet` in `_extensions/4dpaper/4dpaper
 
 ### Corner widget size
 
-`cs-corner-{fig_id_safe}` grows from 28×28 to 72×72:
+`cs-corner-{fig_id_safe}` grows from 28×28 to 72×72.
+
+### Axes popup removed
+
+`cs-pop-axes-{fig_id_safe}` is **no longer emitted**. The `AXES_POP` style constant is removed.
+
+### `_close_on_toggle` removed
+
+The `_close_on_toggle` JS fragment (currently emitted when `show_orientation=True`) checks whether `cs-pop-axes-` is visible to enable/disable the interactor on each panel toggle. Since the popup is gone, this element lookup would always return `null` and silently kill the interactor on every field/time panel open. **`_close_on_toggle` is removed entirely.** Interactor state is managed only by `csSetView_` and the lock button.
+
+### Interactor lifecycle
+
+`_iact.setEnabled(0)` remains in the `_wR` renderer-polling block (interactor starts disabled on load — unchanged). `csSetView_` is the only function that re-enables it (via `_iact.setEnabled(1)`). The user enables rotation by clicking a face or corner; free-drag from that position is then available. The lock button disables the interactor again.
+
+`_openRotation()` and `_closeRotation()` are **removed**. There is no separate "rotation mode" toggle — the cube face/corner click is the single interaction point.
+
+---
+
+### SVG element
 
 ```html
 <div id="cs-corner-{fig_id_safe}"
@@ -29,10 +47,6 @@ All changes are inside `_controls_strip_snippet` in `_extensions/4dpaper/4dpaper
 ```
 
 The SVG starts empty — `_drawCube()` populates its `innerHTML` every rAF frame.
-
-### Axes popup removed
-
-`cs-pop-axes-{fig_id_safe}` is **no longer emitted**. The `AXES_POP` style constant is removed. The preset buttons (`Iso`, `+X`, `+Y`, `+Z`) are removed from the HTML.
 
 ---
 
@@ -163,13 +177,27 @@ window.csSetView_{fig_id_safe} = function(dir) {
 
 ## Component 4: Lock gate on cube clicks
 
-When `show_lock_btn=True`, the `_drawCube()` polygon `onclick` is guarded:
+When `show_lock_btn=True`, the `_drawCube()` polygon `onclick` is guarded. In Python, the onclick attribute string is built as:
 
-```js
-onclick="if(_locked){_showLockedBadge();return;}csSetView_{fig_id_safe}('+dirStr+')"
+```python
+# _lock_gate_js is computed once before the _drawCube function string:
+_lock_gate_js = (
+    f'if(_locked){{_showLockedBadge();return;}}'
+) if show_lock_btn else ''
+
+# Inside _drawCube, the onclick per polygon is:
+f' onclick="{_lock_gate_js}csSetView_{fig_id_safe}("+dirStr+")'
 ```
 
-When `show_lock_btn=False`, no guard is emitted (same rule as the current SVG click listener).
+Where `dirStr` is a JS `JSON.stringify`-equivalent string like `[1,1,1]` produced by Python string formatting of the direction array. For example for dir `[1,1,1]`:
+
+```python
+dir_str = '[' + ','.join(str(d) for d in piece['dir']) + ']'
+# onclick="csSetView_fig_vm([1,1,1])"   (no lock gate)
+# onclick="if(_locked){_showLockedBadge();return;}csSetView_fig_vm([1,1,1])"   (with lock gate)
+```
+
+When `show_lock_btn=False`, `_lock_gate_js` is an empty string — no guard emitted.
 
 ---
 
@@ -190,33 +218,37 @@ All tests in `tests/test_controls_strip.py`.
 
 ### Tests to remove
 
-- `test_axes_popup_above_corner` — popup gone
+- `test_axes_popup_above_corner` — popup gone (replaced by `test_axes_popup_absent`)
 - `test_interactor_enabled_on_open` — `_openRotation` gone
 - `test_null_interactor_safe` — `_openRotation`/`_closeRotation` gone
 - `test_preset_closes_popup` — `_closeRotation()` no longer in `csSetView_`
 - `test_click_handler_on_svg` — SVG-level click handler gone (per-polygon onclick instead)
+- `test_preset_buttons_call_set_view` — buttons are now JS-generated polygons, not static HTML
+- `test_corner_cube_checks_locked_flag` — SVG addEventListener gone; replaced by `test_cube_lock_gate_in_draw_cube`
+- `test_corner_cube_no_locked_gate_when_lock_hidden` — SVG addEventListener gone; replaced by `test_cube_no_lock_gate_when_lock_hidden`
 
 ### Tests to update
 
-- `test_corner_cube_present_when_show_orientation` — assert `width="72"` (not `width="28"`)
-- `test_axes_popup_above_corner` → `test_axes_popup_absent` — assert `cs-pop-axes-` NOT in HTML
-- `test_preset_buttons_call_set_view` — remove (buttons are now JS-generated polygons, not static HTML)
+- `test_corner_cube_present_when_show_orientation` — assert `width="72"` not `width="28"`
+- `test_popup_panels_present_for_active_features` — remove assertion for `cs-pop-axes-fig_vm` (popup gone); assert it is absent
+- `test_interactor_disabled_on_load` — still passes unchanged: `setEnabled(0)` remains in `_wR` polling block
 
 ### New tests — `TestControlsStripHtml`
 
 - `test_cube_svg_size` — `width="72" height="72"` in snippet when `show_orientation=True`
-- `test_axes_popup_absent` — `cs-pop-axes-` NOT in snippet
+- `test_axes_popup_absent` — `cs-pop-axes-` NOT in snippet when `show_orientation=True`
 
 ### New tests — `TestControlsStripJs`
 
 - `test_draw_cube_function_present` — `_drawCube` in snippet when `show_orientation=True`
-- `test_draw_cube_absent_when_orientation_hidden` — `_drawCube` NOT in snippet when `show_orientation=False`
-- `test_cs_setview_accepts_direction_array` — `csSetView_` function body contains `_n3(dir)` (direction normalisation)
-- `test_interactor_enabled_on_setview` — `setEnabled(1)` present inside `csSetView_` function body
+- `test_draw_cube_absent_when_orientation_hidden` — `_drawCube` NOT in snippet when `show_orientation=False`; `test_axes_raf_loop_absent_when_hidden` continues to cover `_axLoop` absence unchanged
+- `test_cs_setview_accepts_direction_array` — `csSetView_` function body contains `_n3(dir)` (direction normalisation from array argument)
+- `test_interactor_enabled_on_setview` — `if(_iact)` guard and `setEnabled(1)` both present inside `csSetView_` function body
 - `test_open_rotation_absent` — `_openRotation` NOT in snippet
 - `test_close_rotation_absent` — `_closeRotation` NOT in snippet
-- `test_cube_lock_gate_in_draw_cube` — when `show_lock_btn=True`: `_showLockedBadge` present inside `_drawCube` onclick string
-- `test_cube_no_lock_gate_when_lock_hidden` — when `show_lock_btn=False`: `_showLockedBadge` NOT present in `_drawCube` onclick string
+- `test_close_on_toggle_absent` — `_close_on_toggle` string (i.e. `cs-pop-axes-` inside a JS interactor-enable check) NOT in snippet
+- `test_cube_lock_gate_in_draw_cube` — when `show_lock_btn=True`: `_showLockedBadge` present inside `_drawCube` function body
+- `test_cube_no_lock_gate_when_lock_hidden` — when `show_lock_btn=False`: `_showLockedBadge` NOT present inside `_drawCube` function body
 
 ---
 
@@ -224,9 +256,9 @@ All tests in `tests/test_controls_strip.py`.
 
 - `generate_html_figure` call signature
 - `show_orientation` parameter semantics
-- `_iact` declaration and polling logic
+- `_iact` declaration and `setEnabled(0)` in the `_wR` renderer-polling block (interactor starts disabled on load)
 - `_n3`, `_cr`, `_dt` math helpers
-- `_axLoop` requestAnimationFrame loop (just calls `_drawCube` instead of `_drawAxes`)
+- `_axLoop` requestAnimationFrame loop (calls `_drawCube` instead of `_drawAxes` — same loop, new function)
 - Camera sync logic (`_sendCam`, mouseup/touchend listeners)
-- Lock widget and badge
+- Lock widget and badge (`cs-lock-widget-`, `cs-lock-badge-`, `_setLocked`, `_showLockedBadge`)
 - Field switcher and time scrubber
