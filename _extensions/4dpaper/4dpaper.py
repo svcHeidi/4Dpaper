@@ -138,6 +138,78 @@ def parse_panel_shortcodes(text: str) -> list[dict]:
     return results
 
 
+# -- Timeseries parsing ----------------------------------------------------------
+
+def parse_timeseries_shortcodes(text: str) -> list[dict]:
+    """
+    Parse {{< 4d-timeseries key="value" ... >}} shortcodes from QMD text.
+
+    Returns raw dicts — step expansion happens in main() after simulation load.
+    Shortcodes missing 'id' or 'src' are skipped.
+    """
+    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    pattern = r'\{\{<\s*4d-timeseries\s+(.*?)\s*>\}\}'
+    results = []
+    for match in re.finditer(pattern, stripped, re.DOTALL):
+        raw = match.group(1)
+        kwargs: dict[str, str] = {}
+        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+            kwargs[key] = val
+        if "id" not in kwargs:
+            print("[4dpaper] Warning: 4d-timeseries shortcode missing 'id' — skipping.", file=sys.stderr)
+            continue
+        if "src" not in kwargs:
+            print("[4dpaper] Warning: 4d-timeseries shortcode missing 'src' — skipping.", file=sys.stderr)
+            continue
+        results.append({
+            "id":          kwargs["id"],
+            "layout":      None,
+            "height":      kwargs.get("height", "400px"),
+            "caption":     kwargs.get("caption", ""),
+            "camera_mode": "sync",
+            "timeseries":  True,
+            "src":         kwargs["src"],
+            "field":       kwargs.get("field", ""),
+            "steps":       kwargs.get("steps", "4"),
+            "times":       kwargs.get("times", ""),
+            "subfigures":  [],
+        })
+    return results
+
+
+def _expand_timeseries_steps(ts: dict, n_steps: int) -> list[int]:
+    """Expand steps/times string to list of integer step indices.
+
+    times= takes precedence. If all tokens are invalid, falls back to steps= logic.
+    n_steps <= 1 yields [0] with a warning (degenerate single-frame case).
+    steps="1" is treated as steps="2" (minimum useful timeseries).
+    """
+    if ts["times"]:
+        result = []
+        for tok in ts["times"].split(","):
+            tok = tok.strip()
+            if tok == "first":
+                result.append(0)
+            elif tok == "last":
+                result.append(max(0, n_steps - 1))
+            else:
+                try:
+                    result.append(max(0, min(int(tok), n_steps - 1)))
+                except ValueError:
+                    pass  # skip invalid tokens
+        if result:
+            return result
+        # All tokens invalid — fall through to steps= logic
+    if n_steps <= 1:
+        print(
+            f"[4dpaper] WARNING: timeseries '{ts['id']}' source has only {n_steps} step(s) "
+            "— generating single frame.", file=sys.stderr
+        )
+        return [0]
+    N = max(2, int(ts.get("steps", "4")))
+    return [round(i * (n_steps - 1) / (N - 1)) for i in range(N)]
+
+
 # -- PVSM parsing ---------------------------------------------------------------
 
 def parse_pvsm_shortcodes(text: str) -> list[dict]:
@@ -1685,15 +1757,17 @@ def main() -> None:
     videos = []
     panels = []
     pvsm_figs = []
+    ts_raw = []
     for qmd in qmd_files:
         text = qmd.read_text()
         figures.extend(parse_shortcodes(text))
         videos.extend(parse_video_shortcodes(text))
         panels.extend(parse_panel_shortcodes(text))
         pvsm_figs.extend(parse_pvsm_shortcodes(text))
+        ts_raw.extend(parse_timeseries_shortcodes(text))
 
-    if not figures and not videos and not panels and not pvsm_figs:
-        print("[4dpaper] No 4d-image, 4d-video, 4d-panel, or 4d-pvsm shortcodes found.", file=sys.stderr)
+    if not any([figures, videos, panels, pvsm_figs, ts_raw]):
+        print("[4dpaper] No 4d-image, 4d-video, 4d-panel, 4d-pvsm, or 4d-timeseries shortcodes found.", file=sys.stderr)
         return
 
     figures_dir = _project_root / "state" / "figures"
@@ -1703,6 +1777,30 @@ def main() -> None:
     styles_yml_path = _project_root / "_4dpaper_styles.yml"
     styles_config = load_styles(styles_yml_path)
     styles_extra_deps = [styles_yml_path] if styles_yml_path.exists() else []
+
+    # Expand timeseries into panel-compatible dicts and merge into panels list
+    from scripts.data_loader import SimulationData as _SimData  # noqa: PLC0415
+    for ts in ts_raw:
+        src = Path(ts["src"]) if Path(ts["src"]).is_absolute() else _project_root / ts["src"]
+        try:
+            sim = _SimData(str(src)).load()
+            n_steps = sim.n_steps
+        except Exception as exc:
+            print(f"[4dpaper] ERROR loading simulation for timeseries '{ts['id']}': {exc}", file=sys.stderr)
+            sys.exit(1)
+        step_indices = _expand_timeseries_steps(ts, n_steps)
+        ts["subfigures"] = [
+            {
+                "src":    ts["src"],
+                "id":     f"{ts['id']}-{i}",
+                "field":  ts["field"],
+                "time":   str(idx),
+                "fields": "",
+            }
+            for i, idx in enumerate(step_indices)
+        ]
+        ts["layout"] = f"{len(step_indices)}x1"
+        panels.append(ts)
 
     for fig in figures:
         fig_id = fig["id"]
