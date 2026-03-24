@@ -92,23 +92,35 @@ class TestControlsStripHtml:
     def test_popup_panels_present_for_active_features(self):
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True, show_orientation=True)
-        assert 'id="cs-pop-axes-fig_vm"' in html
+        # axes popup gone — must be absent
+        assert 'id="cs-pop-axes-fig_vm"' not in html
+        # lock popup still gone
         assert 'id="cs-pop-lock-fig_vm"' not in html
+        # corner cube div must be present
+        assert 'id="cs-corner-fig_vm"' in html
 
     def test_corner_cube_present_when_show_orientation(self):
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        # SVG is now at fixed bottom-left, not inside popup
         assert 'id="cs-svg-axes-fig_vm"' in html
-        assert "bottom:4px" in html
-        assert "left:4px" in html
+        assert 'width="72"' in html
+        assert 'height="72"' in html
 
-    def test_axes_popup_above_corner(self):
+    def test_cube_svg_size(self):
+        """SVG corner div is positioned fixed at bottom-left when show_orientation=True."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        # Popup anchored above the cube, not in the right-edge strip position
-        assert 'id="cs-pop-axes-fig_vm"' in html
-        assert "bottom:36px" in html
+        corner_pos = html.find('id="cs-corner-fig_vm"')
+        assert corner_pos != -1, "cs-corner div not found"
+        region = html[corner_pos:corner_pos + 200]
+        assert "bottom:4px" in region
+        assert "left:4px" in region
+
+    def test_axes_popup_absent(self):
+        """cs-pop-axes- must NOT be emitted when show_orientation=True."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert 'id="cs-pop-axes-fig_vm"' not in html
 
     def test_corner_cube_absent_when_orientation_hidden(self):
         mod = _load_4dpaper()
@@ -214,38 +226,6 @@ class TestControlsStripJs:
         html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
         assert "setEnabled(0)" not in html
 
-    def test_interactor_enabled_on_open(self):
-        """`setEnabled(1)` present inside _openRotation."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "setEnabled(1)" in html
-
-    def test_null_interactor_safe(self):
-        """Both _openRotation and _closeRotation guard with if(_iact)."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        js = html.split("<script>", 1)[1] if "<script>" in html else html
-        assert "if(_iact)_iact.setEnabled(1)" in js or ("_openRotation" in js and "if(_iact)" in js)
-        assert "if(_iact)_iact.setEnabled(0)" in js or ("_closeRotation" in js and "if(_iact)" in js)
-
-    def test_click_handler_on_svg(self):
-        """SVG click listener wired to open/close rotation popup."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert 'cs-svg-axes-fig_vm' in html
-        assert 'addEventListener("click"' in html or "addEventListener('click'" in html
-
-    def test_preset_closes_popup(self):
-        """_closeRotation() must appear inside csSetView_ function body."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        js = html.split("<script>", 1)[1] if "<script>" in html else html
-        # Find the csSetView_ function and confirm _closeRotation() is inside it
-        start = js.find("csSetView_fig_vm")
-        assert start != -1, "csSetView_ not found"
-        func_body = js[start:start + 1200]
-        assert "_closeRotation()" in func_body, "_closeRotation() not inside csSetView_"
-
     def test_show_locked_badge_function_present(self):
         """_showLockedBadge emitted when show_lock_btn=True."""
         mod = _load_4dpaper()
@@ -279,29 +259,81 @@ class TestControlsStripJs:
         assert cs_all_pos != -1, "_CS_ALL not in csToggle_"
         assert locked_pos < cs_all_pos, "if(_locked) must come before _CS_ALL loop"
 
-    def test_corner_cube_checks_locked_flag(self):
-        """if(_locked) guard appears before _openRotation in SVG click listener."""
+    def test_draw_cube_function_present(self):
+        """`_drawCube` emitted when show_orientation=True."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert "_drawCube" in html
+
+    def test_draw_cube_absent_when_orientation_hidden(self):
+        """`_drawCube` NOT emitted when show_orientation=False."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
+        assert "_drawCube" not in html
+
+    def test_cs_setview_accepts_direction_array(self):
+        """`csSetView_` body normalises direction via `_n3(dir)`."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        js = html.split("<script>", 1)[1] if "<script>" in html else html
+        start = js.find("csSetView_fig_vm")
+        assert start != -1, "csSetView_ not found"
+        func_body = js[start:start + 600]
+        assert "_n3(dir)" in func_body, "_n3(dir) not in csSetView_ body"
+
+    def test_interactor_enabled_on_setview(self):
+        """`if(_iact)` guard and `setEnabled(1)` both inside csSetView_."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        js = html.split("<script>", 1)[1] if "<script>" in html else html
+        start = js.find("csSetView_fig_vm")
+        assert start != -1, "csSetView_ not found"
+        func_body = js[start:start + 600]
+        assert "if(_iact)" in func_body, "if(_iact) guard missing in csSetView_"
+        assert "setEnabled(1)" in func_body, "setEnabled(1) missing in csSetView_"
+
+    def test_open_rotation_absent(self):
+        """`_openRotation` must NOT appear anywhere in the snippet."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert "_openRotation" not in html
+
+    def test_close_rotation_absent(self):
+        """`_closeRotation` must NOT appear anywhere in the snippet."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert "_closeRotation" not in html
+
+    def test_close_on_toggle_absent(self):
+        """`_close_on_toggle` interactor-gate logic must not be emitted.
+        Detects: cs-pop-axes- referenced in JS (used to gate interactor on toggle)."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        js = html.split("<script>", 1)[1] if "<script>" in html else html
+        assert "cs-pop-axes-" not in js, \
+            "cs-pop-axes- found in JS — _close_on_toggle still emitted"
+
+    def test_cube_lock_gate_in_draw_cube(self):
+        """`_showLockedBadge` present inside `_drawCube` when show_lock_btn=True."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=True)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
-        svg_var_pos = js.find('getElementById("cs-svg-axes-fig_vm")')
-        assert svg_var_pos != -1
-        listener_region = js[svg_var_pos:svg_var_pos + 400]
-        locked_pos = listener_region.find("if(_locked)")
-        open_rotation_pos = listener_region.find("_openRotation")
-        assert locked_pos != -1, "if(_locked) guard not found in SVG click listener"
-        assert open_rotation_pos != -1, "_openRotation not found in SVG click listener"
-        assert locked_pos < open_rotation_pos, "if(_locked) must come before _openRotation"
+        cube_start = js.find("_drawCube")
+        assert cube_start != -1, "_drawCube not found"
+        cube_body = js[cube_start:cube_start + 2000]
+        assert "_showLockedBadge" in cube_body, \
+            "_showLockedBadge not found inside _drawCube with show_lock_btn=True"
 
-    def test_corner_cube_no_locked_gate_when_lock_hidden(self):
-        """SVG click listener has NO if(_locked) when show_lock_btn=False."""
+    def test_cube_no_lock_gate_when_lock_hidden(self):
+        """`_showLockedBadge` NOT present inside `_drawCube` when show_lock_btn=False."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=False)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
-        svg_var_pos = js.find('getElementById("cs-svg-axes-fig_vm")')
-        assert svg_var_pos != -1
-        listener_region = js[svg_var_pos:svg_var_pos + 400]
-        assert "if(_locked)" not in listener_region
+        cube_start = js.find("_drawCube")
+        assert cube_start != -1, "_drawCube not found"
+        cube_body = js[cube_start:cube_start + 2000]
+        assert "_showLockedBadge" not in cube_body, \
+            "_showLockedBadge found inside _drawCube with show_lock_btn=False"
 
     def test_render_before_debounce(self):
         """renderWindow.render() fires immediately; only postMessage is debounced."""
@@ -357,11 +389,6 @@ class TestControlsStripOrientationLogic:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
         assert "csSetView_fig_vm" in html
-
-    def test_preset_buttons_call_set_view(self):
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "csSetView_fig_vm('iso')" in html or 'csSetView_fig_vm("iso")' in html
 
     def test_axes_raf_loop_present(self):
         """Axes rAF loop (_axLoop) must exist when show_orientation=True."""
