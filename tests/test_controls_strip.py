@@ -107,7 +107,7 @@ class TestControlsStripHtml:
         assert 'height="72"' in html
 
     def test_cube_svg_size(self):
-        """SVG corner div is positioned fixed at bottom-left when show_orientation=True."""
+        """Corner div position: fixed bottom-left when show_orientation=True."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
         corner_pos = html.find('id="cs-corner-fig_vm"')
@@ -318,7 +318,7 @@ class TestControlsStripJs:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=True)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
-        cube_start = js.find("_drawCube")
+        cube_start = js.find("function _drawCube")
         assert cube_start != -1, "_drawCube not found"
         cube_body = js[cube_start:cube_start + 2000]
         assert "_showLockedBadge" in cube_body, \
@@ -329,7 +329,7 @@ class TestControlsStripJs:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=False)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
-        cube_start = js.find("_drawCube")
+        cube_start = js.find("function _drawCube")
         assert cube_start != -1, "_drawCube not found"
         cube_body = js[cube_start:cube_start + 2000]
         assert "_showLockedBadge" not in cube_body, \
