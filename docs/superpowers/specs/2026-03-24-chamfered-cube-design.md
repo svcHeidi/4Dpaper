@@ -185,8 +185,8 @@ _lock_gate_js = (
     f'if(_locked){{_showLockedBadge();return;}}'
 ) if show_lock_btn else ''
 
-# Inside _drawCube, the onclick per polygon is:
-f' onclick="{_lock_gate_js}csSetView_{fig_id_safe}("+dirStr+")'
+# Inside _drawCube, the onclick per polygon is (note closing " for HTML attribute):
+f' onclick="{_lock_gate_js}csSetView_{fig_id_safe}('+dir_str+')"'
 ```
 
 Where `dirStr` is a JS `JSON.stringify`-equivalent string like `[1,1,1]` produced by Python string formatting of the direction array. For example for dir `[1,1,1]`:
@@ -230,8 +230,11 @@ All tests in `tests/test_controls_strip.py`.
 ### Tests to update
 
 - `test_corner_cube_present_when_show_orientation` — assert `width="72"` not `width="28"`
-- `test_popup_panels_present_for_active_features` — remove assertion for `cs-pop-axes-fig_vm` (popup gone); assert it is absent
-- `test_interactor_disabled_on_load` — still passes unchanged: `setEnabled(0)` remains in `_wR` polling block
+- `test_popup_panels_present_for_active_features` — remove assertion for `cs-pop-axes-fig_vm` (popup gone); add assertion that `cs-pop-axes-fig_vm` is absent; keep the existing assertion that `cs-pop-lock-fig_vm` is absent; add a positive assertion that `cs-corner-fig_vm` is present (the corner div must still be emitted)
+
+### Tests that need no change
+
+- `test_interactor_disabled_on_load` — `setEnabled(0)` remains in `_wR` polling block; test passes unchanged
 
 ### New tests — `TestControlsStripHtml`
 
