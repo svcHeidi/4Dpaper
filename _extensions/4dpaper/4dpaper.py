@@ -537,7 +537,7 @@ def _orientation_snippet(fig_id: str) -> str:
     internals required. Preset buttons (Iso, +X, +Y, +Z) set the camera to
     standard viewpoints without losing the focal point or distance.
     """
-    fig_id_safe = fig_id.replace("</", "<\\/").replace('"', '')
+    fig_id_safe = fig_id.replace("</", "<\\/").replace('"', '').replace("-", "_")
     return (
         f'<div id="orient-widget-{fig_id_safe}" style="'
         f'position:fixed;bottom:8px;left:8px;z-index:9998;pointer-events:none;'
@@ -645,7 +645,7 @@ def _camera_sync_snippet(fig_id: str, show_lock_btn: bool = True) -> str:
     - Listens for "4dpaper-camera-ack" messages back from the parent to show badges.
     """
     fig_id_js = json.dumps(fig_id).replace("</", "<\\/")
-    fig_id_safe = fig_id.replace("</", "<\\/")
+    fig_id_safe = fig_id.replace("</", "<\\/").replace('"', '')
     lock_btn_html = (
         f'<button id="lock-btn-{fig_id_safe}" style="position:fixed;top:8px;left:8px;'
         f'background:rgba(0,0,0,0.45);border:none;border-radius:4px;'
@@ -1166,6 +1166,7 @@ def generate_html_figure(
     cmap: str = "coolwarm",
     show_colorbar: bool = True,
     show_lock_btn: bool = True,
+    show_orientation: bool = True,
 ) -> None:
     """
     Generate a self-contained vtk.js HTML figure using PyVista.
@@ -1323,13 +1324,15 @@ def generate_html_figure(
             )
         else:
             if camera_preview_only:
+                orient = _orientation_snippet(fig_id) + "\n" if show_orientation else ""
                 inj_html = (
                     _camera_sync_snippet(fig_id, show_lock_btn=show_lock_btn)
                     + "\n"
-                    + _orientation_snippet(fig_id)
-                    + "\n</body>"
+                    + orient
+                    + "</body>"
                 )
             else:
+                orient = _orientation_snippet(fig_id) + "\n" if show_orientation else ""
                 inj_html = (
                     _camera_sync_snippet(fig_id, show_lock_btn=show_lock_btn)
                     + "\n"
@@ -1337,8 +1340,8 @@ def generate_html_figure(
                     + "\n"
                     + _time_sync_snippet(fig_id, time_labels, time_data_b64, time_global_range, idx, field)
                     + "\n"
-                    + _orientation_snippet(fig_id)
-                    + "\n</body>"
+                    + orient
+                    + "</body>"
                 )
             html = html.replace("</body>", inj_html, 1)
     output_path.write_text(html)
@@ -1520,6 +1523,7 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
             src, sub["field"], sub["time"], out, fig_id=sub["id"], available_fields=af,
             show_colorbar=is_first if is_timeseries else True,
             show_lock_btn=is_first if is_timeseries else True,
+            show_orientation=is_first if is_timeseries else True,
         )
 
     # Bidirectional re-relay: forwards camera/field UP to top, acks DOWN to children
