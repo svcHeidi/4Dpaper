@@ -177,6 +177,8 @@ window.csSetView_{fig_id_safe} = function(dir) {
 
 ## Component 4: Lock gate on cube clicks
 
+**Note:** Component 2's pseudocode shows `var dirStr = JSON.stringify(p.dir)` (a JS-side approach). The actual implementation uses the Python-side approach below instead. Remove `var dirStr = JSON.stringify(p.dir)` from `_drawCube` — the direction array is embedded into the onclick string at Python render time, not computed in the browser.
+
 When `show_lock_btn=True`, the `_drawCube()` polygon `onclick` is guarded. In Python, the onclick attribute string is built as:
 
 ```python
