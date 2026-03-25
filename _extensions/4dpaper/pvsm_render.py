@@ -273,7 +273,7 @@ def main() -> None:
                 _die(f"--all-times: scalar '{scalar_name}' not found at time {t} (step {i})")
             import struct as _struct
             bin_path = figures_dir / f"{fig_id_stem}-scalars-t{i}.bin"
-            bin_path.write_bytes(_struct.pack(f"{len(arr)}f", *arr))
+            bin_path.write_bytes(_struct.pack(f"<{len(arr)}f", *arr))
             print(f"[pvsm_render] t={t}: wrote {len(arr)} values -> {bin_path.name}",
                   file=sys.stderr)
 
