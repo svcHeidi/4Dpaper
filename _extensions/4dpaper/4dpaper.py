@@ -2184,6 +2184,7 @@ def main() -> None:
         extra_deps = [_pvsm_render_script]
         script_newer = out_html.exists() and _here.stat().st_mtime > out_html.stat().st_mtime
 
+        # time_spec figures render a single frame; no per-step bins to check.
         scalar_bins_ok = True
         if not time_spec:
             times_json_path = figures_dir / f"{fig_id}-times.json"
