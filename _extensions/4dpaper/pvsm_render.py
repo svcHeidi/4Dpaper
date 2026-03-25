@@ -8,6 +8,7 @@ Run with pvpython (NOT regular python):
 from __future__ import annotations
 import argparse
 import json
+import struct
 import sys
 from pathlib import Path
 
@@ -31,6 +32,32 @@ def _parse_args() -> argparse.Namespace:
 def _die(msg: str) -> None:
     print(f"[pvsm_render] ERROR: {msg}", file=sys.stderr)
     sys.exit(1)
+
+
+def _flatten_dataset(raw):
+    """Return a single vtkDataSet from raw output (handles multiblock/composite)."""
+    data_class = raw.GetClassName()
+    if "MultiBlock" not in data_class and "Composite" not in data_class:
+        return raw
+    blocks = []
+    it = raw.NewIterator()
+    it.InitTraversal()
+    while not it.IsDoneWithTraversal():
+        ds = it.GetCurrentDataObject()
+        if ds is not None and ds.GetNumberOfPoints() > 0:
+            blocks.append(ds)
+        it.GoToNextItem()
+    if not blocks:
+        return None
+    if len(blocks) == 1:
+        return blocks[0]
+    import vtkmodules.vtkFiltersCore as vtkfc
+    app = vtkfc.vtkAppendFilter()
+    for b in blocks:
+        app.AddInputDataObject(b)
+    app.MergePointsOff()
+    app.Update()
+    return app.GetOutput()
 
 
 def main() -> None:
@@ -169,30 +196,9 @@ def main() -> None:
         print(f"[pvsm_render] Output data type: {data_class}", file=sys.stderr)
 
         # Flatten composite/multiblock to a single dataset
-        if "MultiBlock" in data_class or "Composite" in data_class:
-            # Collect all leaf blocks, preferring UnstructuredGrid
-            leaves = []
-            it = raw.NewIterator()
-            it.InitTraversal()
-            while not it.IsDoneWithTraversal():
-                ds = it.GetCurrentDataObject()
-                if ds is not None and ds.GetNumberOfPoints() > 0:
-                    leaves.append(ds)
-                it.GoToNextItem()
-            if not leaves:
-                _die("MultiBlock dataset has no non-empty leaf blocks.")
-            if len(leaves) == 1:
-                data = leaves[0]
-            else:
-                # Append all blocks into one UnstructuredGrid
-                appender = vtkfc.vtkAppendFilter()
-                for leaf in leaves:
-                    appender.AddInputDataObject(leaf)
-                appender.MergePointsOff()
-                appender.Update()
-                data = appender.GetOutput()
-        else:
-            data = raw
+        data = _flatten_dataset(raw)
+        if data is None:
+            _die("MultiBlock dataset has no non-empty leaf blocks.")
 
         data_class = data.GetClassName()
         if "PolyData" in data_class:
@@ -226,7 +232,6 @@ def main() -> None:
 
     # 5b. All-times: extract per-step scalar .bin files
     if args.all_times:
-        import vtkmodules.vtkFiltersCore as _vtkfc
         fig_id_stem = Path(args.out_vtu).stem.replace("-pipeline", "")
         figures_dir = Path(args.out_vtu).parent
         scalar_name = args.scalar
@@ -235,29 +240,9 @@ def main() -> None:
             """Return the scalar array as a list of floats from the leaf source output."""
             csobj = leaf_src.SMProxy.GetClientSideObject()
             raw = csobj.GetOutputDataObject(0)
-            data_class = raw.GetClassName()
-            if "MultiBlock" in data_class or "Composite" in data_class:
-                blocks = []
-                it = raw.NewIterator()
-                it.InitTraversal()
-                while not it.IsDoneWithTraversal():
-                    ds = it.GetCurrentDataObject()
-                    if ds is not None and ds.GetNumberOfPoints() > 0:
-                        blocks.append(ds)
-                    it.GoToNextItem()
-                if not blocks:
-                    return None
-                if len(blocks) == 1:
-                    data = blocks[0]
-                else:
-                    app = _vtkfc.vtkAppendFilter()
-                    for b in blocks:
-                        app.AddInputDataObject(b)
-                    app.MergePointsOff()
-                    app.Update()
-                    data = app.GetOutput()
-            else:
-                data = raw
+            data = _flatten_dataset(raw)
+            if data is None:
+                return None
             vtk_arr = data.GetPointData().GetArray(scalar_name)
             if vtk_arr is None:
                 return None
@@ -271,9 +256,8 @@ def main() -> None:
             arr = _extract_scalar_array(last_source)
             if arr is None:
                 _die(f"--all-times: scalar '{scalar_name}' not found at time {t} (step {i})")
-            import struct as _struct
             bin_path = figures_dir / f"{fig_id_stem}-scalars-t{i}.bin"
-            bin_path.write_bytes(_struct.pack(f"<{len(arr)}f", *arr))
+            bin_path.write_bytes(struct.pack(f"<{len(arr)}f", *arr))
             print(f"[pvsm_render] t={t}: wrote {len(arr)} values -> {bin_path.name}",
                   file=sys.stderr)
 
