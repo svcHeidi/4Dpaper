@@ -36,8 +36,12 @@ def _make_bins(figures_dir: Path, fig_id: str, n_times: int, n_points: int) -> N
         val = float(i)
         data = struct.pack(f"{n_points}f", *([val] * n_points))
         (figures_dir / f"{fig_id}-scalars-t{i}.bin").write_bytes(data)
-    labels = [f"{i * 0.01:.4g}" for i in range(n_times)]
+    labels = [str(round(i * 0.01, 4)) for i in range(n_times)]
     (figures_dir / f"{fig_id}-times.json").write_text(json.dumps(labels))
+
+
+def _fake_html(vtu_path, out_html, **kwargs):
+    out_html.write_text("<html><body></body></html>")
 
 
 def _fake_subprocess_side_effect(figures_dir, fig_id, n_times=3, n_points=10):
@@ -51,7 +55,8 @@ def _fake_subprocess_side_effect(figures_dir, fig_id, n_times=3, n_points=10):
 
 
 def _call_generate(mod, tmp_path, fig_id="fig-pvsm-vm", time_spec=None,
-                   n_times=3, n_points=10, scalar_name="Vm"):
+                   n_times=3, n_points=10, scalar_name="Vm",
+                   subprocess_side_effect=None):
     """Call generate_pvsm_figure with all I/O mocked; return output HTML text."""
     figures_dir = tmp_path / "figures"
     figures_dir.mkdir(exist_ok=True)
@@ -63,11 +68,8 @@ def _call_generate(mod, tmp_path, fig_id="fig-pvsm-vm", time_spec=None,
 
     color_info = {**FAKE_COLOR_INFO, "scalar_name": scalar_name}
 
-    def _fake_html(vtu_path, out_html, **kwargs):
-        out_html.write_text("<html><body></body></html>")
-
     with patch("subprocess.run",
-               side_effect=_fake_subprocess_side_effect(figures_dir, fig_id, n_times, n_points)), \
+               side_effect=subprocess_side_effect or _fake_subprocess_side_effect(figures_dir, fig_id, n_times, n_points)), \
          patch.object(mod, "parse_pvsm_color_info", return_value=color_info), \
          patch.object(mod, "generate_html_from_vtu", side_effect=_fake_html):
         mod.generate_pvsm_figure(
@@ -110,12 +112,7 @@ class TestPvsmControls:
         """Mismatched bin lengths → no scrubber, warning to stderr."""
         mod = _load_4dpaper()
         figures_dir = tmp_path / "figures"
-        figures_dir.mkdir()
-        pvsm_path = tmp_path / "test.pvsm"
-        pvsm_path.write_text("<ParaView/>")
-        pvpython = tmp_path / "pvpython"
-        pvpython.write_text("#!/bin/sh\n")
-        pvpython.chmod(0o755)
+        figures_dir.mkdir(exist_ok=True)
 
         def _mismatched(cmd, **kwargs):
             (figures_dir / "fig-pvsm-vm-pipeline.vtu").write_text("<VTKFile/>")
@@ -128,21 +125,8 @@ class TestPvsmControls:
             (figures_dir / "fig-pvsm-vm-times.json").write_text('["0.0", "0.01"]')
             return MagicMock(returncode=0, stdout="", stderr="")
 
-        def _fake_html(vtu_path, out_html, **kwargs):
-            out_html.write_text("<html><body></body></html>")
-
-        with patch("subprocess.run", side_effect=_mismatched), \
-             patch.object(mod, "parse_pvsm_color_info", return_value=FAKE_COLOR_INFO), \
-             patch.object(mod, "generate_html_from_vtu", side_effect=_fake_html):
-            mod.generate_pvsm_figure(
-                pvsm_path=pvsm_path,
-                fig_id="fig-pvsm-vm",
-                figures_dir=figures_dir,
-                time_spec=None,
-                pvpython_path=pvpython,
-            )
-
-        html = (figures_dir / "fig-pvsm-vm.html").read_text()
+        html = _call_generate(mod, tmp_path, time_spec=None,
+                              subprocess_side_effect=_mismatched)
         assert 'id="cs-time-slider-fig_pvsm_vm"' not in html
         captured = capsys.readouterr()
         assert "topology" in captured.err.lower()
@@ -160,8 +144,7 @@ class TestPvsmControls:
         # n_times=3, frame i has all values equal to float(i) → global range [0.0, 2.0]
         html = _call_generate(mod, tmp_path, time_spec=None, n_times=3)
         assert 'id="cs-time-slider-fig_pvsm_vm"' in html
-        assert "0.0" in html
-        assert "2.0" in html
+        assert "GLOBAL_RANGE=[0.0, 2.0]" in html
 
     def test_pvsm_cache_stale_bins(self, tmp_path):
         """is_cache_valid returns False when pvsm_src is newer than bin."""
