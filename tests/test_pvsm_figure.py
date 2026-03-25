@@ -145,7 +145,7 @@ class TestPvsmControls:
         html = (figures_dir / "fig-pvsm-vm.html").read_text()
         assert 'id="cs-time-slider-fig_pvsm_vm"' not in html
         captured = capsys.readouterr()
-        assert "topology" in (captured.err + captured.out).lower()
+        assert "topology" in captured.err.lower()
 
     def test_pvsm_no_scrubber_when_empty_scalar(self, tmp_path):
         """No scrubber when scalar_name is empty; lock still injected."""
@@ -155,11 +155,13 @@ class TestPvsmControls:
         assert 'id="cs-lock-widget-fig_pvsm_vm"' in html
 
     def test_pvsm_global_range_computed(self, tmp_path):
-        """Time scrubber is present when bins exist (global range computed)."""
+        """Time scrubber is present and global range [0.0, 2.0] embedded in JS."""
         mod = _load_4dpaper()
-        # Frames: 0.0, 1.0, 0.5 — global range should be [0.0, 1.0]
+        # n_times=3, frame i has all values equal to float(i) → global range [0.0, 2.0]
         html = _call_generate(mod, tmp_path, time_spec=None, n_times=3)
         assert 'id="cs-time-slider-fig_pvsm_vm"' in html
+        assert "0.0" in html
+        assert "2.0" in html
 
     def test_pvsm_cache_stale_bins(self, tmp_path):
         """is_cache_valid returns False when pvsm_src is newer than bin."""
