@@ -21,22 +21,21 @@ The PVSM path applies arbitrary ParaView filters (clipping, streamlines, isovolu
 
 ## Topology Safety Guard
 
-**Problem:** if the pipeline changes mesh topology between time steps (e.g. a threshold filter that shrinks the mesh), the client-side field-swap approach breaks because the number of points changes.
+**Problem:** if the pipeline changes mesh topology between time steps (e.g. a threshold filter that shrinks the mesh), the client-side field-swap approach breaks because the number of scalar values changes between frames.
 
-**This risk exists equally for `.foam` and `.pvsm`.**
+**This risk exists equally for `.foam` and `.pvsm`.** The guard described here is implemented for the PVSM path only in this spec. The `.foam` path guard is deferred to a future spec.
 
-**Guard (applies to both paths):** before building `time_data_b64`, verify that all per-time scalar arrays have the same number of points as the base mesh. If any mismatch is found:
+**Guard (PVSM path):** use the length of the frame-0 scalar array as the reference. Before building `time_data_b64`, verify `len(arrays[i]) == len(arrays[0])` for all i. If any mismatch is found:
 - Skip `time_data_b64` / `time_labels` entirely (no scrubber)
-- Render static at the last available time step
 - Print a warning to stderr: `[4dpaper] WARNING: {fig_id} — mesh topology changes between time steps; time scrubber disabled.`
-
-This guard is added to `generate_html_figure` (`.foam` path) as well as `generate_pvsm_figure`.
 
 ---
 
 ## `pvsm_render.py` Changes
 
 The script gains an `--all-times` flag (no argument; presence triggers multi-time mode).
+
+If both `--all-times` and `--time` are passed, the script exits with a non-zero return code and an error message: `error: --all-times and --time are mutually exclusive`.
 
 ### Single-time mode (existing, `--time T` or no flag + no `--all-times`)
 Unchanged: renders at the specified time, saves one `{fig_id}-pipeline.vtu`.
@@ -93,7 +92,7 @@ out_html.write_text(html)
 
 **`time_spec` is None (includes `time=""` — existing code maps both to `None` via `.strip() or None`):**
 
-`scalar_name` is obtained from `color_info = parse_pvsm_color_info(pvsm_path)` → `scalar_name = color_info["scalar_name"]`. This is already called in the existing `generate_pvsm_figure` before `generate_html_from_vtu`. If `scalar_name` is empty (PVSM has no active scalar), skip time embedding entirely and fall back to lock + orientation only.
+`scalar_name` is obtained from `color_info = parse_pvsm_color_info(pvsm_path)` → `scalar_name = color_info["scalar_name"]`. This is already called in the existing `generate_pvsm_figure` before `generate_html_from_vtu`. If `scalar_name` is empty (PVSM has no active scalar), skip time embedding entirely: set `time_labels=None`, `time_data_b64=None`, `time_global_range=None`, `time_field=""`, and fall back to lock + orientation only.
 
 1. Pass `--all-times --scalar {scalar_name}` to pvpython subprocess
 2. Read `{fig_id}-times.json` → `time_labels`
@@ -156,7 +155,7 @@ New test class `TestPvsmControls` in `tests/test_pvsm_figure.py`. All tests mock
 | `test_pvsm_time_scrubber_when_no_time_spec` | Fake VTU + N scalar bins → HTML contains `cs-time-slider-` |
 | `test_pvsm_no_scrubber_when_time_spec_set` | `time_spec="0.5"` → HTML contains lock, NOT `cs-time-slider-` |
 | `test_pvsm_topology_guard` | Scalar bins with mismatched point count → no `cs-time-slider-`, warning in stderr |
-| `test_pvsm_topology_guard_foam` | In `generate_html_figure`, patch `pv.read` to return meshes with differing `n_points` across time frames → `time_data_b64` not passed to `_controls_strip_snippet`, warning in stderr |
+| `test_pvsm_no_scrubber_when_empty_scalar` | `scalar_name=""` → HTML contains lock, NOT `cs-time-slider-`; `time_global_range` is None |
 | `test_pvsm_global_range_computed` | `global_range` spans all frames (min/max across all scalar bins) |
 | `test_pvsm_cache_includes_scalar_bins` | When scalar bins are missing, `cache_ok` is False even if `out_html` and `out_png` are up to date |
 | `test_pvsm_cache_stale_bins` | When `pvsm_src` is newer than existing scalar bins, `cache_ok` is False |
