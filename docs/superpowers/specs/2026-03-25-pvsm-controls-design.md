@@ -46,7 +46,7 @@ Unchanged: renders at the specified time, saves one `{fig_id}-pipeline.vtu`.
 1. Query available time steps: `times = GetAnimationScene().TimeKeeper.TimestepValues`
 2. For **time step 0**: `GetAnimationScene().AnimationTime = times[0]` → `GetActiveSource().UpdatePipeline()` → save `{fig_id}-pipeline.vtu` via `SaveData` (geometry for HTML base)
 3. For **each time step i**: `GetAnimationScene().AnimationTime = times[i]` → `GetActiveSource().UpdatePipeline()` → `vtk_output = GetActiveSource().GetClientSideObject().GetOutput()` → extract named array from point data via `vtk_output.GetPointData().GetArray(scalar_name)` → convert to numpy float32 → save `{fig_id}-scalars-t{i}.bin` (raw float32 little-endian, no header)
-4. Produce `{fig_id}.png`: render at `times[-1]` (last time step) applying `--camera` if provided, same as single-time mode
+4. Produce `{fig_id}.png`: render at `times[-1]` (last time step, intentional — represents the final simulation state) applying `--camera` if provided, same as single-time mode
 5. Save `{fig_id}-times.json`: list of time label strings (`[str(t) for t in times]`)
 
 The scalar name is passed via a new `--scalar` argument (already known from `color_info` in `generate_pvsm_figure`).
@@ -92,6 +92,9 @@ out_html.write_text(html)
 - `time_labels=None`, `time_data_b64=None` → no scrubber, lock + orientation only
 
 **`time_spec` is None (includes `time=""` — existing code maps both to `None` via `.strip() or None`):**
+
+`scalar_name` is obtained from `color_info = parse_pvsm_color_info(pvsm_path)` → `scalar_name = color_info["scalar_name"]`. This is already called in the existing `generate_pvsm_figure` before `generate_html_from_vtu`. If `scalar_name` is empty (PVSM has no active scalar), skip time embedding entirely and fall back to lock + orientation only.
+
 1. Pass `--all-times --scalar {scalar_name}` to pvpython subprocess
 2. Read `{fig_id}-times.json` → `time_labels`
 3. Load base VTU via `pv.read(out_vtu)` → `vtu_point_count = mesh.n_points`
@@ -102,7 +105,7 @@ out_html.write_text(html)
 5. Compute `global_range = [min over all frames, max over all frames]`
 6. Pass all to `_controls_strip_snippet`
 
-The reference point count is `pv.read(out_vtu).n_points` — the PyVista-loaded mesh — because the `.bin` scalars are extracted from the same pipeline output that produces the VTU. This keeps the comparison apples-to-apples regardless of any PyVista post-processing (surface extraction, multiblock flattening) that `generate_html_from_vtu` may apply later.
+The topology guard checks that all scalar bin arrays have the same length as each other (not against the PyVista-loaded point count). The guard's purpose is to ensure cross-frame consistency before embedding: if any frame's array length differs from frame 0's, the scrubber is disabled. `generate_html_from_vtu` may apply internal PyVista transformations (surface extraction, multiblock flattening), but the vtk.js field-swap mechanism operates on the raw Float32Array embedded in the HTML — which comes directly from the `.bin` files, not from the post-processed mesh. Therefore frame-0 array length is the reference: `ref_len = len(arrays[0]); guard fails if any len(arrays[i]) != ref_len`.
 
 ### Caching
 
@@ -115,9 +118,11 @@ if time_spec is None:
     if times_json.exists():
         import json as _json
         n = len(_json.loads(times_json.read_text()))
+        bin_paths = [figures_dir / f"{fig_id}-scalars-t{i}.bin" for i in range(n)]
+        # Each bin must exist AND be newer than pvsm_src (staleness check)
         scalar_bins_ok = all(
-            (figures_dir / f"{fig_id}-scalars-t{i}.bin").exists()
-            for i in range(n)
+            is_cache_valid(p, pvsm_src, camera_path=camera_path)
+            for p in bin_paths
         )
     else:
         scalar_bins_ok = False
@@ -129,6 +134,8 @@ cache_ok = (
     and is_cache_valid(out_png,  pvsm_src, camera_path=camera_path, extra_deps=extra_deps)
 )
 ```
+
+Using `is_cache_valid(bin_path, pvsm_src, ...)` for each bin ensures bins are regenerated whenever `pvsm_src` or `camera_path` changes — not just when they are absent.
 
 ---
 
@@ -149,7 +156,7 @@ New test class `TestPvsmControls` in `tests/test_pvsm_figure.py`. All tests mock
 | `test_pvsm_time_scrubber_when_no_time_spec` | Fake VTU + N scalar bins → HTML contains `cs-time-slider-` |
 | `test_pvsm_no_scrubber_when_time_spec_set` | `time_spec="0.5"` → HTML contains lock, NOT `cs-time-slider-` |
 | `test_pvsm_topology_guard` | Scalar bins with mismatched point count → no `cs-time-slider-`, warning in stderr |
-| `test_pvsm_topology_guard` | Scalar bins with mismatched point count → no `cs-time-slider-`, warning in stderr |
 | `test_pvsm_topology_guard_foam` | In `generate_html_figure`, patch `pv.read` to return meshes with differing `n_points` across time frames → `time_data_b64` not passed to `_controls_strip_snippet`, warning in stderr |
 | `test_pvsm_global_range_computed` | `global_range` spans all frames (min/max across all scalar bins) |
 | `test_pvsm_cache_includes_scalar_bins` | When scalar bins are missing, `cache_ok` is False even if `out_html` and `out_png` are up to date |
+| `test_pvsm_cache_stale_bins` | When `pvsm_src` is newer than existing scalar bins, `cache_ok` is False |
