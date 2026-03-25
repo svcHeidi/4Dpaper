@@ -21,6 +21,10 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--time",       default=None,   help="Timestep: float, 'last', or 'mid'")
     p.add_argument("--camera",     default=None,   help="Path to camera JSON")
     p.add_argument("--resolution", nargs=2, type=int, default=[3840, 2160], metavar=("W", "H"))
+    p.add_argument("--all-times",  action="store_true",
+               help="Export scalar .bin files for all time steps (mutually exclusive with --time)")
+    p.add_argument("--scalar",     default=None,
+               help="Scalar field name to extract in --all-times mode")
     return p.parse_args()
 
 
@@ -35,6 +39,11 @@ def main() -> None:
     pvsm_path = Path(args.pvsm)
     if not pvsm_path.exists():
         _die(f"PVSM file not found: {pvsm_path}")
+
+    if args.all_times and args.time is not None:
+        _die("--all-times and --time are mutually exclusive")
+    if args.all_times and not args.scalar:
+        _die("--all-times requires --scalar <field_name>")
 
     out_vtu = Path(args.out_vtu)
     out_png = Path(args.out_png)
@@ -86,6 +95,14 @@ def main() -> None:
                 scene.AnimationTime = float(t)
             except ValueError:
                 _die(f"--time must be 'last', 'mid', or a float; got: {t!r}")
+        view = GetActiveViewOrCreate("RenderView")
+        view.Update()
+    elif args.all_times:
+        scene = GetAnimationScene()
+        all_times = list(scene.TimeKeeper.TimestepValues)
+        if not all_times:
+            _die("--all-times: no time steps found in animation scene")
+        scene.AnimationTime = all_times[0]
         view = GetActiveViewOrCreate("RenderView")
         view.Update()
 
@@ -206,6 +223,69 @@ def main() -> None:
     vtu_text = out_vtu.read_text(errors="replace")
     if 'NumberOfPoints="0"' in vtu_text:
         _die(f"Geometry file has 0 points: {out_vtu}")
+
+    # 5b. All-times: extract per-step scalar .bin files
+    if args.all_times:
+        import vtkmodules.vtkFiltersCore as _vtkfc
+        fig_id_stem = Path(args.out_vtu).stem.replace("-pipeline", "")
+        figures_dir = Path(args.out_vtu).parent
+        scalar_name = args.scalar
+
+        def _extract_scalar_array(leaf_src):
+            """Return the scalar array as a list of floats from the leaf source output."""
+            csobj = leaf_src.SMProxy.GetClientSideObject()
+            raw = csobj.GetOutputDataObject(0)
+            data_class = raw.GetClassName()
+            if "MultiBlock" in data_class or "Composite" in data_class:
+                blocks = []
+                it = raw.NewIterator()
+                it.InitTraversal()
+                while not it.IsDoneWithTraversal():
+                    ds = it.GetCurrentDataObject()
+                    if ds is not None and ds.GetNumberOfPoints() > 0:
+                        blocks.append(ds)
+                    it.GoToNextItem()
+                if not blocks:
+                    return None
+                if len(blocks) == 1:
+                    data = blocks[0]
+                else:
+                    app = _vtkfc.vtkAppendFilter()
+                    for b in blocks:
+                        app.AddInputDataObject(b)
+                    app.MergePointsOff()
+                    app.Update()
+                    data = app.GetOutput()
+            else:
+                data = raw
+            vtk_arr = data.GetPointData().GetArray(scalar_name)
+            if vtk_arr is None:
+                return None
+            n = vtk_arr.GetNumberOfTuples()
+            return [vtk_arr.GetValue(j) for j in range(n)]
+
+        for i, t in enumerate(all_times):
+            scene.AnimationTime = t
+            view.Update()
+            last_source.UpdatePipeline()
+            arr = _extract_scalar_array(last_source)
+            if arr is None:
+                _die(f"--all-times: scalar '{scalar_name}' not found at time {t} (step {i})")
+            import struct as _struct
+            bin_path = figures_dir / f"{fig_id_stem}-scalars-t{i}.bin"
+            bin_path.write_bytes(_struct.pack(f"{len(arr)}f", *arr))
+            print(f"[pvsm_render] t={t}: wrote {len(arr)} values -> {bin_path.name}",
+                  file=sys.stderr)
+
+        times_json = figures_dir / f"{fig_id_stem}-times.json"
+        times_json.write_text(json.dumps([str(t) for t in all_times]))
+        print(f"[pvsm_render] Wrote {len(all_times)} time steps -> {times_json.name}",
+              file=sys.stderr)
+
+        # Move to last time for screenshot
+        scene.AnimationTime = all_times[-1]
+        view.Update()
+        last_source.UpdatePipeline()
 
     # 6. Apply camera override if --camera given
     if args.camera:

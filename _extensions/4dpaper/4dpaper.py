@@ -1389,6 +1389,8 @@ def generate_pvsm_figure(
     camera_path = _project_root / "state" / f"camera_{fig_id}.json"
 
     # -- Step 1: pvpython subprocess -------------------------------------------
+    color_info = parse_pvsm_color_info(pvsm_path)
+
     cmd = [
         str(pvpython_path), str(pvsm_render_script),
         "--pvsm",    str(pvsm_path),
@@ -1401,6 +1403,8 @@ def generate_pvsm_figure(
         cmd += ["--time", str(time_spec)]
     if camera_path.exists():
         cmd += ["--camera", str(camera_path)]
+    if not time_spec and color_info.get("scalar_name"):
+        cmd += ["--all-times", "--scalar", color_info["scalar_name"]]
 
     print(f"[4dpaper] Running pvpython for {fig_id} ...", file=sys.stderr)
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -1418,7 +1422,6 @@ def generate_pvsm_figure(
         raise RuntimeError(f"pvpython did not produce {out_vtu}")
 
     # -- Step 2: PyVista HTML export -------------------------------------------
-    color_info = parse_pvsm_color_info(pvsm_path)
 
     print(f"[4dpaper] Generating {fig_id}.html from VTU ...", file=sys.stderr)
     generate_html_from_vtu(
