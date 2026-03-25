@@ -1479,6 +1479,7 @@ def generate_pvsm_figure(
                         file=sys.stderr,
                     )
                     time_labels = None
+                    time_data_b64 = None
                 else:
                     time_data_b64 = [
                         _b64.b64encode(a.tobytes()).decode("ascii") for a in arrays
