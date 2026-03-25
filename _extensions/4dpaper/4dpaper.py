@@ -573,13 +573,6 @@ def _controls_strip_snippet(
         "box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none;flex-direction:column;gap:6px;"
         "min-width:120px;"
     )
-    AXES_POP = (
-        "position:fixed;bottom:36px;left:4px;"
-        "z-index:9998;background:rgba(20,20,30,0.88);"
-        "border:1px solid rgba(255,255,255,0.12);border-radius:6px;"
-        "padding:8px;font-family:monospace;font-size:11px;color:#eee;"
-        "box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none;flex-direction:column;gap:6px;"
-    )
     PBTN = (
         "font-size:9px;padding:1px 5px;background:rgba(40,40,60,0.85);"
         "border:1px solid #555;border-radius:3px;cursor:pointer;"
@@ -603,24 +596,14 @@ def _controls_strip_snippet(
         return ""
 
     corner_widget = ""
-    axes_pop = ""
     if show_orientation:
         corner_widget = (
             f'<div id="cs-corner-{fig_id_safe}"'
             f' style="position:fixed;bottom:4px;left:4px;z-index:9999;">\n'
-            f'  <svg id="cs-svg-axes-{fig_id_safe}" width="28" height="28"'
+            f'  <svg id="cs-svg-axes-{fig_id_safe}" width="72" height="72"'
             f' style="background:rgba(10,10,20,0.55);border:1px solid rgba(255,255,255,0.12);'
-            f'border-radius:4px;display:block;cursor:pointer;" title="Click to rotate"></svg>\n'
-            f'</div>\n'
-        )
-        axes_pop = (
-            f'<div id="cs-pop-axes-{fig_id_safe}" style="{AXES_POP}">\n'
-            f'  <div style="display:flex;gap:2px;flex-wrap:wrap;">\n'
-            f'    <button onclick="csSetView_{fig_id_safe}(\'iso\')" style="{PBTN}color:#ccc">Iso</button>\n'
-            f'    <button onclick="csSetView_{fig_id_safe}(\'+X\')" style="{PBTN}color:#f66">+X</button>\n'
-            f'    <button onclick="csSetView_{fig_id_safe}(\'+Y\')" style="{PBTN}color:#6f6">+Y</button>\n'
-            f'    <button onclick="csSetView_{fig_id_safe}(\'+Z\')" style="{PBTN}color:#66f">+Z</button>\n'
-            f'  </div>\n'
+            f'border-radius:4px;display:block;cursor:pointer;"'
+            f' title="Click face for ortho view \u00b7 click corner for iso view"></svg>\n'
             f'</div>\n'
         )
 
@@ -691,7 +674,7 @@ def _controls_strip_snippet(
             + strip_btns
             + f'</div>\n'
         )
-    html_block += axes_pop + lock_widget + lock_badge + field_pop + time_pop + corner_widget
+    html_block += lock_widget + lock_badge + field_pop + time_pop + corner_widget
 
     active_field_js = json.dumps(active_field).replace("</", "<\\/")
     field_data_js = json.dumps(field_data_b64 or {}).replace("</", "<\\/")
@@ -708,11 +691,6 @@ def _controls_strip_snippet(
     if show_orientation:
         _js.append(f'  var _iact=null;\n')
 
-    _close_on_toggle = (
-        f'    var _axpop=document.getElementById("cs-pop-axes-{fig_id_safe}");\n'
-        f'    if(_axpop&&_axpop.style.display!=="none"){{if(_iact)_iact.setEnabled(1);}}'
-        f'else{{if(_iact)_iact.setEnabled(0);}}\n'
-    ) if show_orientation else ''
     _locked_gate = (
         f'    if(_locked){{_showLockedBadge();return;}}\n'
     ) if show_lock_btn else ''
@@ -725,7 +703,6 @@ def _controls_strip_snippet(
         f'      if(!_el)continue;\n'
         f'      _el.style.display=(_CS_ALL[_i]===name&&_el.style.display==="none")?"flex":"none";\n'
         f'    }}\n'
-        + _close_on_toggle
         + f'  }};\n'
     )
 
@@ -809,77 +786,91 @@ def _controls_strip_snippet(
     # Orientation helpers (conditional)
     if show_orientation:
         _cube_lock_gate = (
-            f'      if(_locked){{_showLockedBadge();return;}}\n'
+            f'if(_locked){{_showLockedBadge();return;}}'
         ) if show_lock_btn else ''
         _js.append(
-            f'  function _openRotation(){{\n'
-            f'    if(_iact)_iact.setEnabled(1);\n'
-            f'    document.getElementById("cs-pop-axes-{fig_id_safe}").style.display="flex";\n'
-            f'  }}\n'
-            f'  function _closeRotation(){{\n'
-            f'    if(_iact)_iact.setEnabled(0);\n'
-            f'    document.getElementById("cs-pop-axes-{fig_id_safe}").style.display="none";\n'
-            f'  }}\n'
-            f'  (function(){{\n'
-            f'    var _svgEl=document.getElementById("cs-svg-axes-{fig_id_safe}");\n'
-            f'    if(_svgEl)_svgEl.addEventListener("click",function(){{\n'
-            + _cube_lock_gate
-            + f'      var pop=document.getElementById("cs-pop-axes-{fig_id_safe}");\n'
-            f'      if(!pop)return;\n'
-            f'      if(pop.style.display==="none"||pop.style.display==="")'
-            f'{{_openRotation();}}else{{_closeRotation();}}\n'
-            f'    }});\n'
-            f'  }})();\n'
             f'  var _renderer=null;\n'
             f'  function _n3(v){{var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);'
             f'return l<1e-10?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}}\n'
             f'  function _cr(a,b){{return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}}\n'
             f'  function _dt(a,b){{return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}}\n'
-            f'  var _svg=document.getElementById("cs-svg-axes-{fig_id_safe}");\n'
-            f'  function _drawAxes(){{\n'
+            f'  var _FACES=[\n'
+            f'    {{verts:[[0.75,0.75,1],[0.75,-0.75,1],[-0.75,-0.75,1],[-0.75,0.75,1]],'
+            f'normal:[0,0,1],fill:"#3a3aaa",stroke:"#6666dd",dir:[0,0,1]}},\n'
+            f'    {{verts:[[0.75,0.75,-1],[0.75,-0.75,-1],[-0.75,-0.75,-1],[-0.75,0.75,-1]],'
+            f'normal:[0,0,-1],fill:"#222266",stroke:"#4444aa",dir:[0,0,-1]}},\n'
+            f'    {{verts:[[1,0.75,0.75],[1,-0.75,0.75],[1,-0.75,-0.75],[1,0.75,-0.75]],'
+            f'normal:[1,0,0],fill:"#8a2222",stroke:"#cc5555",dir:[1,0,0]}},\n'
+            f'    {{verts:[[-1,0.75,0.75],[-1,-0.75,0.75],[-1,-0.75,-0.75],[-1,0.75,-0.75]],'
+            f'normal:[-1,0,0],fill:"#441111",stroke:"#883333",dir:[-1,0,0]}},\n'
+            f'    {{verts:[[0.75,1,0.75],[-0.75,1,0.75],[-0.75,1,-0.75],[0.75,1,-0.75]],'
+            f'normal:[0,1,0],fill:"#1e6b1e",stroke:"#44aa44",dir:[0,1,0]}},\n'
+            f'    {{verts:[[0.75,-1,0.75],[-0.75,-1,0.75],[-0.75,-1,-0.75],[0.75,-1,-0.75]],'
+            f'normal:[0,-1,0],fill:"#0d3d0d",stroke:"#226622",dir:[0,-1,0]}},\n'
+            f'  ];\n'
+            f'  var _CORNERS=[\n'
+            f'    {{verts:[[0.75,1,1],[1,0.75,1],[1,1,0.75]],normal:[1,1,1],dir:[1,1,1]}},\n'
+            f'    {{verts:[[0.75,1,-1],[1,0.75,-1],[1,1,-0.75]],normal:[1,1,-1],dir:[1,1,-1]}},\n'
+            f'    {{verts:[[0.75,-1,1],[1,-0.75,1],[1,-1,0.75]],normal:[1,-1,1],dir:[1,-1,1]}},\n'
+            f'    {{verts:[[-0.75,1,1],[-1,0.75,1],[-1,1,0.75]],normal:[-1,1,1],dir:[-1,1,1]}},\n'
+            f'    {{verts:[[0.75,-1,-1],[1,-0.75,-1],[1,-1,-0.75]],normal:[1,-1,-1],dir:[1,-1,-1]}},\n'
+            f'    {{verts:[[-0.75,1,-1],[-1,0.75,-1],[-1,1,-0.75]],normal:[-1,1,-1],dir:[-1,1,-1]}},\n'
+            f'    {{verts:[[-0.75,-1,1],[-1,-0.75,1],[-1,-1,0.75]],normal:[-1,-1,1],dir:[-1,-1,1]}},\n'
+            f'    {{verts:[[-0.75,-1,-1],[-1,-0.75,-1],[-1,-1,-0.75]],normal:[-1,-1,-1],dir:[-1,-1,-1]}},\n'
+            f'  ];\n'
+            f'  var _svg=null;\n'
+            f'  function _drawCube(){{\n'
             f'    if(!_renderer||!_svg)return;\n'
             f'    var cam=_renderer.getActiveCamera();\n'
             f'    var pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp();\n'
             f'    var vd=_n3([fp[0]-pos[0],fp[1]-pos[1],fp[2]-pos[2]]);\n'
-            f'    var right=_n3(_cr(vd,vup)),up=_cr(right,vd);\n'
-            f'    var cx=14,cy=14,R=10;\n'
-            f'    var axes=[{{v:[1,0,0],col:"#f66",lbl:"x"}},{{v:[0,1,0],col:"#6f6",lbl:"y"}},{{v:[0,0,1],col:"#66f",lbl:"z"}}];\n'
-            f'    axes.sort(function(a,b){{return _dt(a.v,vd)-_dt(b.v,vd);}});\n'
-            f'    var lines="";\n'
-            f'    for(var i=0;i<axes.length;i++){{\n'
-            f'      var ax=axes[i];\n'
-            f'      var sx=cx+R*_dt(ax.v,right),sy=cy-R*_dt(ax.v,up);\n'
-            f'      var al=_dt(ax.v,vd)<0?"0.35":"1";\n'
-            f'      lines+=\'<line x1="\'+cx+\'" y1="\'+cy+\'" x2="\'+sx.toFixed(1)+\'" y2="\'+sy.toFixed(1)+\'"'
-            f' stroke="\'+ax.col+\'" stroke-width="2" stroke-opacity="\'+al+\'"/>\';\n'
-            f'      lines+=\'<circle cx="\'+sx.toFixed(1)+\'" cy="\'+sy.toFixed(1)+\'" r="3"'
-            f' fill="\'+ax.col+\'" fill-opacity="\'+al+\'"/>\';\n'
-            f'      lines+=\'<text x="\'+( sx+(sx-cx>0?4:-8) ).toFixed(1)+\'" y="\'+( sy+(sy-cy>0?7:-3) ).toFixed(1)+\'"'
-            f' font-size="7" fill="\'+ax.col+\'" fill-opacity="\'+al+\'" font-family="monospace">\'+ax.lbl+\'</text>\';\n'
-            f'    }}\n'
-            f'    _svg.innerHTML=lines;\n'
+            f'    var right=_n3(_cr(vd,vup));\n'
+            f'    var up=_cr(right,vd);\n'
+            f'    var cx=36,cy=36,R=28;\n'
+            f'    function proj(v){{return[cx+R*_dt(v,right),cy-R*_dt(v,up)];}}\n'
+            f'    function depth(verts){{var d=0;for(var i=0;i<verts.length;i++)d+=_dt(verts[i],vd);return d/verts.length;}}\n'
+            f'    var pieces=[];\n'
+            f'    _FACES.forEach(function(f){{\n'
+            f'      if(_dt(f.normal,vd)>0.05)\n'
+            f'        pieces.push({{verts:f.verts,fill:f.fill,stroke:f.stroke,dir:f.dir,depth:depth(f.verts)}});\n'
+            f'    }});\n'
+            f'    _CORNERS.forEach(function(c){{\n'
+            f'      if(_dt(c.normal,vd)>0.05)\n'
+            f'        pieces.push({{verts:c.verts,fill:"#c8a800",stroke:"#ffe033",dir:c.dir,depth:depth(c.verts)}});\n'
+            f'    }});\n'
+            f'    pieces.sort(function(a,b){{return a.depth-b.depth;}});\n'
+            f'    var html="";\n'
+            f'    pieces.forEach(function(p){{\n'
+            f'      var pts=p.verts.map(function(v){{var s=proj(v);return s[0].toFixed(1)+","+s[1].toFixed(1);}}).join(" ");\n'
+            f'      html+=\'<polygon points="\'+pts+\'" fill="\'+p.fill+\'" stroke="\'+p.stroke+\'" stroke-width="1.5"\'\n'
+            f'           +\' style="cursor:pointer;"\'\n'
+            f'           +\' onclick="{_cube_lock_gate}csSetView_{fig_id_safe}([\'+p.dir[0]+\',\'+p.dir[1]+\',\'+p.dir[2]+\'])"/>\';'
+            f'\n'
+            f'    }});\n'
+            f'    _svg.innerHTML=html;\n'
             f'  }}\n'
-            f'  function _axLoop(){{_drawAxes();requestAnimationFrame(_axLoop);}}\n'
-            f'  window.csSetView_{fig_id_safe}=function(view){{\n'
+            f'  function _axLoop(){{_drawCube();requestAnimationFrame(_axLoop);}}\n'
+            f'  window.csSetView_{fig_id_safe}=function(dir){{\n'
             f'    if(!_renderer)return;\n'
             f'    var cam=_renderer.getActiveCamera();\n'
             f'    var fp=cam.getFocalPoint(),dist=cam.getDistance();\n'
-            f'    var dirs={{"iso":{{p:[1,1,1],u:[0,0,1]}},"+X":{{p:[1,0,0],u:[0,0,1]}},'
-            f'"+Y":{{p:[0,1,0],u:[0,0,1]}},"+Z":{{p:[0,0,1],u:[0,1,0]}}}};\n'
-            f'    var d=dirs[view];if(!d)return;\n'
-            f'    var pn=_n3(d.p);\n'
+            f'    var pn=_n3(dir);\n'
+            f'    var up=(Math.abs(pn[2])>0.9)?[0,1,0]:[0,0,1];\n'
             f'    cam.setPosition(fp[0]+pn[0]*dist,fp[1]+pn[1]*dist,fp[2]+pn[2]*dist);\n'
-            f'    cam.setViewUp(d.u[0],d.u[1],d.u[2]);\n'
+            f'    cam.setViewUp(up[0],up[1],up[2]);\n'
             f'    cam.setFocalPoint(fp[0],fp[1],fp[2]);\n'
             f'    _renderer.resetCameraClippingRange();\n'
+            f'    if(_iact)_iact.setEnabled(1);\n'
             f'    if(window.renderWindow)window.renderWindow.render();\n'
-            f'    _closeRotation();\n'
             f'  }};\n'
         )
     else:
         _js.append(f'  var _renderer=null;\n')
 
     # Renderer polling
+    _svg_assign = (
+        f'          _svg=document.getElementById("cs-svg-axes-{fig_id_safe}");\n'
+    ) if show_orientation else ''
     _axLoop_call = f'          _axLoop();\n' if show_orientation else ''
     _iact_lock = (
         f'          _iact=window.renderWindow.getInteractor();\n'
@@ -894,6 +885,7 @@ def _controls_strip_snippet(
         f'        var _r=rs[_ri];\n'
         f'        if(_r&&_r.getActors&&_r.getActors().length>0){{\n'
         f'          _renderer=_r;\n'
+        + _svg_assign
         + _axLoop_call
         + _iact_lock
         + f'          document.addEventListener("pointerup",function(){{_sendCam(_renderer);}});\n'

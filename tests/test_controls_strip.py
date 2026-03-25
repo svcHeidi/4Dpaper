@@ -276,7 +276,7 @@ class TestControlsStripJs:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
-        start = js.find("csSetView_fig_vm")
+        start = js.find("window.csSetView_fig_vm")
         assert start != -1, "csSetView_ not found"
         func_body = js[start:start + 600]
         assert "_n3(dir)" in func_body, "_n3(dir) not in csSetView_ body"
@@ -286,7 +286,7 @@ class TestControlsStripJs:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
-        start = js.find("csSetView_fig_vm")
+        start = js.find("window.csSetView_fig_vm")
         assert start != -1, "csSetView_ not found"
         func_body = js[start:start + 600]
         assert "if(_iact)" in func_body, "if(_iact) guard missing in csSetView_"
