@@ -573,10 +573,7 @@ def _controls_strip_snippet(
         "box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none;flex-direction:column;gap:6px;"
         "min-width:120px;"
     )
-    PBTN = (
-        "font-size:9px;padding:1px 5px;background:rgba(40,40,60,0.85);"
-        "border:1px solid #555;border-radius:3px;cursor:pointer;"
-    )
+
 
     strip_btns = ""
     if has_fields:
@@ -831,14 +828,14 @@ def _controls_strip_snippet(
             f'    function depth(verts){{var d=0;for(var i=0;i<verts.length;i++)d+=_dt(verts[i],vd);return d/verts.length;}}\n'
             f'    var pieces=[];\n'
             f'    _FACES.forEach(function(f){{\n'
-            f'      if(_dt(f.normal,vd)>0.05)\n'
+            f'      if(_dt(f.normal,vd)<-0.05)\n'
             f'        pieces.push({{verts:f.verts,fill:f.fill,stroke:f.stroke,dir:f.dir,depth:depth(f.verts)}});\n'
             f'    }});\n'
             f'    _CORNERS.forEach(function(c){{\n'
-            f'      if(_dt(c.normal,vd)>0.05)\n'
+            f'      if(_dt(c.normal,vd)<-0.05)\n'
             f'        pieces.push({{verts:c.verts,fill:"#c8a800",stroke:"#ffe033",dir:c.dir,depth:depth(c.verts)}});\n'
             f'    }});\n'
-            f'    pieces.sort(function(a,b){{return a.depth-b.depth;}});\n'
+            f'    pieces.sort(function(a,b){{return b.depth-a.depth;}});\n'
             f'    var html="";\n'
             f'    pieces.forEach(function(p){{\n'
             f'      var pts=p.verts.map(function(v){{var s=proj(v);return s[0].toFixed(1)+","+s[1].toFixed(1);}}).join(" ");\n'
