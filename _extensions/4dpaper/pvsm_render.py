@@ -182,7 +182,6 @@ def main() -> None:
     print(f"[pvsm_render] Saving geometry -> {out_vtu}", file=sys.stderr)
     try:
         import vtkmodules.vtkIOXML as xmlio
-        import vtkmodules.vtkFiltersCore as vtkfc
 
         csobj = last_source.SMProxy.GetClientSideObject()
         if csobj is None:
