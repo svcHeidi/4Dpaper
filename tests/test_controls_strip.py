@@ -103,8 +103,8 @@ class TestControlsStripHtml:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
         assert 'id="cs-svg-axes-fig_vm"' in html
-        assert 'width="72"' in html
-        assert 'height="72"' in html
+        assert 'width="56"' in html
+        assert 'height="56"' in html
 
     def test_cube_svg_size(self):
         """Corner div position: fixed bottom-left when show_orientation=True."""
@@ -314,26 +314,26 @@ class TestControlsStripJs:
             "cs-pop-axes- found in JS — _close_on_toggle still emitted"
 
     def test_cube_lock_gate_in_draw_cube(self):
-        """`_showLockedBadge` present inside `_drawCube` when show_lock_btn=True."""
+        """`_showLockedBadge` present inside SVG click listener when show_lock_btn=True."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=True)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
-        cube_start = js.find("function _drawCube")
-        assert cube_start != -1, "_drawCube not found"
-        cube_body = js[cube_start:cube_start + 2000]
-        assert "_showLockedBadge" in cube_body, \
-            "_showLockedBadge not found inside _drawCube with show_lock_btn=True"
+        listener_pos = js.find('_svg.addEventListener("click"')
+        assert listener_pos != -1, "SVG click listener not found"
+        listener_body = js[listener_pos:listener_pos + 400]
+        assert "_showLockedBadge" in listener_body, \
+            "_showLockedBadge not found in SVG click listener with show_lock_btn=True"
 
     def test_cube_no_lock_gate_when_lock_hidden(self):
-        """`_showLockedBadge` NOT present inside `_drawCube` when show_lock_btn=False."""
+        """`_showLockedBadge` NOT present inside SVG click listener when show_lock_btn=False."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=False)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
-        cube_start = js.find("function _drawCube")
-        assert cube_start != -1, "_drawCube not found"
-        cube_body = js[cube_start:cube_start + 2000]
-        assert "_showLockedBadge" not in cube_body, \
-            "_showLockedBadge found inside _drawCube with show_lock_btn=False"
+        listener_pos = js.find('_svg.addEventListener("click"')
+        assert listener_pos != -1, "SVG click listener not found"
+        listener_body = js[listener_pos:listener_pos + 400]
+        assert "_showLockedBadge" not in listener_body, \
+            "_showLockedBadge found in SVG click listener with show_lock_btn=False"
 
     def test_render_before_debounce(self):
         """renderWindow.render() fires immediately; only postMessage is debounced."""

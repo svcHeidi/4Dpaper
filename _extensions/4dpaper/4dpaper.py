@@ -597,7 +597,7 @@ def _controls_strip_snippet(
         corner_widget = (
             f'<div id="cs-corner-{fig_id_safe}"'
             f' style="position:fixed;bottom:4px;left:4px;z-index:9999;">\n'
-            f'  <svg id="cs-svg-axes-{fig_id_safe}" width="72" height="72"'
+            f'  <svg id="cs-svg-axes-{fig_id_safe}" width="56" height="56"'
             f' style="background:rgba(10,10,20,0.55);border:1px solid rgba(255,255,255,0.12);'
             f'border-radius:4px;display:block;cursor:pointer;"'
             f' title="Click face for ortho view \u00b7 click corner for iso view"></svg>\n'
@@ -823,7 +823,7 @@ def _controls_strip_snippet(
             f'    var vd=_n3([fp[0]-pos[0],fp[1]-pos[1],fp[2]-pos[2]]);\n'
             f'    var right=_n3(_cr(vd,vup));\n'
             f'    var up=_cr(right,vd);\n'
-            f'    var cx=36,cy=36,R=28;\n'
+            f'    var cx=28,cy=28,R=22;\n'
             f'    function proj(v){{return[cx+R*_dt(v,right),cy-R*_dt(v,up)];}}\n'
             f'    function depth(verts){{var d=0;for(var i=0;i<verts.length;i++)d+=_dt(verts[i],vd);return d/verts.length;}}\n'
             f'    var pieces=[];\n'
@@ -841,7 +841,7 @@ def _controls_strip_snippet(
             f'      var pts=p.verts.map(function(v){{var s=proj(v);return s[0].toFixed(1)+","+s[1].toFixed(1);}}).join(" ");\n'
             f'      html+=\'<polygon points="\'+pts+\'" fill="\'+p.fill+\'" stroke="\'+p.stroke+\'" stroke-width="1.5"\'\n'
             f'           +\' style="cursor:pointer;"\'\n'
-            f'           +\' onclick="{_cube_lock_gate}csSetView_{fig_id_safe}([\'+p.dir[0]+\',\'+p.dir[1]+\',\'+p.dir[2]+\'])"/>\';'
+            f'           +\' data-dir="\'+p.dir[0]+\',\'+p.dir[1]+\',\'+p.dir[2]+\'"/>\';'
             f'\n'
             f'    }});\n'
             f'    _svg.innerHTML=html;\n'
@@ -868,6 +868,13 @@ def _controls_strip_snippet(
     _svg_assign = (
         f'          _svg=document.getElementById("cs-svg-axes-{fig_id_safe}");\n'
     ) if show_orientation else ''
+    _svg_click_listener = (
+        f'          _svg.addEventListener("click",function(e){{\n'
+        f'            var dv=e.target.getAttribute("data-dir");if(!dv)return;\n'
+        + (f'            if(_locked){{_showLockedBadge();return;}}\n' if show_lock_btn else '')
+        + f'            csSetView_{fig_id_safe}(dv.split(",").map(Number));\n'
+        f'          }});\n'
+    ) if show_orientation else ''
     _axLoop_call = f'          _axLoop();\n' if show_orientation else ''
     _iact_lock = (
         f'          _iact=window.renderWindow.getInteractor();\n'
@@ -883,6 +890,7 @@ def _controls_strip_snippet(
         f'        if(_r&&_r.getActors&&_r.getActors().length>0){{\n'
         f'          _renderer=_r;\n'
         + _svg_assign
+        + _svg_click_listener
         + _axLoop_call
         + _iact_lock
         + f'          document.addEventListener("pointerup",function(){{_sendCam(_renderer);}});\n'
