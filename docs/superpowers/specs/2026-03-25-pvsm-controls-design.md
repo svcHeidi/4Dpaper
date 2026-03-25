@@ -43,22 +43,24 @@ Unchanged: renders at the specified time, saves one `{fig_id}-pipeline.vtu`.
 
 ### All-times mode (`--all-times`, only when `--time` is absent)
 
-1. Query available time steps from `GetAnimationScene().TimeKeeper.TimestepValues`
-2. For **time step 0**: render the full pipeline → save `{fig_id}-pipeline.vtu` (geometry)
-3. For **each time step i**: set animation time → extract scalar values only → save `{fig_id}-scalars-t{i}.bin` (raw float32 little-endian binary, no header)
-4. Save `{fig_id}-times.json`: list of time label strings (float values as `str`)
+1. Query available time steps: `times = GetAnimationScene().TimeKeeper.TimestepValues`
+2. For **time step 0**: `GetAnimationScene().AnimationTime = times[0]` → `GetActiveSource().UpdatePipeline()` → save `{fig_id}-pipeline.vtu` via `SaveData` (geometry for HTML base)
+3. For **each time step i**: `GetAnimationScene().AnimationTime = times[i]` → `GetActiveSource().UpdatePipeline()` → `vtk_output = GetActiveSource().GetClientSideObject().GetOutput()` → extract named array from point data via `vtk_output.GetPointData().GetArray(scalar_name)` → convert to numpy float32 → save `{fig_id}-scalars-t{i}.bin` (raw float32 little-endian, no header)
+4. Produce `{fig_id}.png`: render at `times[-1]` (last time step) applying `--camera` if provided, same as single-time mode
+5. Save `{fig_id}-times.json`: list of time label strings (`[str(t) for t in times]`)
+
+The scalar name is passed via a new `--scalar` argument (already known from `color_info` in `generate_pvsm_figure`).
 
 Output files for N time steps:
 ```
-{fig_id}-pipeline.vtu          ← geometry (once)
+{fig_id}-pipeline.vtu          ← geometry from t=0 (once)
 {fig_id}-scalars-t0.bin        ← float32 scalar values at t=0
 {fig_id}-scalars-t1.bin        ← float32 scalar values at t=1
 ...
 {fig_id}-scalars-t{N-1}.bin
 {fig_id}-times.json            ← ["0.0", "0.01", ..., "0.09"]
+{fig_id}.png                   ← screenshot at t=last (with camera if provided)
 ```
-
-The scalar name to extract is passed via a new `--scalar` argument (already known from `color_info` in `generate_pvsm_figure`).
 
 ---
 
@@ -89,18 +91,44 @@ out_html.write_text(html)
 - Existing single-render behaviour unchanged
 - `time_labels=None`, `time_data_b64=None` → no scrubber, lock + orientation only
 
-**`time_spec` is None:**
+**`time_spec` is None (includes `time=""` — existing code maps both to `None` via `.strip() or None`):**
 1. Pass `--all-times --scalar {scalar_name}` to pvpython subprocess
 2. Read `{fig_id}-times.json` → `time_labels`
-3. For each `{fig_id}-scalars-t{i}.bin`:
-   - Load raw float32 bytes → encode base64 → append to `time_data_b64`
-4. Topology guard: verify `len(scalar_array) == vtu_point_count` for all i; if any mismatch → clear `time_data_b64` / `time_labels`, log warning
+3. Load base VTU via `pv.read(out_vtu)` → `vtu_point_count = mesh.n_points`
+4. For each `{fig_id}-scalars-t{i}.bin`:
+   - Load raw bytes → `np.frombuffer(bytes, dtype=np.float32)`
+   - **Topology guard:** if `len(arr) != vtu_point_count` → clear `time_data_b64` / `time_labels`, log warning, break
+   - Otherwise encode base64 → append to `time_data_b64`
 5. Compute `global_range = [min over all frames, max over all frames]`
 6. Pass all to `_controls_strip_snippet`
 
+The reference point count is `pv.read(out_vtu).n_points` — the PyVista-loaded mesh — because the `.bin` scalars are extracted from the same pipeline output that produces the VTU. This keeps the comparison apples-to-apples regardless of any PyVista post-processing (surface extraction, multiblock flattening) that `generate_html_from_vtu` may apply later.
+
 ### Caching
 
-Cache invalidation for all-times mode: `is_cache_valid` already checks `pvsm_src` and `camera_path` mtimes. Add scalar bin files and times JSON to the list of output files that must exist for cache to be valid.
+In `main()`, the existing `cache_ok` block (before calling `generate_pvsm_figure`) is extended. When `time_spec is None`, cache is only valid if all expected output files exist:
+
+```python
+scalar_bins_ok = True
+if time_spec is None:
+    times_json = figures_dir / f"{fig_id}-times.json"
+    if times_json.exists():
+        import json as _json
+        n = len(_json.loads(times_json.read_text()))
+        scalar_bins_ok = all(
+            (figures_dir / f"{fig_id}-scalars-t{i}.bin").exists()
+            for i in range(n)
+        )
+    else:
+        scalar_bins_ok = False
+
+cache_ok = (
+    not script_newer
+    and scalar_bins_ok
+    and is_cache_valid(out_html, pvsm_src, camera_path=camera_path, extra_deps=extra_deps)
+    and is_cache_valid(out_png,  pvsm_src, camera_path=camera_path, extra_deps=extra_deps)
+)
+```
 
 ---
 
@@ -121,6 +149,7 @@ New test class `TestPvsmControls` in `tests/test_pvsm_figure.py`. All tests mock
 | `test_pvsm_time_scrubber_when_no_time_spec` | Fake VTU + N scalar bins → HTML contains `cs-time-slider-` |
 | `test_pvsm_no_scrubber_when_time_spec_set` | `time_spec="0.5"` → HTML contains lock, NOT `cs-time-slider-` |
 | `test_pvsm_topology_guard` | Scalar bins with mismatched point count → no `cs-time-slider-`, warning in stderr |
-| `test_pvsm_topology_guard_foam` | Same guard exists in `generate_html_figure` path (`.foam`) |
+| `test_pvsm_topology_guard` | Scalar bins with mismatched point count → no `cs-time-slider-`, warning in stderr |
+| `test_pvsm_topology_guard_foam` | In `generate_html_figure`, patch `pv.read` to return meshes with differing `n_points` across time frames → `time_data_b64` not passed to `_controls_strip_snippet`, warning in stderr |
 | `test_pvsm_global_range_computed` | `global_range` spans all frames (min/max across all scalar bins) |
-| `test_pvsm_cache_includes_scalar_bins` | Cache check requires scalar bin files to exist |
+| `test_pvsm_cache_includes_scalar_bins` | When scalar bins are missing, `cache_ok` is False even if `out_html` and `out_png` are up to date |
