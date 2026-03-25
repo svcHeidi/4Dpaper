@@ -244,6 +244,8 @@ def main() -> None:
                 return None
             vtk_arr = data.GetPointData().GetArray(scalar_name)
             if vtk_arr is None:
+                vtk_arr = data.GetCellData().GetArray(scalar_name)
+            if vtk_arr is None:
                 return None
             n = vtk_arr.GetNumberOfTuples()
             return [vtk_arr.GetValue(j) for j in range(n)]
