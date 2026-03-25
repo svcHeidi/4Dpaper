@@ -1447,6 +1447,68 @@ def generate_pvsm_figure(
         preview=True,
     )
 
+    # -- Step 3: Build time data and inject controls ----------------------------
+    import array as _array
+    import base64 as _b64
+    import json as _json
+
+    scalar_name = color_info.get("scalar_name", "") or ""
+    time_labels: list[str] | None = None
+    time_data_b64: list[str] | None = None
+    time_global_range: list[float] | None = None
+
+    if not time_spec and scalar_name:
+        times_json = figures_dir / f"{fig_id}-times.json"
+        if times_json.exists():
+            try:
+                time_labels = _json.loads(times_json.read_text())
+                arrays = []
+                for i in range(len(time_labels)):
+                    bin_path = figures_dir / f"{fig_id}-scalars-t{i}.bin"
+                    raw = bin_path.read_bytes()
+                    arr = _array.array("f")
+                    arr.frombytes(raw)
+                    arrays.append(arr)
+
+                # Topology guard: all frame arrays must have the same length
+                ref_len = len(arrays[0]) if arrays else 0
+                if any(len(a) != ref_len for a in arrays):
+                    print(
+                        f"[4dpaper] WARNING: {fig_id} — mesh topology changes between "
+                        "time steps; time scrubber disabled.",
+                        file=sys.stderr,
+                    )
+                    time_labels = None
+                else:
+                    time_data_b64 = [
+                        _b64.b64encode(a.tobytes()).decode("ascii") for a in arrays
+                    ]
+                    time_global_range = [
+                        float(min(min(a) for a in arrays)),
+                        float(max(max(a) for a in arrays)),
+                    ]
+            except Exception as exc:
+                print(
+                    f"[4dpaper] WARNING: {fig_id} — could not load time data: {exc}; "
+                    "time scrubber disabled.",
+                    file=sys.stderr,
+                )
+                time_labels = None
+
+    controls = _controls_strip_snippet(
+        fig_id=fig_id,
+        show_lock_btn=True,
+        show_orientation=True,
+        time_labels=time_labels,
+        time_data_b64=time_data_b64,
+        time_global_range=time_global_range,
+        time_field=scalar_name,
+    )
+    if controls:
+        html = out_html.read_text()
+        if "</body>" in html:
+            out_html.write_text(html.replace("</body>", controls + "\n</body>", 1))
+
 
 def generate_panel_html(panel: dict, figures_dir: Path) -> None:
     """
