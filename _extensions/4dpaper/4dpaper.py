@@ -10,6 +10,8 @@ and QUARTO_OUTPUT_FORMAT from the environment.
 """
 from __future__ import annotations
 
+import array as _array
+import base64 as _b64
 import json
 import os
 import re
@@ -1448,20 +1450,18 @@ def generate_pvsm_figure(
     )
 
     # -- Step 3: Build time data and inject controls ----------------------------
-    import array as _array
-    import base64 as _b64
-    import json as _json
-
     scalar_name = color_info.get("scalar_name", "") or ""
     time_labels: list[str] | None = None
     time_data_b64: list[str] | None = None
     time_global_range: list[float] | None = None
 
+    # Only attempt time embedding when no specific time step was requested
+    # and the PVSM has an active scalar field.
     if not time_spec and scalar_name:
         times_json = figures_dir / f"{fig_id}-times.json"
         if times_json.exists():
             try:
-                time_labels = _json.loads(times_json.read_text())
+                time_labels = json.loads(times_json.read_text(encoding="utf-8"))
                 arrays = []
                 for i in range(len(time_labels)):
                     bin_path = figures_dir / f"{fig_id}-scalars-t{i}.bin"
@@ -1488,7 +1488,7 @@ def generate_pvsm_figure(
                         float(min(min(a) for a in arrays)),
                         float(max(max(a) for a in arrays)),
                     ]
-            except Exception as exc:
+            except (OSError, ValueError) as exc:
                 print(
                     f"[4dpaper] WARNING: {fig_id} — could not load time data: {exc}; "
                     "time scrubber disabled.",
@@ -1506,9 +1506,10 @@ def generate_pvsm_figure(
         time_field=scalar_name,
     )
     if controls:
-        html = out_html.read_text()
+        html = out_html.read_text(encoding="utf-8")
         if "</body>" in html:
-            out_html.write_text(html.replace("</body>", controls + "\n</body>", 1))
+            out_html.write_text(html.replace("</body>", controls + "\n</body>", 1),
+                                encoding="utf-8")
 
 
 def generate_panel_html(panel: dict, figures_dir: Path) -> None:
