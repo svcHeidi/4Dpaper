@@ -99,7 +99,7 @@ class TestControlsStripHtml:
         # corner cube div must be present
         assert 'id="cs-corner-fig_vm"' in html
 
-    def test_corner_cube_present_when_show_orientation(self):
+    def test_axis_widget_svg_present_when_show_orientation(self):
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
         assert 'id="cs-svg-axes-fig_vm"' in html
@@ -259,18 +259,6 @@ class TestControlsStripJs:
         assert cs_all_pos != -1, "_CS_ALL not in csToggle_"
         assert locked_pos < cs_all_pos, "if(_locked) must come before _CS_ALL loop"
 
-    def test_draw_cube_function_present(self):
-        """`_drawCube` emitted when show_orientation=True."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "_drawCube" in html
-
-    def test_draw_cube_absent_when_orientation_hidden(self):
-        """`_drawCube` NOT emitted when show_orientation=False."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
-        assert "_drawCube" not in html
-
     def test_cs_setview_accepts_direction_array(self):
         """`csSetView_` body normalises direction via `_n3(dir)`."""
         mod = _load_4dpaper()
@@ -312,28 +300,6 @@ class TestControlsStripJs:
         js = html.split("<script>", 1)[1] if "<script>" in html else html
         assert "cs-pop-axes-" not in js, \
             "cs-pop-axes- found in JS — _close_on_toggle still emitted"
-
-    def test_cube_lock_gate_in_draw_cube(self):
-        """`_showLockedBadge` present inside SVG click listener when show_lock_btn=True."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=True)
-        js = html.split("<script>", 1)[1] if "<script>" in html else html
-        listener_pos = js.find('_svg.addEventListener("click"')
-        assert listener_pos != -1, "SVG click listener not found"
-        listener_body = js[listener_pos:listener_pos + 400]
-        assert "_showLockedBadge" in listener_body, \
-            "_showLockedBadge not found in SVG click listener with show_lock_btn=True"
-
-    def test_cube_no_lock_gate_when_lock_hidden(self):
-        """`_showLockedBadge` NOT present inside SVG click listener when show_lock_btn=False."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=False)
-        js = html.split("<script>", 1)[1] if "<script>" in html else html
-        listener_pos = js.find('_svg.addEventListener("click"')
-        assert listener_pos != -1, "SVG click listener not found"
-        listener_body = js[listener_pos:listener_pos + 400]
-        assert "_showLockedBadge" not in listener_body, \
-            "_showLockedBadge found in SVG click listener with show_lock_btn=False"
 
     def test_render_before_debounce(self):
         """renderWindow.render() fires immediately; only postMessage is debounced."""
@@ -401,6 +367,107 @@ class TestControlsStripOrientationLogic:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
         assert "_axLoop" not in html
+
+    def test_drawaxes_function_present(self):
+        """`function _drawAxes(` emitted when show_orientation=True; `_drawCube` NOT emitted."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert "function _drawAxes(" in html
+        assert "_drawCube" not in html
+        assert "_FACES" not in html
+        assert "_CORNERS" not in html
+
+    def test_axis_reference_absent_when_orientation_hidden(self):
+        """When show_orientation=False: no _drawAxes, no iso button."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
+        assert "_drawAxes" not in html
+        assert "iso" not in html
+
+    def test_axis_click_delegation(self):
+        """SVG click listener uses data-dir and dv.split(',').map(Number)."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert '_svg.addEventListener("click"' in html
+        # data-dir used inside _drawAxes body
+        draw_start = html.find("function _drawAxes(")
+        assert draw_start != -1
+        draw_body = html[draw_start:draw_start + 1000]
+        assert 'data-dir="' in draw_body
+        # existing parser still used in click listener
+        assert 'dv.split(",").map(Number)' in html
+
+    def test_axis_positive_directions(self):
+        """_drawAxes emits data-dir for all 3 positive ortho directions."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        draw_start = html.find("function _drawAxes(")
+        assert draw_start != -1
+        draw_body = html[draw_start:draw_start + 1000]
+        assert 'data-dir="1,0,0"' in draw_body
+        assert 'data-dir="0,1,0"' in draw_body
+        assert 'data-dir="0,0,1"' in draw_body
+
+    def test_axis_negative_directions(self):
+        """_drawAxes emits data-dir for all 3 negative ortho directions (tail circles)."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        draw_start = html.find("function _drawAxes(")
+        assert draw_start != -1
+        draw_body = html[draw_start:draw_start + 1000]
+        assert 'data-dir="-1,0,0"' in draw_body
+        assert 'data-dir="0,-1,0"' in draw_body
+        assert 'data-dir="0,0,-1"' in draw_body
+
+    def test_iso_button_present(self):
+        """Iso button, id, and flash span present when show_orientation=True."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert "iso" in html
+        assert 'id="cs-btn-iso-fig_vm"' in html
+        assert 'id="cs-iso-flash-fig_vm"' in html
+
+    def test_iso_button_absent_when_orientation_hidden(self):
+        """Iso button absent when show_orientation=False."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
+        assert 'cs-btn-iso-' not in html
+        assert 'cs-iso-flash-' not in html
+
+    def test_iso_cycle_views(self):
+        """_ISO_VIEWS with 4 entries, _ISO_NAMES, _isoIdx present when show_orientation=True."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
+        assert "_ISO_VIEWS" in html
+        assert "[1,1,1]" in html   # first iso view entry
+        assert "_ISO_NAMES" in html
+        assert "_isoIdx" in html
+
+    def test_iso_lock_gate(self):
+        """Iso button listener has lock check before csSetView_ and before _isoIdx= when show_lock_btn=True."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=True)
+        js = html.split("<script>", 1)[1] if "<script>" in html else html
+        btn_pos = js.find('cs-btn-iso-fig_vm')
+        assert btn_pos != -1, "iso button listener not found in JS"
+        btn_section = js[btn_pos:btn_pos + 400]
+        locked_pos = btn_section.find("if(_locked)")
+        setview_pos = btn_section.find("csSetView_fig_vm")
+        idx_pos = btn_section.find("_isoIdx=")
+        assert locked_pos != -1, "if(_locked) not in iso button handler"
+        assert locked_pos < setview_pos, "if(_locked) must come before csSetView_"
+        assert locked_pos < idx_pos, "if(_locked) must come before _isoIdx="
+
+    def test_iso_no_lock_gate_when_lock_hidden(self):
+        """Iso button listener has NO lock check when show_lock_btn=False."""
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=False)
+        js = html.split("<script>", 1)[1] if "<script>" in html else html
+        btn_pos = js.find('cs-btn-iso-fig_vm')
+        assert btn_pos != -1, "iso button listener not found in JS"
+        btn_section = js[btn_pos:btn_pos + 400]
+        assert "if(_locked)" not in btn_section, \
+            "if(_locked) must NOT be in iso button handler when show_lock_btn=False"
 
 
 class TestControlsStripFieldLogic:
