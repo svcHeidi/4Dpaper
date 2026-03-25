@@ -2183,8 +2183,29 @@ def main() -> None:
 
         extra_deps = [_pvsm_render_script]
         script_newer = out_html.exists() and _here.stat().st_mtime > out_html.stat().st_mtime
+
+        scalar_bins_ok = True
+        if not time_spec:
+            times_json_path = figures_dir / f"{fig_id}-times.json"
+            if times_json_path.exists():
+                try:
+                    n_steps = len(json.loads(times_json_path.read_text(encoding="utf-8")))
+                    bin_paths = [
+                        figures_dir / f"{fig_id}-scalars-t{i}.bin"
+                        for i in range(n_steps)
+                    ]
+                    scalar_bins_ok = all(
+                        is_cache_valid(p, pvsm_src, camera_path=camera_path)
+                        for p in bin_paths
+                    )
+                except (OSError, ValueError):
+                    scalar_bins_ok = False
+            else:
+                scalar_bins_ok = False
+
         cache_ok = (
             not script_newer
+            and scalar_bins_ok
             and is_cache_valid(out_html, pvsm_src, camera_path=camera_path, extra_deps=extra_deps)
             and is_cache_valid(out_png,  pvsm_src, camera_path=camera_path, extra_deps=extra_deps)
         )
