@@ -159,6 +159,14 @@ def build_figure_insert_form(
     cf_root_str = config.get("cardiacfoam_root", str(Path.home()))
 
     # ── File selector ─────────────────────────────────────────────────────────
+    root_select = pn.widgets.RadioButtonGroup(
+        name="Root",
+        options=["Cases", "Project"],
+        value="Cases",
+        button_type="default",
+        width=_IW,
+    )
+
     # Explicit width so it never overflows the sidebar.
     file_selector = pn.widgets.FileSelector(
         directory=cf_root_str,
@@ -166,6 +174,12 @@ def build_figure_insert_form(
         width=_IW,
         height=300,
     )
+
+    def _on_root_change(event):
+        directory = cf_root_str if event.new == "Cases" else str(project_root)
+        file_selector.directory = directory
+
+    root_select.param.watch(_on_root_change, "value")
 
     # ── Figure settings ───────────────────────────────────────────────────────
     # Explicit width on every widget instead of sizing_mode="stretch_width" so
@@ -318,6 +332,7 @@ def build_figure_insert_form(
     # ── Form layout ───────────────────────────────────────────────────────────
     return pn.Column(
         pn.pane.Markdown("### Insert Figure", styles={"color": "#ddd"}),
+        root_select,
         file_selector,
         pn.layout.Divider(margin=(6, 0)),
         field_input,
