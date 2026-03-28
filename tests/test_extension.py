@@ -389,3 +389,12 @@ class TestPdf3DExperimentalHelpers:
         escaped = mod._latex_path_escape("state/figures/my_fig 01.png")
         assert escaped == r"state/figures/my\_fig\ 01.png"
 
+    def test_run_converter_template_handles_bad_format_string(self, tmp_path):
+        mod = _load_4dpaper()
+        inp = tmp_path / "in.obj"
+        out = tmp_path / "out.u3d"
+        inp.write_text("o mesh\n")
+        ok, err = mod._run_converter_template("assimp export {input {output}", inp, out)
+        assert ok is False
+        assert "invalid converter template" in err
+
