@@ -67,16 +67,40 @@ def parse_shortcodes(text: str) -> list[dict]:
     return results
 
 
+def parse_vtk_shortcodes(text: str) -> list[dict]:
+    """
+    Parse {{< 4d-vtk key="value" ... >}} shortcodes from QMD text.
+
+    Returns a list of dicts with at minimum 'id' and 'spec' keys.
+    Shortcodes missing 'id' or 'spec' are silently skipped.
+    """
+    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+
+    pattern = r'\{\{<\s*4d-vtk\s+(.*?)\s*>\}\}'
+    results = []
+    for match in re.finditer(pattern, stripped, re.DOTALL):
+        raw = match.group(1)
+        kwargs: dict[str, str] = {}
+        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+            kwargs[key] = val
+        if "id" not in kwargs or "spec" not in kwargs:
+            continue
+        kwargs.setdefault("caption", "")
+        results.append(kwargs)
+    return results
+
+
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 
 def is_cache_valid(
     fig_path: Path,
     src_path: Path,
     camera_path: Path | None = None,
+    extra_deps: list[Path] | None = None,
 ) -> bool:
     """
-    Return True if fig_path exists, is newer than src_path, and is newer
-    than camera_path (if given and present).
+    Return True if fig_path exists, is newer than src_path, camera_path
+    (if given and present), and all extra_deps that exist.
 
     Returns True (assume valid) if src_path does not exist.
     """
@@ -87,6 +111,9 @@ def is_cache_valid(
         return False
     if camera_path is not None and camera_path.exists():
         if fig_mtime <= camera_path.stat().st_mtime:
+            return False
+    for dep in extra_deps or []:
+        if dep.exists() and fig_mtime <= dep.stat().st_mtime:
             return False
     return True
 
@@ -466,6 +493,198 @@ def _camera_sync_snippet(fig_id: str) -> str:
     )
 
 
+def _camera_path(fig_id: str | None) -> Path | None:
+    """Return the saved camera JSON path for a figure id, if provided."""
+    if not fig_id:
+        return None
+    return _project_root / "state" / f"camera_{fig_id}.json"
+
+
+def _apply_saved_camera(pl, fig_id: str | None, *, context: str = "figure") -> None:
+    """
+    Apply a saved camera JSON if present, else use isometric view.
+
+    The camera JSON comes from the vtk.js renderer that has actors, which
+    operates in the same world coordinate space as PyVista — so we can
+    apply position / focal_point / view_up directly.
+    """
+    camera_path = _camera_path(fig_id)
+    if camera_path is not None and camera_path.exists():
+        try:
+            cam = json.loads(camera_path.read_text())
+            pl.camera.position = cam["position"]
+            pl.camera.focal_point = cam["focal_point"]
+            pl.camera.up = cam["view_up"]
+            print(f"[4dpaper] {context} {fig_id}: using saved camera", file=sys.stderr)
+            return
+        except (json.JSONDecodeError, KeyError) as exc:
+            print(
+                f"[4dpaper] Warning: could not apply saved camera for {fig_id} ({exc})"
+                " — using isometric view.",
+                file=sys.stderr,
+            )
+    pl.isometric_view()
+
+
+def _postprocess_exported_html(output_path: Path, fig_id: str | None = None) -> None:
+    """Normalize exported HTML sizing and inject camera sync when applicable."""
+    html = output_path.read_text()
+    html = html.replace("100vw", "900px").replace("100vh", "600px")
+
+    if fig_id:
+        if "</body>" not in html:
+            print(
+                f"[4dpaper] Warning: no </body> in {output_path.name} "
+                "— camera sync badge not injected.",
+                file=sys.stderr,
+            )
+        else:
+            html = html.replace("</body>", _camera_sync_snippet(fig_id) + "\n</body>", 1)
+    output_path.write_text(html)
+
+
+def load_render_spec(spec_path: Path) -> dict:
+    """
+    Load and validate a VTK render specification JSON file.
+
+    Relative mesh paths are resolved relative to the spec file location.
+    """
+    if not spec_path.exists():
+        raise RuntimeError(f"[4dpaper] Render spec not found: {spec_path}")
+
+    try:
+        raw = json.loads(spec_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"[4dpaper] Invalid render spec JSON at {spec_path}: {exc}") from exc
+
+    if not isinstance(raw, dict):
+        raise RuntimeError(f"[4dpaper] Render spec must be a JSON object: {spec_path}")
+
+    mesh_value = str(raw.get("mesh", "")).strip()
+    if not mesh_value:
+        raise RuntimeError(f"[4dpaper] Render spec missing required 'mesh': {spec_path}")
+
+    field_raw = raw.get("field")
+    if not isinstance(field_raw, dict):
+        raise RuntimeError(f"[4dpaper] Render spec missing required 'field' object: {spec_path}")
+
+    field_name = str(field_raw.get("name", "")).strip()
+    if not field_name:
+        raise RuntimeError(f"[4dpaper] Render spec missing required 'field.name': {spec_path}")
+
+    association = str(field_raw.get("association", "point")).strip().lower() or "point"
+    if association not in {"point", "cell"}:
+        raise RuntimeError(
+            f"[4dpaper] Render spec field.association must be 'point' or 'cell': {spec_path}"
+        )
+
+    field_range = field_raw.get("range")
+    if field_range is not None:
+        if not isinstance(field_range, list) or len(field_range) != 2:
+            raise RuntimeError(
+                f"[4dpaper] Render spec field.range must be a two-item list: {spec_path}"
+            )
+        try:
+            field_range = [float(field_range[0]), float(field_range[1])]
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"[4dpaper] Render spec field.range must contain numbers: {spec_path}"
+            ) from exc
+
+    filter_raw = raw.get("filter", {})
+    if filter_raw is None:
+        filter_raw = {}
+    if not isinstance(filter_raw, dict):
+        raise RuntimeError(f"[4dpaper] Render spec 'filter' must be an object: {spec_path}")
+    filter_kind = str(filter_raw.get("kind", "none")).strip().lower() or "none"
+    if filter_kind not in {"none", "surface"}:
+        raise RuntimeError(
+            f"[4dpaper] Render spec filter.kind must be 'none' or 'surface': {spec_path}"
+        )
+
+    display_raw = raw.get("display", {})
+    if display_raw is None:
+        display_raw = {}
+    if not isinstance(display_raw, dict):
+        raise RuntimeError(f"[4dpaper] Render spec 'display' must be an object: {spec_path}")
+
+    mesh_path = Path(mesh_value)
+    if not mesh_path.is_absolute():
+        mesh_path = (spec_path.parent / mesh_path).resolve()
+
+    return {
+        "version": int(raw.get("version", 1)),
+        "spec_path": spec_path,
+        "mesh": mesh_value,
+        "mesh_path": mesh_path,
+        "field": {
+            "name": field_name,
+            "association": association,
+            "range": field_range,
+            "colormap": str(field_raw.get("colormap", "coolwarm")).strip() or "coolwarm",
+        },
+        "filter": {"kind": filter_kind},
+        "display": {
+            "background": str(display_raw.get("background", "#1a1a2e")).strip() or "#1a1a2e",
+            "show_scalar_bar": bool(display_raw.get("show_scalar_bar", True)),
+        },
+    }
+
+
+def prepare_render_mesh(mesh, filter_kind: str):
+    """Apply a geometry filter policy before rendering."""
+    if filter_kind == "none":
+        return mesh
+    if filter_kind == "surface":
+        return mesh.extract_surface()
+    raise ValueError(f"Unsupported filter kind: {filter_kind}")
+
+
+def _compute_field_range(mesh, field_name: str, association: str) -> list[float] | None:
+    """Return [min, max] for the requested field on the requested association."""
+    import numpy as np
+
+    data = mesh.point_data if association == "point" else mesh.cell_data
+    if field_name not in data:
+        return None
+    arr = np.asarray(data[field_name])
+    if arr.size == 0:
+        return None
+    return [float(np.nanmin(arr)), float(np.nanmax(arr))]
+
+
+def _add_render_spec_mesh(pl, mesh, spec: dict) -> None:
+    """Add a render-spec-configured mesh to a PyVista plotter."""
+    field = spec["field"]["name"]
+    association = spec["field"]["association"]
+    field_range = spec["field"]["range"]
+    cmap = spec["field"]["colormap"]
+    show_scalar_bar = spec["display"]["show_scalar_bar"]
+
+    data = mesh.point_data if association == "point" else mesh.cell_data
+    if field and field in data:
+        add_kwargs = {
+            "scalars": field,
+            "preference": association,
+            "cmap": cmap,
+            "smooth_shading": True,
+            "show_scalar_bar": show_scalar_bar,
+        }
+        effective_range = field_range or _compute_field_range(mesh, field, association)
+        if effective_range is not None:
+            add_kwargs["clim"] = effective_range
+        if show_scalar_bar:
+            add_kwargs["scalar_bar_args"] = {"title": field}
+        pl.add_mesh(mesh, **add_kwargs)
+    else:
+        pl.add_mesh(mesh, color="#aaaaaa", opacity=0.9)
+        print(
+            f"[4dpaper] Warning: field '{field}' not found for {association} data"
+            " — rendering geometry only.",
+            file=sys.stderr,
+        )
+
+
 # ── Figure generation (Task 3) ────────────────────────────────────────────────
 
 def generate_png_figure(
@@ -527,29 +746,7 @@ def generate_png_figure(
             file=sys.stderr,
         )
 
-    # Apply saved camera if available, else fall back to isometric view.
-    # The camera JSON comes from the vtk.js renderer that has actors, which
-    # operates in the same world coordinate space as PyVista — so we can
-    # apply position / focal_point / view_up directly.
-    camera_path = (
-        _project_root / "state" / f"camera_{fig_id}.json"
-        if fig_id else None
-    )
-    if camera_path is not None and camera_path.exists():
-        try:
-            cam = json.loads(camera_path.read_text())
-            pl.camera.position = cam["position"]
-            pl.camera.focal_point = cam["focal_point"]
-            pl.camera.up = cam["view_up"]
-            print(f"[4dpaper] Applied saved camera for {fig_id}")
-        except (json.JSONDecodeError, KeyError) as exc:
-            print(
-                f"[4dpaper] Warning: could not apply saved camera for {fig_id} ({exc})"
-                " — using isometric view.",
-            )
-            pl.isometric_view()
-    else:
-        pl.isometric_view()
+    _apply_saved_camera(pl, fig_id, context="PNG figure")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pl.screenshot(str(output_path))
     pl.close()
@@ -616,52 +813,61 @@ def generate_html_figure(
             file=sys.stderr,
         )
 
-    # Apply camera — same logic as generate_png_figure so HTML and PDF start from
-    # the same viewpoint.  If a saved camera JSON exists, use it; otherwise fall
-    # back to isometric view.  This guarantees the initial HTML figure and the
-    # exported PDF always show the same default angle.
-    camera_path = (
-        _project_root / "state" / f"camera_{fig_id}.json"
-        if fig_id else None
-    )
-    if camera_path is not None and camera_path.exists():
-        try:
-            cam = json.loads(camera_path.read_text())
-            pl.camera.position = cam["position"]
-            pl.camera.focal_point = cam["focal_point"]
-            pl.camera.up = cam["view_up"]
-            print(f"[4dpaper] HTML figure {fig_id}: using saved camera", file=sys.stderr)
-        except (json.JSONDecodeError, KeyError) as exc:
-            print(
-                f"[4dpaper] Warning: could not apply saved camera for {fig_id} ({exc})"
-                " — using isometric view.",
-                file=sys.stderr,
-            )
-            pl.isometric_view()
-    else:
-        pl.isometric_view()
+    _apply_saved_camera(pl, fig_id, context="HTML figure")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pl.export_html(str(output_path))
     pl.close()
-
-    # Patch viewport units so the widget has a fixed height when embedded inline.
-    # PyVista's trame output uses 100vw/100vh which fills the whole page.
-    html = output_path.read_text()
-    html = html.replace("100vw", "900px").replace("100vh", "600px")
-
-    if fig_id:
-        if "</body>" not in html:
-            print(
-                f"[4dpaper] Warning: no </body> in {output_path.name} "
-                "— camera sync badge not injected.",
-                file=sys.stderr,
-            )
-        else:
-            html = html.replace("</body>", _camera_sync_snippet(fig_id) + "\n</body>", 1)
-    output_path.write_text(html)
+    _postprocess_exported_html(output_path, fig_id=fig_id)
 
     print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
+
+
+def generate_png_from_render_spec(
+    spec_path: Path,
+    output_path: Path,
+    fig_id: str | None = None,
+) -> None:
+    """Generate a static PNG figure from a VTK render specification."""
+    import pyvista as pv
+
+    spec = load_render_spec(spec_path)
+    mesh = pv.read(str(spec["mesh_path"]))
+    render_mesh = prepare_render_mesh(mesh, spec["filter"]["kind"])
+
+    pl = pv.Plotter(off_screen=True, window_size=(1920, 1080))
+    pl.background_color = spec["display"]["background"]
+    _add_render_spec_mesh(pl, render_mesh, spec)
+    _apply_saved_camera(pl, fig_id, context="VTK PNG figure")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    pl.screenshot(str(output_path))
+    pl.close()
+    print(f"[4dpaper] Generated (VTK PNG): {output_path}", file=sys.stderr)
+
+
+def generate_html_from_render_spec(
+    spec_path: Path,
+    output_path: Path,
+    fig_id: str | None = None,
+) -> None:
+    """Generate a self-contained vtk.js HTML figure from a VTK render specification."""
+    import pyvista as pv
+
+    spec = load_render_spec(spec_path)
+    mesh = pv.read(str(spec["mesh_path"]))
+    render_mesh = prepare_render_mesh(mesh, spec["filter"]["kind"])
+
+    pl = pv.Plotter(off_screen=True, window_size=(900, 600))
+    pl.background_color = spec["display"]["background"]
+    _add_render_spec_mesh(pl, render_mesh, spec)
+    _apply_saved_camera(pl, fig_id, context="VTK HTML figure")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    pl.export_html(str(output_path))
+    pl.close()
+    _postprocess_exported_html(output_path, fig_id=fig_id)
+    print(f"[4dpaper] Generated (VTK HTML): {output_path}", file=sys.stderr)
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
@@ -689,11 +895,14 @@ def main() -> None:
         print(f"[4dpaper] Scanning {len(qmd_files)} QMD file(s) in {project_dir}", file=sys.stderr)
 
     figures = []
+    vtk_figs = []
     for qmd in qmd_files:
-        figures.extend(parse_shortcodes(qmd.read_text()))
+        text = qmd.read_text()
+        figures.extend(parse_shortcodes(text))
+        vtk_figs.extend(parse_vtk_shortcodes(text))
 
-    if not figures:
-        print("[4dpaper] No 4d-image shortcodes found.", file=sys.stderr)
+    if not figures and not vtk_figs:
+        print("[4dpaper] No 4d-image or 4d-vtk shortcodes found.", file=sys.stderr)
         return
 
     pdf3d_enabled = _truthy_env("FOURDPAPER_PDF3D_EXPERIMENTAL", default=False)
@@ -794,6 +1003,56 @@ def main() -> None:
                     f"[4dpaper] media9 TeX include fallback failed for {fig_id}; keeping PNG-only PDF.",
                     file=sys.stderr,
                 )
+
+    for vtk_fig in vtk_figs:
+        fig_id = vtk_fig["id"]
+        spec_path = (
+            Path(vtk_fig["spec"])
+            if Path(vtk_fig["spec"]).is_absolute()
+            else _project_root / vtk_fig["spec"]
+        )
+        try:
+            render_spec = load_render_spec(spec_path)
+        except Exception as exc:
+            print(f"[4dpaper] ERROR loading render spec for {fig_id}: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+        mesh_path = render_spec["mesh_path"]
+        out_html = figures_dir / f"{fig_id}.html"
+        script_newer = (
+            out_html.exists()
+            and _here.stat().st_mtime > out_html.stat().st_mtime
+        )
+        camera_path = _camera_path(fig_id)
+        if not script_newer and is_cache_valid(
+            out_html,
+            spec_path,
+            camera_path=camera_path,
+            extra_deps=[mesh_path],
+        ):
+            print(f"[4dpaper] {fig_id}.html is up to date — skipping.", file=sys.stderr)
+        else:
+            print(f"[4dpaper] Generating {fig_id}.html from render spec …", file=sys.stderr)
+            try:
+                generate_html_from_render_spec(spec_path, out_html, fig_id=fig_id)
+            except Exception as exc:
+                print(f"[4dpaper] ERROR generating {fig_id}.html: {exc}", file=sys.stderr)
+                sys.exit(1)
+
+        out_png = figures_dir / f"{fig_id}.png"
+        png_fresh = (
+            not camera_path.exists()
+            and is_cache_valid(out_png, spec_path, extra_deps=[mesh_path])
+        )
+        if png_fresh:
+            print(f"[4dpaper] {fig_id}.png is up to date — skipping.")
+        else:
+            print(f"[4dpaper] Generating {fig_id}.png from render spec …")
+            try:
+                generate_png_from_render_spec(spec_path, out_png, fig_id=fig_id)
+            except Exception as exc:
+                print(f"[4dpaper] ERROR generating {fig_id}.png: {exc}")
+                sys.exit(1)
 
 if __name__ == "__main__":
     main()
