@@ -370,3 +370,22 @@ class TestPdf3DExperimentalHelpers:
         assert "\\includegraphics" in content
         assert "\\includemedia" not in content
 
+    def test_write_pdf3d_tex_snippet_uses_ifdefined_guard(self, tmp_path, monkeypatch):
+        mod = _load_4dpaper()
+        monkeypatch.setattr(mod, "_project_root", tmp_path)
+        tex = tmp_path / "state" / "figures" / "fig_vm.pdf3d.tex"
+        png = tmp_path / "state" / "figures" / "fig_vm.png"
+        u3d = tmp_path / "state" / "figures" / "fig_vm.u3d"
+        png.parent.mkdir(parents=True, exist_ok=True)
+        png.write_text("poster")
+        u3d.write_text("asset")
+        mod._write_pdf3d_tex_snippet(tex, poster_path=png, asset_path=u3d)
+        content = tex.read_text()
+        assert "\\ifdefined\\includemedia" in content
+        assert "\\fi" in content
+
+    def test_latex_path_escape_escapes_spaces_and_underscores(self):
+        mod = _load_4dpaper()
+        escaped = mod._latex_path_escape("state/figures/my_fig 01.png")
+        assert escaped == r"state/figures/my\_fig\ 01.png"
+
