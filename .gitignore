@@ -14,6 +14,40 @@ state/render_output.png
 # Extension-generated figure cache
 state/figures/*.html
 state/figures/*.png
+state/figures/*.mp4
+state/figures/*.webm
+state/figures/*.mov
+state/figures/*.bin
+state/figures/*.vtu
+state/figures/*.u3d
+state/figures/*.prc
+state/figures/*.pdf3d.tex
+state/figures/*-times.json
+state/figures/*manifest.json
+state/field_*.json
+state/fourd_lua_debug.txt
+
+# Generated Quarto/build artifacts
+_freeze/**/libs/
+_output/*.pdf
+_output/*_files/
+_output/state/
+_output/test_*.html
+_output/test_*_files/
+build_log*.txt
+render_output.log
+server_pid.txt
+
+# Local tool/editor folders
+.claude/
+.cursor/
+.superpowers/
+Library/
 
 /.luarc.json
 .worktrees/
+
+# Local debug/scratch scripts
+debug_bounds.py
+test_js.py
+test_script.js

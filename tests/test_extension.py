@@ -325,3 +325,76 @@ class TestCameraSyncIntegration:
         assert png_out.exists(), "PNG was not created"
         assert png_out.stat().st_size > 500, "PNG is suspiciously small"
 
+
+class TestPdf3DExperimentalHelpers:
+    def test_truthy_env_parser(self, monkeypatch):
+        mod = _load_4dpaper()
+        monkeypatch.setenv("FOURDPAPER_TEST_BOOL", "true")
+        assert mod._truthy_env("FOURDPAPER_TEST_BOOL") is True
+        monkeypatch.setenv("FOURDPAPER_TEST_BOOL", "0")
+        assert mod._truthy_env("FOURDPAPER_TEST_BOOL") is False
+        monkeypatch.delenv("FOURDPAPER_TEST_BOOL", raising=False)
+        assert mod._truthy_env("FOURDPAPER_TEST_BOOL", default=True) is True
+
+    def test_write_pdf3d_tex_snippet_contains_media9(self, tmp_path, monkeypatch):
+        mod = _load_4dpaper()
+        monkeypatch.setattr(mod, "_project_root", tmp_path)
+        tex = tmp_path / "state" / "figures" / "fig-vm.pdf3d.tex"
+        png = tmp_path / "state" / "figures" / "fig-vm.png"
+        u3d = tmp_path / "state" / "figures" / "fig-vm.u3d"
+        png.parent.mkdir(parents=True, exist_ok=True)
+        png.write_text("poster")
+        u3d.write_text("asset")
+        mod._write_pdf3d_tex_snippet(tex, poster_path=png, asset_path=u3d)
+        content = tex.read_text()
+        assert "\\includemedia" in content
+        assert "addresource={state/figures/fig-vm.u3d}" in content
+        assert "state/figures/fig-vm.png" in content
+
+    def test_generate_pdf3d_tex_figure_fallback_png_only(self, tmp_path, monkeypatch):
+        mod = _load_4dpaper()
+        monkeypatch.setattr(mod, "_project_root", tmp_path)
+        out = tmp_path / "state" / "figures" / "fig-vm.pdf3d.tex"
+        png = tmp_path / "state" / "figures" / "fig-vm.png"
+        png.parent.mkdir(parents=True, exist_ok=True)
+        png.write_text("poster")
+        ok = mod.generate_pdf3d_tex_figure(
+            fig_id="fig-vm",
+            caption="Vm field",
+            png_path=png,
+            asset_path=None,
+            output_tex_path=out,
+        )
+        assert ok is True
+        content = out.read_text()
+        assert "\\includegraphics" in content
+        assert "\\includemedia" not in content
+
+    def test_write_pdf3d_tex_snippet_uses_ifdefined_guard(self, tmp_path, monkeypatch):
+        mod = _load_4dpaper()
+        monkeypatch.setattr(mod, "_project_root", tmp_path)
+        tex = tmp_path / "state" / "figures" / "fig_vm.pdf3d.tex"
+        png = tmp_path / "state" / "figures" / "fig_vm.png"
+        u3d = tmp_path / "state" / "figures" / "fig_vm.u3d"
+        png.parent.mkdir(parents=True, exist_ok=True)
+        png.write_text("poster")
+        u3d.write_text("asset")
+        mod._write_pdf3d_tex_snippet(tex, poster_path=png, asset_path=u3d)
+        content = tex.read_text()
+        assert "\\ifdefined\\includemedia" in content
+        assert "\\fi" in content
+
+    def test_latex_path_escape_escapes_spaces_and_underscores(self):
+        mod = _load_4dpaper()
+        escaped = mod._latex_path_escape("state/figures/my_fig 01.png")
+        assert escaped == r"state/figures/my\_fig\ 01.png"
+
+    def test_run_converter_template_handles_bad_format_string(self, tmp_path):
+        mod = _load_4dpaper()
+        inp = tmp_path / "in.obj"
+        out = tmp_path / "out.u3d"
+        inp.write_text("o mesh\n")
+        ok, err = mod._run_converter_template("assimp export {input {output}", inp, out)
+        assert ok is False
+        assert "invalid converter template" in err
+
