@@ -41,7 +41,13 @@ server_pid.txt
 # Local tool/editor folders
 .claude/
 .cursor/
+.superpowers/
 Library/
 
 /.luarc.json
 .worktrees/
+
+# Local debug/scratch scripts
+debug_bounds.py
+test_js.py
+test_script.js
