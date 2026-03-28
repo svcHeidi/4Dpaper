@@ -2,6 +2,7 @@
 """Tests for scripts/data_loader.py"""
 from __future__ import annotations
 
+import gzip
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -170,6 +171,7 @@ class TestDetectFormat:
     def test_med(self):      assert self._detect(".med")  == "med"
     def test_msh(self):      assert self._detect(".msh")  == "msh"
     def test_inp(self):      assert self._detect(".inp")  == "abaqus_inp"
+    def test_ply_gz(self):   assert self._detect(".ply.gz") == "ply_gzip"
 
     def test_unsupported_raises(self):
         with pytest.raises(ValueError, match="Unsupported"):
@@ -221,6 +223,87 @@ class TestSingleMeshLoaders:
         with patch("data_loader.pv.read", return_value=MagicMock()):
             getattr(sim, method)()
         assert sim._format == suffix.lstrip(".")
+
+
+class TestPLYCustomReaderAndCompression:
+    """Custom PLY reader path and gzip compressor behavior."""
+
+    def _make_sim(self, path):
+        sim = SimulationData.__new__(SimulationData)
+        sim.case_path = Path(path)
+        sim._meshes = {}
+        sim._time_steps = []
+        sim._reader = None
+        sim._format = None
+        sim._is_decomposed = False
+        sim._proc_readers = []
+        sim._proc_foam_files = []
+        return sim
+
+    def test_load_ply_prefers_custom_reader(self, tmp_path):
+        fake_mesh = MagicMock()
+        source = tmp_path / "shape.ply"
+        source.write_text(
+            "ply\n"
+            "format ascii 1.0\n"
+            "element vertex 3\n"
+            "property float x\n"
+            "property float y\n"
+            "property float z\n"
+            "element face 1\n"
+            "property list uchar int vertex_indices\n"
+            "end_header\n"
+            "0 0 0\n1 0 0\n0 1 0\n3 0 1 2\n"
+        )
+        sim = self._make_sim(source)
+        with patch("data_loader._CustomPLYReader.read", return_value=fake_mesh) as custom_read:
+            sim.load_ply()
+        custom_read.assert_called_once()
+        assert sim._meshes[(0, "default")] is fake_mesh
+        assert sim._format == "ply"
+
+    def test_load_ply_falls_back_to_pyvista(self, tmp_path):
+        fake_mesh = MagicMock()
+        source = tmp_path / "shape.ply"
+        source.write_text("ply\nformat ascii 1.0\nend_header\n")
+        sim = self._make_sim(source)
+        with patch("data_loader._CustomPLYReader.read", side_effect=ValueError("bad ply")):
+            with patch("data_loader.pv.read", return_value=fake_mesh) as pv_read:
+                sim.load_ply()
+        pv_read.assert_called_once()
+        assert sim.get_mesh(0) is fake_mesh
+
+    def test_compress_ply_creates_gzip_file(self, tmp_path):
+        source = tmp_path / "mesh.ply"
+        source.write_text(
+            "ply\n"
+            "format ascii 1.0\n"
+            "element vertex 1\n"
+            "property float x\n"
+            "property float y\n"
+            "property float z\n"
+            "element face 0\n"
+            "property list uchar int vertex_indices\n"
+            "end_header\n"
+            "1 2 3\n"
+        )
+        gz_path = SimulationData.compress_ply(str(source))
+        assert gz_path.exists()
+        assert gz_path.name.endswith(".ply.gz")
+        with gzip.open(gz_path, "rt", encoding="ascii") as f:
+            header = f.readline().strip()
+        assert header == "ply"
+
+    def test_load_real_ply_gz(self, tmp_path):
+        src = DATA_DIR / "airplane.ply"
+        if not src.exists():
+            pytest.skip(f"Test data not found: {src}")
+        gz_path = SimulationData.compress_ply(str(src), str(tmp_path / "airplane.ply.gz"))
+        sim = SimulationData(str(gz_path)).load()
+        assert sim._format == "ply_gzip"
+        mesh = sim.get_mesh(0)
+        assert mesh is not None
+        assert mesh.n_points > 0
 
 
 class TestReaderLoaders:

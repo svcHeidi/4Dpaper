@@ -10,6 +10,9 @@ Corresponds to: tasks.yaml  → data_extraction_task
 
 import os
 import glob
+import gzip
+import struct
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -25,7 +28,7 @@ class SimulationData:
     Supported formats:
       OpenFOAM:  .foam, .openfoam (reconstructed and decomposed/parallel)
       VTK:       .pvd, .vtu, .vtk, .vtp, or a directory of .vtu files
-      Surface:   .stl, .obj, .ply
+      Surface:   .stl, .obj, .ply, .ply.gz
       CFD:       .case (EnSight Gold), .cgns
       FEA:       .exo, .e, .ex2 (Exodus II)
       XDMF:      .xdmf, .xmf (companion .h5 must be co-located)
@@ -77,7 +80,13 @@ class SimulationData:
 
     def _detect_format(self):
         """Auto-detect simulation file format from path extension."""
+        case_name = self.case_path.name.lower()
         suffix = self.case_path.suffix.lower()
+
+        # Compressed PLY
+        if case_name.endswith(".ply.gz"):
+            self._format = "ply_gzip"
+            return
 
         # OpenFOAM: check for decomposed (processor*) directories
         if suffix in (".foam", ".openfoam"):
@@ -106,7 +115,7 @@ class SimulationData:
             f"Unsupported format: '{suffix}'. "
             f"Supported extensions: .foam, .openfoam, "
             + ", ".join(sorted(self._SUFFIX_MAP.keys()))
-            + ", or a directory of .vtu files."
+            + ", .ply.gz, or a directory of .vtu files."
         )
 
     def load(self):
@@ -121,6 +130,7 @@ class SimulationData:
             "stl":                 self.load_stl,
             "obj":                 self.load_obj,
             "ply":                 self.load_ply,
+            "ply_gzip":            self.load_ply,
             "ensight":             self.load_ensight,
             "cgns":                self.load_cgns,
             "exodus":              self.load_exodus,
@@ -234,10 +244,55 @@ class SimulationData:
         self._format = "obj"
 
     def load_ply(self):
-        """Load a PLY point cloud or surface mesh — one time step."""
+        """Load a PLY point cloud or surface mesh — one time step.
+
+        Uses a custom in-file PLY reader for:
+          - ascii PLY
+          - binary_little_endian PLY
+          - gzip-compressed .ply.gz
+
+        Falls back to ``pyvista.read`` if the custom parser cannot handle
+        the file layout.
+        """
         self._time_steps = [0]
-        self._meshes[(0, "default")] = pv.read(str(self.case_path))
-        self._format = "ply"
+        try:
+            self._meshes[(0, "default")] = _CustomPLYReader.read(self.case_path)
+        except (OSError, ValueError, NotImplementedError) as exc:
+            print(
+                "⚠️ Custom PLY reader fallback to PyVista "
+                f"for '{self.case_path}': {exc}"
+            )
+            self._meshes[(0, "default")] = pv.read(str(self.case_path))
+        self._format = (
+            "ply_gzip"
+            if self.case_path.name.lower().endswith(".ply.gz")
+            else "ply"
+        )
+
+    @staticmethod
+    def compress_ply(source_path: str, target_path: Optional[str] = None, compresslevel: int = 9) -> Path:
+        """Compress a ``.ply`` file into ``.ply.gz`` using gzip.
+
+        Args:
+            source_path: Path to an uncompressed ``.ply`` file.
+            target_path: Optional output path. Defaults to ``<source>.ply.gz``.
+            compresslevel: gzip level from 1 to 9.
+
+        Returns:
+            Path to the compressed file.
+        """
+        src = Path(source_path)
+        if not src.exists():
+            raise FileNotFoundError(f"PLY source not found: {src}")
+        if src.suffix.lower() != ".ply":
+            raise ValueError(f"Expected a .ply source file, got: {src.name}")
+        if not (1 <= compresslevel <= 9):
+            raise ValueError("compresslevel must be in [1, 9]")
+
+        dst = Path(target_path) if target_path else Path(f"{src}.gz")
+        with open(src, "rb") as fin, gzip.open(dst, "wb", compresslevel=compresslevel) as fout:
+            shutil.copyfileobj(fin, fout)
+        return dst
 
     # ── CFD / FEA time-series loaders ────────────────────────────────────────
 
@@ -470,3 +525,213 @@ class SimulationData:
 
     def __del__(self):
         self.cleanup()
+
+
+class _CustomPLYReader:
+    """Minimal PLY reader for ASCII / little-endian binary / gzip-compressed files."""
+
+    _PLY_TO_STRUCT = {
+        "char": "b",
+        "int8": "b",
+        "uchar": "B",
+        "uint8": "B",
+        "short": "h",
+        "int16": "h",
+        "ushort": "H",
+        "uint16": "H",
+        "int": "i",
+        "int32": "i",
+        "uint": "I",
+        "uint32": "I",
+        "float": "f",
+        "float32": "f",
+        "double": "d",
+        "float64": "d",
+    }
+
+    @classmethod
+    def read(cls, path: Path) -> pv.PolyData:
+        with cls._open(path) as stream:
+            header = cls._parse_header(stream)
+            fmt = header["format"]
+            if fmt == "ascii":
+                points, faces = cls._read_ascii_payload(stream, header)
+            elif fmt == "binary_little_endian":
+                points, faces = cls._read_binary_little_payload(stream, header)
+            elif fmt == "binary_big_endian":
+                raise NotImplementedError(
+                    "binary_big_endian PLY is not supported by the custom reader."
+                )
+            else:
+                raise ValueError(f"Unsupported PLY format: {fmt}")
+
+        if faces.size:
+            return pv.PolyData(points, faces)
+        return pv.PolyData(points)
+
+    @staticmethod
+    def _open(path: Path):
+        if path.name.lower().endswith(".gz"):
+            return gzip.open(path, "rb")
+        return open(path, "rb")
+
+    @classmethod
+    def _parse_header(cls, stream) -> dict:
+        first = stream.readline().decode("ascii", errors="strict").strip()
+        if first != "ply":
+            raise ValueError("Not a valid PLY file: missing 'ply' magic header.")
+
+        fmt = None
+        current_element = None
+        vertex_count = 0
+        face_count = 0
+        vertex_properties = []
+        face_properties = []
+
+        while True:
+            raw = stream.readline()
+            if not raw:
+                raise ValueError("PLY header terminated unexpectedly.")
+            line = raw.decode("ascii", errors="strict").strip()
+            if line == "end_header":
+                break
+            if not line or line.startswith("comment") or line.startswith("obj_info"):
+                continue
+
+            tokens = line.split()
+            if tokens[0] == "format":
+                if len(tokens) < 2:
+                    raise ValueError("Malformed format line in PLY header.")
+                fmt = tokens[1]
+            elif tokens[0] == "element":
+                if len(tokens) != 3:
+                    raise ValueError("Malformed element line in PLY header.")
+                current_element = tokens[1]
+                count = int(tokens[2])
+                if current_element == "vertex":
+                    vertex_count = count
+                elif current_element == "face":
+                    face_count = count
+            elif tokens[0] == "property":
+                if current_element == "vertex":
+                    if len(tokens) != 3 or tokens[1] == "list":
+                        raise ValueError("Only scalar vertex properties are supported.")
+                    vertex_properties.append((tokens[2], tokens[1]))
+                elif current_element == "face":
+                    if tokens[1] == "list":
+                        if len(tokens) != 5:
+                            raise ValueError("Malformed list property in face element.")
+                        face_properties.append(
+                            {
+                                "kind": "list",
+                                "count_type": tokens[2],
+                                "item_type": tokens[3],
+                                "name": tokens[4],
+                            }
+                        )
+                    else:
+                        if len(tokens) != 3:
+                            raise ValueError("Malformed scalar face property.")
+                        face_properties.append(
+                            {"kind": "scalar", "type": tokens[1], "name": tokens[2]}
+                        )
+
+        if fmt is None:
+            raise ValueError("PLY format not specified in header.")
+        coord_names = {name for name, _ in vertex_properties}
+        if not {"x", "y", "z"}.issubset(coord_names):
+            raise ValueError("PLY vertex element must include x, y, z properties.")
+
+        return {
+            "format": fmt,
+            "vertex_count": vertex_count,
+            "face_count": face_count,
+            "vertex_properties": vertex_properties,
+            "face_properties": face_properties,
+        }
+
+    @classmethod
+    def _read_ascii_payload(cls, stream, header: dict):
+        vertex_count = header["vertex_count"]
+        face_count = header["face_count"]
+        vprops = header["vertex_properties"]
+        vindex = {name: i for i, (name, _) in enumerate(vprops)}
+
+        points = np.zeros((vertex_count, 3), dtype=np.float32)
+        for i in range(vertex_count):
+            raw = stream.readline()
+            if not raw:
+                raise ValueError("Unexpected EOF while reading ASCII vertex data.")
+            vals = raw.decode("ascii", errors="strict").strip().split()
+            if len(vals) < len(vprops):
+                raise ValueError("Malformed ASCII vertex row.")
+            points[i, 0] = float(vals[vindex["x"]])
+            points[i, 1] = float(vals[vindex["y"]])
+            points[i, 2] = float(vals[vindex["z"]])
+
+        faces_flat = []
+        has_vertex_indices = any(
+            p.get("kind") == "list" and p.get("name") == "vertex_indices"
+            for p in header["face_properties"]
+        )
+
+        for _ in range(face_count):
+            raw = stream.readline()
+            if not raw:
+                raise ValueError("Unexpected EOF while reading ASCII face data.")
+            vals = raw.decode("ascii", errors="strict").strip().split()
+            if not vals:
+                continue
+            n = int(vals[0])
+            if has_vertex_indices and len(vals) >= (n + 1):
+                faces_flat.append(n)
+                faces_flat.extend(int(v) for v in vals[1 : n + 1])
+
+        faces = np.asarray(faces_flat, dtype=np.int64) if faces_flat else np.array([], dtype=np.int64)
+        return points, faces
+
+    @classmethod
+    def _read_binary_little_payload(cls, stream, header: dict):
+        vertex_count = header["vertex_count"]
+        face_count = header["face_count"]
+        vprops = header["vertex_properties"]
+        fprops = header["face_properties"]
+
+        points = np.zeros((vertex_count, 3), dtype=np.float32)
+        for i in range(vertex_count):
+            row = {}
+            for name, ptype in vprops:
+                row[name] = cls._read_scalar(stream, ptype, endian="<")
+            points[i, 0] = float(row["x"])
+            points[i, 1] = float(row["y"])
+            points[i, 2] = float(row["z"])
+
+        faces_flat = []
+        for _ in range(face_count):
+            for prop in fprops:
+                if prop["kind"] == "scalar":
+                    cls._read_scalar(stream, prop["type"], endian="<")
+                    continue
+
+                n = int(cls._read_scalar(stream, prop["count_type"], endian="<"))
+                items = [
+                    int(cls._read_scalar(stream, prop["item_type"], endian="<"))
+                    for _ in range(n)
+                ]
+                if prop["name"] == "vertex_indices":
+                    faces_flat.append(n)
+                    faces_flat.extend(items)
+
+        faces = np.asarray(faces_flat, dtype=np.int64) if faces_flat else np.array([], dtype=np.int64)
+        return points, faces
+
+    @classmethod
+    def _read_scalar(cls, stream, ply_type: str, endian: str):
+        if ply_type not in cls._PLY_TO_STRUCT:
+            raise NotImplementedError(f"Unsupported PLY scalar type: {ply_type}")
+        fmt = cls._PLY_TO_STRUCT[ply_type]
+        size = struct.calcsize(fmt)
+        raw = stream.read(size)
+        if len(raw) != size:
+            raise ValueError("Unexpected EOF while decoding binary PLY data.")
+        return struct.unpack(endian + fmt, raw)[0]
