@@ -3,7 +3,8 @@
 4DPaper pre-render hook — run by Quarto before rendering.
 
 Scans the .qmd for {{< 4d-image >}} shortcodes and generates
-figure files in state/figures/ (HTML for web, PNG for PDF).
+figure files in state/figures/ (HTML for web, PNG for PDF, and optional
+experimental U3D/PRC assets for interactive PDF via media9).
 
 Quarto calls this script before rendering. It reads QUARTO_DOCUMENT_PATH
 and QUARTO_OUTPUT_FORMAT from the environment.
@@ -13,7 +14,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # ── Ensure venv Python is used ────────────────────────────────────────────────
@@ -83,6 +88,230 @@ def is_cache_valid(
     if camera_path is not None and camera_path.exists():
         if fig_mtime <= camera_path.stat().st_mtime:
             return False
+    return True
+
+
+def _truthy_env(name: str, default: bool = False) -> bool:
+    """Return a boolean parsed from environment variable ``name``."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_time_index(time_spec: str, n_steps: int) -> int:
+    """Resolve time selector string ('first'/'last'/index/'mid') into index."""
+    if n_steps <= 0:
+        raise ValueError("n_steps must be positive")
+    if time_spec == "first":
+        return 0
+    if time_spec == "last":
+        return max(0, n_steps - 1)
+    try:
+        return max(0, min(int(time_spec), n_steps - 1))
+    except ValueError:
+        return n_steps // 2
+
+
+def _run_converter_template(template: str, input_path: Path, output_path: Path) -> tuple[bool, str]:
+    """Run a converter command template with {input}/{output} placeholders."""
+    cmd = template.format(input=str(input_path), output=str(output_path))
+    argv = shlex.split(cmd)
+    if not argv:
+        return False, "empty command"
+    exe = argv[0]
+    if shutil.which(exe) is None:
+        return False, f"missing executable: {exe}"
+    proc = subprocess.run(argv, capture_output=True, text=True)
+    if proc.returncode != 0:
+        err = proc.stderr.strip() or proc.stdout.strip() or f"exit code {proc.returncode}"
+        return False, err
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        return False, "converter succeeded but output file is missing or empty"
+    return True, ""
+
+
+def _candidate_converter_templates(kind: str) -> list[str]:
+    """Return ordered converter command templates for U3D/PRC generation."""
+    templates: list[str] = []
+    if kind == "u3d":
+        custom = os.environ.get("FOURDPAPER_U3D_CONVERTER_CMD", "").strip()
+        if custom:
+            templates.append(custom)
+        # Best-effort built-ins when no custom converter is configured.
+        templates.extend([
+            "assimp export {input} {output}",
+            "meshlabserver -i {input} -o {output}",
+        ])
+    elif kind == "prc":
+        custom = os.environ.get("FOURDPAPER_PRC_CONVERTER_CMD", "").strip()
+        if custom:
+            templates.append(custom)
+    return templates
+
+
+def generate_pdf3d_asset(
+    src_path: Path,
+    field: str,
+    time_spec: str,
+    output_dir: Path,
+    fig_id: str,
+) -> Path | None:
+    """Generate experimental U3D/PRC asset for interactive PDF embedding.
+
+    This uses external conversion tools; configure one or both:
+      - FOURDPAPER_U3D_CONVERTER_CMD
+      - FOURDPAPER_PRC_CONVERTER_CMD
+
+    Command templates must include ``{input}`` and ``{output}`` placeholders.
+    Example:
+      FOURDPAPER_U3D_CONVERTER_CMD="assimp export {input} {output}"
+    """
+    from scripts.data_loader import SimulationData
+
+    sim = SimulationData(str(src_path)).load()
+    if sim.n_steps == 0:
+        raise RuntimeError(f"[4dpaper] Simulation at {src_path} has no time steps.")
+
+    idx = _resolve_time_index(time_spec, sim.n_steps)
+    mesh = sim.get_mesh(idx)
+    if mesh is None:
+        raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
+    surface = mesh.extract_surface()
+
+    preferred = os.environ.get("FOURDPAPER_PDF3D_FORMAT", "auto").strip().lower()
+    order = ["u3d", "prc"] if preferred in ("", "auto") else [preferred]
+    order = [k for k in order if k in {"u3d", "prc"}]
+    if not order:
+        print(
+            f"[4dpaper] Unsupported FOURDPAPER_PDF3D_FORMAT='{preferred}' (expected auto/u3d/prc).",
+            file=sys.stderr,
+        )
+        return None
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="4dpaper-pdf3d-") as tmpdir:
+        tmp_dir = Path(tmpdir)
+        mesh_input = tmp_dir / f"{fig_id}.obj"
+        surface.save(str(mesh_input))
+
+        for kind in order:
+            out_path = output_dir / f"{fig_id}.{kind}"
+            for template in _candidate_converter_templates(kind):
+                ok, err = _run_converter_template(template, mesh_input, out_path)
+                if ok:
+                    print(f"[4dpaper] Generated PDF 3D asset: {out_path}", file=sys.stderr)
+                    return out_path
+                print(
+                    f"[4dpaper] {kind.upper()} converter failed ({template}): {err}",
+                    file=sys.stderr,
+                )
+
+    print(
+        "[4dpaper] Could not generate U3D/PRC asset. "
+        "Set FOURDPAPER_U3D_CONVERTER_CMD or FOURDPAPER_PRC_CONVERTER_CMD.",
+        file=sys.stderr,
+    )
+    return None
+
+
+def _project_relative_posix(path: Path) -> str:
+    """Return ``path`` as a project-relative POSIX string when possible."""
+    try:
+        return path.resolve().relative_to(_project_root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _write_pdf3d_tex_snippet(
+    tex_path: Path,
+    poster_path: Path,
+    asset_path: Path,
+    width: str = "0.90\\linewidth",
+    height: str = "0.56\\linewidth",
+) -> None:
+    """Write LaTeX snippet that uses media9 when available, else poster fallback."""
+    poster_rel = _project_relative_posix(poster_path)
+    asset_rel = _project_relative_posix(asset_path)
+    # media9 supports U3D and PRC in Reader implementations that provide RichMedia 3D.
+    snippet = (
+        f"% Auto-generated by 4DPaper for interactive PDF (experimental)\n"
+        f"\\IfFileExists{{media9.sty}}{{%\n"
+        f"\\includemedia[\n"
+        f"  width={width},\n"
+        f"  height={height},\n"
+        f"  activate=pageopen,\n"
+        f"  deactivate=pageclose,\n"
+        f"  3Dtoolbar,\n"
+        f"  3Dmenu,\n"
+        f"  addresource={{{asset_rel}}}\n"
+        f"]{{\\includegraphics[width={width}]{{{poster_rel}}}}}{{{asset_rel}}}\n"
+        f"}}{{%\n"
+        f"\\includegraphics[width={width}]{{{poster_rel}}}\n"
+        f"}}\n"
+    )
+    tex_path.write_text(snippet)
+
+
+def _latex_escape(text: str) -> str:
+    """Escape text for safe use inside a LaTeX caption."""
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+    }
+    return "".join(replacements.get(ch, ch) for ch in text)
+
+
+def generate_pdf3d_tex_figure(
+    fig_id: str,
+    caption: str,
+    png_path: Path,
+    asset_path: Path | None,
+    output_tex_path: Path,
+) -> bool:
+    """Write a LaTeX figure include for experimental interactive PDF.
+
+    If ``asset_path`` is provided, write a media9-enabled snippet.
+    Otherwise write a PNG-only fallback snippet, so PDF build remains valid.
+    """
+    output_tex_path.parent.mkdir(parents=True, exist_ok=True)
+    png_rel = _project_relative_posix(png_path)
+    cap = _latex_escape(caption) if caption else ""
+    label = _latex_escape(fig_id)
+
+    if asset_path is not None and asset_path.exists():
+        _write_pdf3d_tex_snippet(output_tex_path, poster_path=png_path, asset_path=asset_path)
+        base = output_tex_path.read_text()
+        figure_tex = [
+            r"\begin{figure}[htbp]",
+            r"\centering",
+            base.strip(),
+        ]
+        if cap:
+            figure_tex.append(rf"\caption{{{cap}}}")
+        figure_tex.append(rf"\label{{fig:{label}}}")
+        figure_tex.append(r"\end{figure}")
+        output_tex_path.write_text("\n".join(figure_tex) + "\n")
+        return True
+
+    fallback = [
+        r"\begin{figure}[htbp]",
+        r"\centering",
+        rf"\includegraphics[width=0.90\linewidth]{{{png_rel}}}",
+    ]
+    if cap:
+        fallback.append(rf"\caption{{{cap}}}")
+    fallback.append(rf"\label{{fig:{label}}}")
+    fallback.append(r"\end{figure}")
+    output_tex_path.write_text("\n".join(fallback) + "\n")
     return True
 
 
@@ -449,6 +678,9 @@ def main() -> None:
         print("[4dpaper] No 4d-image shortcodes found.", file=sys.stderr)
         return
 
+    pdf3d_enabled = _truthy_env("FOURDPAPER_PDF3D_EXPERIMENTAL", default=False)
+    pdf3d_target_id = os.environ.get("FOURDPAPER_PDF3D_TARGET_ID", "fig-vm").strip() or "fig-vm"
+
     figures_dir = _project_root / "state" / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
@@ -513,6 +745,37 @@ def main() -> None:
                 print(f"[4dpaper] ERROR generating {fig_id}.png: {exc}")
                 sys.exit(1)
 
+        if pdf3d_enabled and fig_id == pdf3d_target_id:
+            print(
+                f"[4dpaper] Experimental PDF 3D mode enabled for '{fig_id}'. "
+                "Attempting U3D/PRC asset generation.",
+                file=sys.stderr,
+            )
+            pdf3d_asset = generate_pdf3d_asset(
+                src_path=src,
+                field=field,
+                time_spec=time_spec,
+                output_dir=figures_dir,
+                fig_id=fig_id,
+            )
+            tex_out = figures_dir / f"{fig_id}.pdf3d.tex"
+            tex_ok = generate_pdf3d_tex_figure(
+                fig_id=fig_id,
+                caption=fig.get("caption", ""),
+                png_path=out_png,
+                asset_path=pdf3d_asset,
+                output_tex_path=tex_out,
+            )
+            if tex_ok:
+                print(
+                    f"[4dpaper] Wrote experimental media9 TeX include: {tex_out}",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"[4dpaper] media9 TeX include fallback failed for {fig_id}; keeping PNG-only PDF.",
+                    file=sys.stderr,
+                )
 
 if __name__ == "__main__":
     main()
