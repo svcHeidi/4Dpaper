@@ -655,6 +655,7 @@ class _CustomPLYReader:
         vertex_count = header["vertex_count"]
         face_count = header["face_count"]
         vprops = header["vertex_properties"]
+        fprops = header["face_properties"]
         vindex = {name: i for i, (name, _) in enumerate(vprops)}
 
         points = np.zeros((vertex_count, 3), dtype=np.float32)
@@ -670,11 +671,6 @@ class _CustomPLYReader:
             points[i, 2] = float(vals[vindex["z"]])
 
         faces_flat = []
-        has_vertex_indices = any(
-            p.get("kind") == "list" and p.get("name") == "vertex_indices"
-            for p in header["face_properties"]
-        )
-
         for _ in range(face_count):
             raw = stream.readline()
             if not raw:
@@ -682,10 +678,31 @@ class _CustomPLYReader:
             vals = raw.decode("ascii", errors="strict").strip().split()
             if not vals:
                 continue
-            n = int(vals[0])
-            if has_vertex_indices and len(vals) >= (n + 1):
-                faces_flat.append(n)
-                faces_flat.extend(int(v) for v in vals[1 : n + 1])
+
+            pos = 0
+            vertex_indices = None
+            for prop in fprops:
+                if prop["kind"] == "scalar":
+                    if pos >= len(vals):
+                        raise ValueError("Malformed ASCII face row.")
+                    # Consume scalar face property
+                    pos += 1
+                    continue
+
+                if pos >= len(vals):
+                    raise ValueError("Malformed ASCII face list property.")
+                n = int(vals[pos])
+                pos += 1
+                if n < 0 or (pos + n) > len(vals):
+                    raise ValueError("Malformed ASCII face list length.")
+                items = [int(v) for v in vals[pos : pos + n]]
+                pos += n
+                if prop["name"] == "vertex_indices":
+                    vertex_indices = items
+
+            if vertex_indices is not None:
+                faces_flat.append(len(vertex_indices))
+                faces_flat.extend(vertex_indices)
 
         faces = np.asarray(faces_flat, dtype=np.int64) if faces_flat else np.array([], dtype=np.int64)
         return points, faces

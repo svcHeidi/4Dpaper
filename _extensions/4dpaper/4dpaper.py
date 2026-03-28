@@ -115,7 +115,10 @@ def _resolve_time_index(time_spec: str, n_steps: int) -> int:
 
 def _run_converter_template(template: str, input_path: Path, output_path: Path) -> tuple[bool, str]:
     """Run a converter command template with {input}/{output} placeholders."""
-    cmd = template.format(input=str(input_path), output=str(output_path))
+    try:
+        cmd = template.format(input=str(input_path), output=str(output_path))
+    except (KeyError, ValueError, IndexError) as exc:
+        return False, f"invalid converter template: {exc}"
     argv = shlex.split(cmd)
     if not argv:
         return False, "empty command"

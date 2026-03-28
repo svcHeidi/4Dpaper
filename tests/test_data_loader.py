@@ -305,6 +305,31 @@ class TestPLYCustomReaderAndCompression:
         assert mesh is not None
         assert mesh.n_points > 0
 
+    def test_ascii_face_with_scalar_before_vertex_indices(self, tmp_path):
+        """Custom ASCII PLY reader must respect face-property order in header."""
+        source = tmp_path / "ordered_face_props.ply"
+        source.write_text(
+            "ply\n"
+            "format ascii 1.0\n"
+            "element vertex 3\n"
+            "property float x\n"
+            "property float y\n"
+            "property float z\n"
+            "element face 1\n"
+            "property uchar material_id\n"
+            "property list uchar int vertex_indices\n"
+            "end_header\n"
+            "0 0 0\n"
+            "1 0 0\n"
+            "0 1 0\n"
+            "7 3 0 1 2\n"
+        )
+        sim = SimulationData(str(source)).load()
+        mesh = sim.get_mesh(0)
+        assert mesh is not None
+        assert mesh.n_points == 3
+        assert mesh.n_cells == 1
+
 
 class TestReaderLoaders:
     """EnSight, CGNS, Exodus, XDMF: use pv reader objects with time_values."""
