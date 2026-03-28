@@ -87,6 +87,14 @@ local function fourd_image(args, kwargs)
 
     -- ── PDF / LaTeX output: embed pre-rendered PNG ────────────────────────────
   else
+    local tex3d_path = "state/figures/" .. id .. ".pdf3d.tex"
+    local f3d = io.open(tex3d_path, "r")
+    if f3d then
+      local tex3d = f3d:read("*all")
+      f3d:close()
+      return pandoc.RawBlock("latex", tex3d)
+    end
+
     local fig_path = "state/figures/" .. id .. ".png"
     local f = io.open(fig_path, "r")
     if f then
