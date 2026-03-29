@@ -1,19 +1,19 @@
-"""
-Panel plugin: per-figure field and timestep state sync endpoint.
-
-Add to panel serve with:
-    panel serve dashboard/app.py --plugins dashboard.plugins ...
-"""
+"""Panel plugin: per-figure field and timestep state sync endpoint."""
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import tornado.web
 
+from dashboard.figure_state import (
+    figure_state_path,
+    is_safe_fig_id,
+    merge_json_state,
+    validate_field_payload,
+)
+
 _PROJECT_ROOT = Path(__file__).parent.parent
-_SAFE_FIG_ID = re.compile(r'^[A-Za-z0-9_-]+$')
 
 
 class FieldHandler(tornado.web.RequestHandler):
@@ -28,7 +28,7 @@ class FieldHandler(tornado.web.RequestHandler):
         self.finish()
 
     def post(self, fig_id: str) -> None:
-        if not _SAFE_FIG_ID.fullmatch(fig_id):
+        if not is_safe_fig_id(fig_id):
             self.set_status(400)
             self.write({"status": "error", "detail": "invalid fig_id"})
             return
@@ -39,26 +39,9 @@ class FieldHandler(tornado.web.RequestHandler):
             self.write({"status": "error", "detail": f"invalid JSON: {exc}"})
             return
 
-        cam_path = _PROJECT_ROOT / "state" / f"field_{fig_id}.json"
-        
-        payload = {}
-        if "field" in body:
-            payload["field"] = str(body["field"])
-        if "time" in body:
-            payload["time"] = str(body["time"])
-
-        # Merge with existing if any
-        if cam_path.exists():
-            try:
-                existing = json.loads(cam_path.read_text())
-                existing.update(payload)
-                payload = existing
-            except json.JSONDecodeError:
-                pass
-
-        cam_path.parent.mkdir(parents=True, exist_ok=True)
-        cam_path.write_text(json.dumps(payload, indent=2))
-        
+        state_path = figure_state_path(_PROJECT_ROOT, "field", fig_id)
+        payload = validate_field_payload(body)
+        merge_json_state(state_path, payload)
         self.write({"status": "ok"})
 
 

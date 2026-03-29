@@ -6,15 +6,21 @@ colormap selector for every (figure, field) pair.
 
 - Gradient preview bar updates immediately when a colormap is chosen.
 - Selection is persisted via POST /color/<fig_id> (no page rebuild needed).
-- The saved colormap is applied on the next "Rebuild HTML" or "Export PDF".
+- Selection is currently dashboard-side state and does not yet rewrite the
+  checked-in figure/render config directly.
 """
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import panel as pn
+
+from dashboard.figure_state import (
+    figure_state_path,
+    load_json_state,
+    parse_4d_image_figures,
+)
 
 _PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -74,53 +80,8 @@ COLORMAPS: dict[str, dict[str, str]] = {
 _DEFAULT_CMAP = "coolwarm"
 
 
-# ── QMD parsing ──────────────────────────────────────────────────────────────
-
-def _parse_figures(qmd_path: Path) -> list[dict]:
-    """
-    Parse {{< 4d-image >}} shortcodes in the QMD.
-
-    Returns a list of {"id": str, "fields": [str, ...]} dicts.
-    Figures with no resolvable fields are omitted.
-    """
-    if not qmd_path.exists():
-        return []
-    text = re.sub(r'```.*?```', '', qmd_path.read_text(), flags=re.DOTALL)
-    pattern = r'\{\{<\s*4d-image\s+(.*?)\s*>\}\}'
-    figures: list[dict] = []
-    seen: set[str] = set()
-
-    for match in re.finditer(pattern, text, re.DOTALL):
-        raw = match.group(1)
-        kwargs: dict[str, str] = {}
-        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
-            kwargs[key] = val
-        if "id" not in kwargs or kwargs["id"] in seen:
-            continue
-        seen.add(kwargs["id"])
-
-        all_fields: list[str] = []
-        if kwargs.get("field"):
-            all_fields.append(kwargs["field"])
-        for f in kwargs.get("fields", "").split(","):
-            f = f.strip()
-            if f and f not in all_fields:
-                all_fields.append(f)
-
-        if all_fields:
-            figures.append({"id": kwargs["id"], "fields": all_fields})
-
-    return figures
-
-
 def _load_color_state(fig_id: str) -> dict[str, str]:
-    p = _PROJECT_ROOT / "state" / f"color_{fig_id}.json"
-    if not p.exists():
-        return {}
-    try:
-        return json.loads(p.read_text())
-    except Exception:
-        return {}
+    return load_json_state(figure_state_path(_PROJECT_ROOT, "color", fig_id))
 
 
 # ── HTML builder ─────────────────────────────────────────────────────────────
@@ -134,7 +95,7 @@ def _options_html(current_cmap: str) -> str:
 
 
 def _build_html(qmd_path: Path) -> str:
-    figures = _parse_figures(qmd_path)
+    figures = parse_4d_image_figures(qmd_path)
 
     if not figures:
         return (
