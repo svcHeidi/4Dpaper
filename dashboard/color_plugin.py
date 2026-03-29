@@ -1,12 +1,12 @@
 """
-Panel plugin: per-figure colormap state sync endpoint.
+Panel plugin: per-figure colormap preview-state sync endpoint.
 
 POST /color/<fig_id>
   Body:     {"fieldName": "colormapName", ...}
   Response: {"status": "ok"}
 
-Saves to state/color_<fig_id>.json, merging with any existing state.
-Add to panel serve with --plugins dashboard.plugins.
+Saves to state/preview/color_<fig_id>.json, merging with any existing state.
+This is preview-only dashboard state, not authored render configuration.
 """
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ from pathlib import Path
 import tornado.web
 
 from dashboard.figure_state import (
-    figure_state_path,
     is_safe_fig_id,
-    merge_json_state,
+    merge_preview_state,
+    preview_state_path,
     validate_colormap_payload,
 )
 
@@ -48,8 +48,8 @@ class ColorHandler(tornado.web.RequestHandler):
             return
 
         payload = validate_colormap_payload(body)
-        color_path = figure_state_path(_PROJECT_ROOT, "color", fig_id)
-        merge_json_state(color_path, payload)
+        color_path = preview_state_path(_PROJECT_ROOT, "color", fig_id)
+        merge_preview_state(color_path, payload)
         self.write({"status": "ok"})
 
 

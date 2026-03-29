@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 
 from dashboard.figure_state import (
-    figure_state_path,
     is_safe_fig_id,
     load_json_state,
-    merge_json_state,
+    merge_preview_state,
     parse_4d_image_figures,
+    preview_state_path,
     validate_colormap_payload,
     validate_field_payload,
 )
@@ -25,9 +25,9 @@ def test_is_safe_fig_id_rejects_path_traversal():
     assert is_safe_fig_id("fig/vm") is False
 
 
-def test_figure_state_path_builds_expected_location(tmp_path):
-    path = figure_state_path(tmp_path, "color", "fig-vm")
-    assert path == tmp_path / "state" / "color_fig-vm.json"
+def test_preview_state_path_builds_expected_location(tmp_path):
+    path = preview_state_path(tmp_path, "color", "fig-vm")
+    assert path == tmp_path / "state" / "preview_color_fig-vm.json"
 
 
 def test_load_json_state_returns_empty_dict_for_missing(tmp_path):
@@ -40,12 +40,12 @@ def test_load_json_state_returns_empty_dict_for_invalid_json(tmp_path):
     assert load_json_state(path) == {}
 
 
-def test_merge_json_state_updates_existing_state(tmp_path):
-    path = tmp_path / "state" / "field_fig-vm.json"
+def test_merge_preview_state_updates_existing_state(tmp_path):
+    path = tmp_path / "state" / "preview_field_fig-vm.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"field": "Vm"}))
 
-    merged = merge_json_state(path, {"time": "10"})
+    merged = merge_preview_state(path, {"time": "10"})
 
     assert merged == {"field": "Vm", "time": "10"}
     assert json.loads(path.read_text()) == {"field": "Vm", "time": "10"}

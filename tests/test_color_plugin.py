@@ -33,7 +33,7 @@ def test_color_handler_post_writes_validated_json(tmp_path):
     with patch("dashboard.color_plugin._PROJECT_ROOT", tmp_path):
         handler.post("fig-vm")
 
-    color_path = tmp_path / "state" / "color_fig-vm.json"
+    color_path = tmp_path / "state" / "preview_color_fig-vm.json"
     assert color_path.exists()
     data = json.loads(color_path.read_text())
     assert data == {"Vm": "viridis"}

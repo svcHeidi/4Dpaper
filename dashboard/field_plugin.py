@@ -1,4 +1,4 @@
-"""Panel plugin: per-figure field and timestep state sync endpoint."""
+"""Panel plugin: preview-only per-figure field and timestep state sync endpoint."""
 from __future__ import annotations
 
 import json
@@ -7,9 +7,9 @@ from pathlib import Path
 import tornado.web
 
 from dashboard.figure_state import (
-    figure_state_path,
     is_safe_fig_id,
-    merge_json_state,
+    merge_preview_state,
+    preview_state_path,
     validate_field_payload,
 )
 
@@ -39,9 +39,9 @@ class FieldHandler(tornado.web.RequestHandler):
             self.write({"status": "error", "detail": f"invalid JSON: {exc}"})
             return
 
-        state_path = figure_state_path(_PROJECT_ROOT, "field", fig_id)
+        state_path = preview_state_path(_PROJECT_ROOT, "field", fig_id)
         payload = validate_field_payload(body)
-        merge_json_state(state_path, payload)
+        merge_preview_state(state_path, payload)
         self.write({"status": "ok"})
 
 

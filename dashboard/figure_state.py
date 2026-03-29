@@ -1,4 +1,4 @@
-"""Shared helpers for dashboard figure control state and figure parsing."""
+"""Shared helpers for dashboard preview-state and figure parsing."""
 from __future__ import annotations
 
 import json
@@ -45,9 +45,9 @@ def is_safe_fig_id(fig_id: str) -> bool:
     return bool(_SAFE_FIG_ID.fullmatch(fig_id))
 
 
-def figure_state_path(project_root: Path, prefix: str, fig_id: str) -> Path:
-    """Return a state JSON path like state/<prefix>_<fig_id>.json."""
-    return project_root / "state" / f"{prefix}_{fig_id}.json"
+def preview_state_path(project_root: Path, prefix: str, fig_id: str) -> Path:
+    """Return a preview-only state JSON path like state/preview_<prefix>_<fig_id>.json."""
+    return project_root / "state" / f"preview_{prefix}_{fig_id}.json"
 
 
 def load_json_state(path: Path) -> dict:
@@ -61,7 +61,7 @@ def load_json_state(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def merge_json_state(path: Path, payload: dict) -> dict:
+def merge_preview_state(path: Path, payload: dict) -> dict:
     """Merge *payload* into an on-disk JSON object and write it back."""
     merged = load_json_state(path)
     merged.update(payload)
