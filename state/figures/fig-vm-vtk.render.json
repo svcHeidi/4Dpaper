@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "mesh": "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam",
+  "field": {
+    "name": "Vm",
+    "association": "point",
+    "colormap": "coolwarm"
+  },
+  "filter": {
+    "kind": "surface"
+  },
+  "source": {
+    "mode": "simulation",
+    "time": "mid",
+    "part": "internalMesh"
+  },
+  "display": {
+    "background": "#1a1a2e",
+    "show_scalar_bar": true
+  }
+}
