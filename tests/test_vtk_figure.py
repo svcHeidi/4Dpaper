@@ -121,6 +121,25 @@ class TestLoadRenderSpec:
         with pytest.raises(RuntimeError, match="filter.kind"):
             mod.load_render_spec(spec_path)
 
+    def test_accepts_source_mode_defaults(self, tmp_path):
+        mod = _load_4dpaper()
+        spec_path = tmp_path / "source.render.json"
+        spec_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "mesh": "case.foam",
+                    "source": {"mode": "simulation"},
+                    "field": {"name": "Vm"},
+                }
+            )
+        )
+
+        spec = mod.load_render_spec(spec_path)
+        assert spec["source"]["mode"] == "simulation"
+        assert spec["source"]["time"] == "mid"
+        assert spec["source"]["part"] == "internalMesh"
+
 
 class TestPrepareRenderMesh:
     def test_none_returns_original_mesh(self):

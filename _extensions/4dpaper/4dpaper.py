@@ -608,15 +608,33 @@ def load_render_spec(spec_path: Path) -> dict:
     if not isinstance(display_raw, dict):
         raise RuntimeError(f"[4dpaper] Render spec 'display' must be an object: {spec_path}")
 
+    source_raw = raw.get("source", {})
+    if source_raw is None:
+        source_raw = {}
+    if not isinstance(source_raw, dict):
+        raise RuntimeError(f"[4dpaper] Render spec 'source' must be an object: {spec_path}")
+
+    source_mode = str(source_raw.get("mode", "file")).strip().lower() or "file"
+    if source_mode not in {"file", "simulation"}:
+        raise RuntimeError(
+            f"[4dpaper] Render spec source.mode must be 'file' or 'simulation': {spec_path}"
+        )
+
     mesh_path = Path(mesh_value)
     if not mesh_path.is_absolute():
         mesh_path = (spec_path.parent / mesh_path).resolve()
+
+    time_spec = str(raw.get("time", "mid")).strip() or "mid"
+    part_name = str(raw.get("part", "internalMesh")).strip() or "internalMesh"
 
     return {
         "version": int(raw.get("version", 1)),
         "spec_path": spec_path,
         "mesh": mesh_value,
         "mesh_path": mesh_path,
+        "source": {"mode": source_mode, "time": time_spec, "part": part_name},
+        "time": time_spec,
+        "part": part_name,
         "field": {
             "name": field_name,
             "association": association,
@@ -638,6 +656,38 @@ def prepare_render_mesh(mesh, filter_kind: str):
     if filter_kind == "surface":
         return mesh.extract_surface()
     raise ValueError(f"Unsupported filter kind: {filter_kind}")
+
+
+def _load_render_spec_mesh(spec: dict):
+    """
+    Load the dataset referenced by a render spec.
+
+    The primary path is direct VTK-family loading via ``pyvista.read``. For
+    time-dependent simulation sources such as OpenFOAM, fall back to the
+    existing ``SimulationData`` loader so render specs can temporarily point to
+    the same source files used by ``4d-image``.
+    """
+    import pyvista as pv
+
+    mesh_path = spec["mesh_path"]
+    if mesh_path.suffix.lower() in {".foam", ".pvd", ".case"}:
+        from scripts.data_loader import SimulationData
+
+        sim = SimulationData(str(mesh_path)).load()
+        if sim.n_steps == 0:
+            raise RuntimeError(
+                f"[4dpaper] Simulation at {mesh_path} has no time steps. "
+                "Ensure the case has been solved and time directories exist."
+            )
+        idx = _resolve_time_index(spec["time"], sim.n_steps)
+        mesh = sim.get_mesh(idx, part=spec["part"])
+        if mesh is None:
+            raise RuntimeError(
+                f"[4dpaper] Could not load mesh at step {idx} from {mesh_path}"
+            )
+        return mesh
+
+    return pv.read(str(mesh_path))
 
 
 def _compute_field_range(mesh, field_name: str, association: str) -> list[float] | None:

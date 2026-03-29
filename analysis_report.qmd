@@ -52,6 +52,15 @@ render from the camera angle you locked in the dashboard.
 
 {{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="activationTime" id="fig-at" time="last" caption="Activation time distribution" >}}
 
+## Render-spec VTU/VTK Path
+
+The figure below uses the new `4d-vtk` backend path with a render specification.
+For now it points at the same Niederer `.foam` source as the existing figures so
+the contract can be exercised immediately; later this spec can be updated to a
+real PVSM-derived `.vtu` without changing the shortcode usage.
+
+{{< 4d-vtk spec="state/figures/fig-vm-vtk.render.json" id="fig-vm-vtk" caption="Transmembrane potential rendered through the render-spec path" >}}
+
 # Conclusion
 
 Write your conclusions here.
