@@ -35,7 +35,7 @@ def test_field_handler_post_writes_json(tmp_path):
     handler = _make_handler(body)
     with patch("dashboard.field_plugin._PROJECT_ROOT", tmp_path):
         handler.post("fig-vm")
-    field_path = tmp_path / "state" / "field_fig-vm.json"
+    field_path = tmp_path / "state" / "preview_field_fig-vm.json"
     assert field_path.exists(), "field JSON not written"
     data = json.loads(field_path.read_text())
     assert data["field"] == "Vm"
@@ -45,7 +45,7 @@ def test_field_handler_post_writes_json(tmp_path):
 
 def test_field_handler_post_partial_update(tmp_path):
     """Update only the time field should preserve the existing field field."""
-    field_path = tmp_path / "state" / "field_fig-vm.json"
+    field_path = tmp_path / "state" / "preview_field_fig-vm.json"
     field_path.parent.mkdir(parents=True, exist_ok=True)
     field_path.write_text(json.dumps({"field": "Vm", "time": "2"}))
     

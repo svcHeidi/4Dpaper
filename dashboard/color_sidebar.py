@@ -5,9 +5,9 @@ Parses the QMD for {{< 4d-image >}} shortcodes and renders a compact
 colormap selector for every (figure, field) pair.
 
 - Gradient preview bar updates immediately when a colormap is chosen.
-- Selection is persisted via POST /color/<fig_id> (no page rebuild needed).
-- Selection is currently dashboard-side state and does not yet rewrite the
-  checked-in figure/render config directly.
+- Selection is persisted via POST /color/<fig_id> as preview-only dashboard
+  state (no page rebuild needed).
+- Selection does not rewrite checked-in figure/render config.
 """
 from __future__ import annotations
 
@@ -17,9 +17,9 @@ from pathlib import Path
 import panel as pn
 
 from dashboard.figure_state import (
-    figure_state_path,
     load_json_state,
     parse_4d_image_figures,
+    preview_state_path,
 )
 
 _PROJECT_ROOT = Path(__file__).parent.parent
@@ -81,7 +81,7 @@ _DEFAULT_CMAP = "coolwarm"
 
 
 def _load_color_state(fig_id: str) -> dict[str, str]:
-    return load_json_state(figure_state_path(_PROJECT_ROOT, "color", fig_id))
+    return load_json_state(preview_state_path(_PROJECT_ROOT, "color", fig_id))
 
 
 # ── HTML builder ─────────────────────────────────────────────────────────────
