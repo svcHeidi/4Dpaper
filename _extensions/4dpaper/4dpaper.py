@@ -360,52 +360,6 @@ def generate_pdf3d_tex_figure(
     return True
 
 
-# ── Camera orientation transfer ───────────────────────────────────────────────
-
-
-def _apply_camera_orientation(pl, surface, cam_data: dict) -> None:
-    """
-    Apply *orientation only* from a vtk.js camera to a PyVista plotter.
-
-    vtk.js exports camera in normalised scene coordinates, while PyVista
-    uses real-world mesh coordinates.  Rather than transferring absolute
-    positions (which would place the camera far from the mesh), we:
-
-    1. Extract the **view direction** (position → focal_point) and **up vector**
-       from the vtk.js camera.
-    2. Compute an appropriate camera distance from the mesh bounding sphere.
-    3. Set the PyVista camera: focal point = mesh center, position = center +
-       direction × distance, up = vtk.js up vector.
-    """
-    import numpy as np
-
-    pos = np.array(cam_data["position"], dtype=float)
-    fpt = np.array(cam_data["focal_point"], dtype=float)
-    up = np.array(cam_data["view_up"], dtype=float)
-
-    # View direction: from focal point towards the camera position
-    direction = pos - fpt
-    length = np.linalg.norm(direction)
-    if length < 1e-12:
-        # Degenerate — fall back to isometric
-        pl.isometric_view()
-        return
-    direction = direction / length
-
-    # Mesh bounding sphere radius
-    bounds = np.array(surface.bounds).reshape(3, 2)
-    center = bounds.mean(axis=1)
-    extents = bounds[:, 1] - bounds[:, 0]
-    radius = np.linalg.norm(extents) / 2.0
-
-    # Place camera at 3× bounding-sphere radius (comfortable framing)
-    distance = radius * 3.0
-
-    pl.camera.focal_point = center.tolist()
-    pl.camera.position = (center + direction * distance).tolist()
-    pl.camera.up = up.tolist()
-
-
 # ── Camera sync snippet ───────────────────────────────────────────────────────
 
 def _camera_sync_snippet(fig_id: str) -> str:
