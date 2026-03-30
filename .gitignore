@@ -10,6 +10,7 @@ __pycache__/
 # Machine-local visualization state
 state/camera_*.json
 state/render_output.png
+state/preview/
 
 # Extension-generated figure cache
 state/figures/*.html
@@ -24,7 +25,6 @@ state/figures/*.prc
 state/figures/*.pdf3d.tex
 state/figures/*-times.json
 state/figures/*manifest.json
-state/field_*.json
 state/fourd_lua_debug.txt
 
 # Generated Quarto/build artifacts

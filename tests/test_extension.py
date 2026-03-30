@@ -5,6 +5,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -397,4 +398,151 @@ class TestPdf3DExperimentalHelpers:
         ok, err = mod._run_converter_template("assimp export {input {output}", inp, out)
         assert ok is False
         assert "invalid converter template" in err
+
+    def test_write_pdf3d_ply_asset_writes_colored_ply(self, tmp_path):
+        mod = _load_4dpaper()
+        import pyvista as pv
+
+        mesh = pv.Sphere(theta_resolution=12, phi_resolution=12).cast_to_unstructured_grid()
+        mesh.point_data["Vm"] = mesh.points[:, 2]
+
+        out = tmp_path / "fig-vm.ply"
+        result, mapped = mod._mesh_to_pdf3d_ply(
+            mesh=mesh,
+            field="Vm",
+            output_path=out,
+            compress=False,
+        )
+
+        assert result == out
+        assert mapped is True
+        assert out.exists()
+        loaded = pv.read(str(out))
+        color_arrays = {name.lower(): name for name in loaded.point_data.keys()}
+        assert "rgb" in color_arrays or (
+            "red" in color_arrays and "green" in color_arrays and "blue" in color_arrays
+        )
+
+    def test_write_pdf3d_ply_asset_can_compress_output(self, tmp_path):
+        mod = _load_4dpaper()
+        import pyvista as pv
+        import gzip
+
+        mesh = pv.Sphere(theta_resolution=8, phi_resolution=8).cast_to_unstructured_grid()
+        mesh.point_data["Vm"] = mesh.points[:, 2]
+
+        out = tmp_path / "fig-vm.ply"
+        result, mapped = mod._mesh_to_pdf3d_ply(
+            mesh=mesh,
+            field="Vm",
+            output_path=out,
+            compress=True,
+        )
+
+        assert result.name == "fig-vm.ply.gz"
+        assert mapped is True
+        assert result.exists()
+        with gzip.open(result, "rt", encoding="utf-8", errors="ignore") as fh:
+            header = fh.read(256)
+        assert "ply" in header
+
+    def test_write_pdf3d_ply_asset_allows_missing_field(self, tmp_path):
+        mod = _load_4dpaper()
+        import pyvista as pv
+
+        mesh = pv.Sphere(theta_resolution=8, phi_resolution=8).cast_to_unstructured_grid()
+        out = tmp_path / "fig-vm.ply"
+
+        result, mapped = mod._mesh_to_pdf3d_ply(
+            mesh=mesh,
+            field="MissingField",
+            output_path=out,
+            compress=False,
+        )
+
+        assert result == out
+        assert mapped is False
+        assert out.exists()
+
+    def test_generate_pdf3d_asset_routes_obj_intermediate(self, tmp_path, monkeypatch):
+        mod = _load_4dpaper()
+        fake_mesh = MagicMock()
+        fake_mesh.extract_surface.return_value = fake_mesh
+        saved_paths: list[str] = []
+
+        def _fake_save(path: str):
+            saved_paths.append(path)
+            Path(path).write_text("obj")
+
+        fake_mesh.save.side_effect = _fake_save
+
+        fake_sim = MagicMock()
+        fake_sim.n_steps = 1
+        fake_sim.get_mesh.return_value = fake_mesh
+
+        monkeypatch.setenv("FOURDPAPER_PDF3D_INTERMEDIATE", "obj")
+        monkeypatch.setenv("FOURDPAPER_U3D_CONVERTER_CMD", "python3 -c \"from pathlib import Path; Path(r'{output}').write_text('u3d')\"")
+
+        with patch("scripts.data_loader.SimulationData") as sim_cls:
+            sim_cls.return_value.load.return_value = fake_sim
+            result = mod.generate_pdf3d_asset(
+                src_path=Path("/tmp/case.foam"),
+                field="Vm",
+                time_spec="mid",
+                output_dir=tmp_path,
+                fig_id="fig-vm",
+            )
+
+        assert result == tmp_path / "fig-vm.u3d"
+        assert any(path.endswith(".obj") for path in saved_paths)
+        manifest = json.loads((tmp_path / "fig-vm-pdf3d-manifest.json").read_text())
+        assert manifest["intermediate"]["kind"] == "obj"
+        assert manifest["intermediate"]["path"].endswith(".obj")
+        assert manifest["intermediate"]["size_bytes"] > 0
+        assert manifest["intermediate"]["field_mapped"] is False
+        assert manifest["converter_targets"] == ["u3d", "prc"]
+        assert manifest["final_asset"]["format"] == "u3d"
+        assert manifest["final_asset"]["size_bytes"] > 0
+
+    def test_generate_pdf3d_asset_routes_ply_intermediate(self, tmp_path, monkeypatch):
+        mod = _load_4dpaper()
+        fake_mesh = MagicMock()
+
+        fake_sim = MagicMock()
+        fake_sim.n_steps = 1
+        fake_sim.get_mesh.return_value = fake_mesh
+
+        routed_inputs: list[Path] = []
+
+        def _fake_ply_export(mesh, field, output_path, compress=True):
+            routed_inputs.append(output_path)
+            output_path.write_text("ply")
+            return output_path, True
+
+        monkeypatch.setenv("FOURDPAPER_PDF3D_INTERMEDIATE", "ply")
+        monkeypatch.setenv("FOURDPAPER_U3D_CONVERTER_CMD", "python3 -c \"from pathlib import Path; Path(r'{output}').write_text('u3d')\"")
+
+        with patch("scripts.data_loader.SimulationData") as sim_cls, patch.object(
+            mod, "_mesh_to_pdf3d_ply", side_effect=_fake_ply_export
+        ):
+            sim_cls.return_value.load.return_value = fake_sim
+            result = mod.generate_pdf3d_asset(
+                src_path=Path("/tmp/case.foam"),
+                field="Vm",
+                time_spec="mid",
+                output_dir=tmp_path,
+                fig_id="fig-vm",
+            )
+
+        assert result == tmp_path / "fig-vm.u3d"
+        assert routed_inputs
+        assert routed_inputs[0].name == "fig-vm.ply"
+        manifest = json.loads((tmp_path / "fig-vm-pdf3d-manifest.json").read_text())
+        assert manifest["intermediate"]["kind"] == "ply"
+        assert manifest["intermediate"]["path"].endswith(".ply")
+        assert manifest["intermediate"]["size_bytes"] > 0
+        assert manifest["intermediate"]["field_mapped"] is True
+        assert manifest["converter_targets"] == ["u3d", "prc"]
+        assert manifest["final_asset"]["format"] == "u3d"
+        assert manifest["final_asset"]["size_bytes"] > 0
 
