@@ -219,11 +219,24 @@ def generate_pdf3d_asset(
         )
         return None
 
+    intermediate = os.environ.get("FOURDPAPER_PDF3D_INTERMEDIATE", "obj").strip().lower()
+    if intermediate not in {"obj", "ply"}:
+        print(
+            f"[4dpaper] Unsupported FOURDPAPER_PDF3D_INTERMEDIATE='{intermediate}' "
+            "(expected obj/ply).",
+            file=sys.stderr,
+        )
+        return None
+
     output_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="4dpaper-pdf3d-") as tmpdir:
         tmp_dir = Path(tmpdir)
-        mesh_input = tmp_dir / f"{fig_id}.obj"
-        surface.save(str(mesh_input))
+        if intermediate == "ply":
+            mesh_input = tmp_dir / f"{fig_id}.ply"
+            _mesh_to_pdf3d_ply(surface, field, mesh_input, compress=False)
+        else:
+            mesh_input = tmp_dir / f"{fig_id}.obj"
+            surface.save(str(mesh_input))
 
         for kind in order:
             out_path = output_dir / f"{fig_id}.{kind}"
