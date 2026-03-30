@@ -444,6 +444,24 @@ class TestPdf3DExperimentalHelpers:
             header = fh.read(256)
         assert "ply" in header
 
+    def test_write_pdf3d_ply_asset_allows_missing_field(self, tmp_path):
+        mod = _load_4dpaper()
+        import pyvista as pv
+
+        mesh = pv.Sphere(theta_resolution=8, phi_resolution=8).cast_to_unstructured_grid()
+        out = tmp_path / "fig-vm.ply"
+
+        result, mapped = mod._mesh_to_pdf3d_ply(
+            mesh=mesh,
+            field="MissingField",
+            output_path=out,
+            compress=False,
+        )
+
+        assert result == out
+        assert mapped is False
+        assert out.exists()
+
     def test_generate_pdf3d_asset_routes_obj_intermediate(self, tmp_path, monkeypatch):
         mod = _load_4dpaper()
         fake_mesh = MagicMock()
@@ -479,6 +497,7 @@ class TestPdf3DExperimentalHelpers:
         assert manifest["intermediate"]["kind"] == "obj"
         assert manifest["intermediate"]["path"].endswith(".obj")
         assert manifest["intermediate"]["size_bytes"] > 0
+        assert manifest["intermediate"]["field_mapped"] is False
         assert manifest["converter_targets"] == ["u3d", "prc"]
         assert manifest["final_asset"]["format"] == "u3d"
         assert manifest["final_asset"]["size_bytes"] > 0
@@ -496,7 +515,7 @@ class TestPdf3DExperimentalHelpers:
         def _fake_ply_export(mesh, field, output_path, compress=True):
             routed_inputs.append(output_path)
             output_path.write_text("ply")
-            return output_path
+            return output_path, True
 
         monkeypatch.setenv("FOURDPAPER_PDF3D_INTERMEDIATE", "ply")
         monkeypatch.setenv("FOURDPAPER_U3D_CONVERTER_CMD", "python3 -c \"from pathlib import Path; Path(r'{output}').write_text('u3d')\"")
@@ -520,6 +539,7 @@ class TestPdf3DExperimentalHelpers:
         assert manifest["intermediate"]["kind"] == "ply"
         assert manifest["intermediate"]["path"].endswith(".ply")
         assert manifest["intermediate"]["size_bytes"] > 0
+        assert manifest["intermediate"]["field_mapped"] is True
         assert manifest["converter_targets"] == ["u3d", "prc"]
         assert manifest["final_asset"]["format"] == "u3d"
         assert manifest["final_asset"]["size_bytes"] > 0

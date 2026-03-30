@@ -187,6 +187,7 @@ def _write_pdf3d_manifest(
     field: str,
     intermediate: str,
     intermediate_path: Path,
+    field_mapped: bool,
     converter_targets: list[str],
     final_asset_path: Path | None,
     final_format: str | None,
@@ -199,6 +200,7 @@ def _write_pdf3d_manifest(
             "kind": intermediate,
             "path": intermediate_path.name,
             "size_bytes": intermediate_path.stat().st_size if intermediate_path.exists() else 0,
+            "field_mapped": field_mapped,
         },
         "converter_targets": list(converter_targets),
         "final_asset": (
@@ -234,15 +236,15 @@ def _write_pdf3d_intermediate_asset(
     field: str,
     intermediate: str,
     output_path: Path,
-) -> Path:
-    """Write the requested PDF3D intermediate artifact and return its path."""
+) -> tuple[Path, bool]:
+    """Write the requested PDF3D intermediate artifact and return (path, field_mapped)."""
     surface = mesh.extract_surface()
     if intermediate == "ply":
         return _mesh_to_pdf3d_ply(surface, field, output_path, compress=False)
     if intermediate == "obj":
         output_path.parent.mkdir(parents=True, exist_ok=True)
         surface.save(str(output_path))
-        return output_path
+        return output_path, False
     raise ValueError(f"Unsupported PDF3D intermediate kind: {intermediate}")
 
 
@@ -294,10 +296,10 @@ def generate_pdf3d_asset(
             file=sys.stderr,
         )
         mesh_input = tmp_dir / f"{fig_id}.{intermediate}"
-        _write_pdf3d_intermediate_asset(mesh, field, intermediate, mesh_input)
+        mesh_input, field_mapped = _write_pdf3d_intermediate_asset(mesh, field, intermediate, mesh_input)
         print(
             f"[4dpaper] PDF3D converter input: {mesh_input} "
-            f"({mesh_input.stat().st_size} bytes)",
+            f"({mesh_input.stat().st_size} bytes, field_mapped={field_mapped})",
             file=sys.stderr,
         )
 
@@ -312,6 +314,7 @@ def generate_pdf3d_asset(
                         field=field,
                         intermediate=intermediate,
                         intermediate_path=mesh_input,
+                        field_mapped=field_mapped,
                         converter_targets=order,
                         final_asset_path=out_path,
                         final_format=kind,
@@ -334,6 +337,7 @@ def generate_pdf3d_asset(
             field=field,
             intermediate=intermediate,
             intermediate_path=mesh_input,
+            field_mapped=field_mapped,
             converter_targets=order,
             final_asset_path=None,
             final_format=None,
@@ -353,12 +357,13 @@ def _mesh_to_pdf3d_ply(
     output_path: Path,
     *,
     compress: bool = True,
-) -> Path:
+) -> tuple[Path, bool]:
     """
     Convert a mesh to a compact, field-colored PLY asset for PDF 3D experiments.
 
-    The output is a surface-only PolyData with RGB vertex colors derived from
-    the selected scalar field using a fixed publication colormap.
+    The output is a surface-only PolyData. When the selected field exists, RGB
+    vertex colors are derived from it using a fixed publication colormap.
+    Otherwise the geometry is still exported without field coloring.
     """
     import numpy as np
     import pyvista as pv
@@ -366,47 +371,57 @@ def _mesh_to_pdf3d_ply(
     from scripts.data_loader import SimulationData
 
     surface = mesh.extract_surface()
+    field_mapped = False
+    scalars = None
     if field and field in surface.point_data:
         scalars = np.asarray(surface.point_data[field], dtype=float)
     elif field and field in surface.cell_data:
         surface = surface.cell_data_to_point_data()
         scalars = np.asarray(surface.point_data[field], dtype=float)
-    else:
-        raise RuntimeError(
-            f"[4dpaper] Field '{field}' not found on extracted surface for PDF3D PLY export."
+
+    ply_mesh = pv.PolyData(surface.points, surface.faces)
+
+    if scalars is not None and scalars.size > 0:
+        finite = scalars[np.isfinite(scalars)]
+        if finite.size > 0:
+            vmin = float(finite.min())
+            vmax = float(finite.max())
+            span = vmax - vmin
+            if span <= 1e-12:
+                norm = np.zeros_like(scalars, dtype=float)
+            else:
+                norm = np.clip((scalars - vmin) / span, 0.0, 1.0)
+            norm = np.nan_to_num(norm, nan=0.0, posinf=1.0, neginf=0.0)
+            colors = (colormaps["coolwarm"](norm)[:, :3] * 255.0).astype(np.uint8)
+            # PLY color export goes through the texture argument in PyVista's writer.
+            ply_mesh.point_data["RGB"] = colors
+            field_mapped = True
+        else:
+            print(
+                f"[4dpaper] PDF3D PLY export: field '{field}' has no finite values; "
+                "writing geometry-only PLY.",
+                file=sys.stderr,
+            )
+    elif field:
+        print(
+            f"[4dpaper] PDF3D PLY export: field '{field}' not found on surface; "
+            "writing geometry-only PLY.",
+            file=sys.stderr,
         )
 
-    if scalars.size == 0:
-        raise RuntimeError(f"[4dpaper] Field '{field}' is empty on extracted surface.")
-
-    finite = scalars[np.isfinite(scalars)]
-    if finite.size == 0:
-        raise RuntimeError(f"[4dpaper] Field '{field}' has no finite values on extracted surface.")
-
-    vmin = float(finite.min())
-    vmax = float(finite.max())
-    span = vmax - vmin
-    if span <= 1e-12:
-        norm = np.zeros_like(scalars, dtype=float)
-    else:
-        norm = np.clip((scalars - vmin) / span, 0.0, 1.0)
-    norm = np.nan_to_num(norm, nan=0.0, posinf=1.0, neginf=0.0)
-
-    colors = (colormaps["coolwarm"](norm)[:, :3] * 255.0).astype(np.uint8)
-    ply_mesh = pv.PolyData(surface.points, surface.faces)
-    # PLY color export goes through the texture argument in PyVista's writer.
-    ply_mesh.point_data["RGB"] = colors
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    ply_mesh.save(str(output_path), texture="RGB")
+    if field_mapped:
+        ply_mesh.save(str(output_path), texture="RGB")
+    else:
+        ply_mesh.save(str(output_path))
 
     if compress:
         gz_path = SimulationData.compress_ply(str(output_path))
         print(f"[4dpaper] Generated compressed PDF3D PLY asset: {gz_path}", file=sys.stderr)
-        return gz_path
+        return gz_path, field_mapped
 
     print(f"[4dpaper] Generated PDF3D PLY asset: {output_path}", file=sys.stderr)
-    return output_path
+    return output_path, field_mapped
 
 
 def export_pdf3d_ply_asset(
@@ -430,7 +445,8 @@ def export_pdf3d_ply_asset(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     ply_path = output_dir / f"{fig_id}.pdf3d.ply"
-    return _mesh_to_pdf3d_ply(mesh, field, ply_path, compress=compress)
+    ply_path, _field_mapped = _mesh_to_pdf3d_ply(mesh, field, ply_path, compress=compress)
+    return ply_path
 
 
 def _project_relative_posix(path: Path) -> str:
