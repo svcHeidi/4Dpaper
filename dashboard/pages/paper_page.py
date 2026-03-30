@@ -10,6 +10,7 @@ from typing import Any
 import panel as pn
 import param
 
+from dashboard.theme import THEME
 from dashboard.utils import run_quarto_render
 
 
@@ -29,20 +30,26 @@ class PaperPage(param.Parameterized):
 
         # ── Buttons ──────────────────────────────────────────────────────────
         self._rebuild_html_btn = pn.widgets.Button(
-            name="⚙ HTML",
+            name="HTML",
+            icon="file-type-html",
+            icon_size="1em",
             button_type="primary",
-            width=75,
+            width=88,
             height=26,
             margin=(0, 2),
             styles={"font-size": "11px"},
+            css_classes=["dash-btn-build-primary"],
         )
         self._export_pdf_btn = pn.widgets.Button(
-            name="📥 PDF",
+            name="PDF",
+            icon="file-type-pdf",
+            icon_size="1em",
             button_type="default",
-            width=70,
+            width=84,
             height=26,
             margin=(0, 2),
             styles={"font-size": "11px"},
+            css_classes=["dash-btn-build-secondary"],
         )
 
         # ── Build overlay (appears over the preview, auto-hides) ─────────
@@ -61,15 +68,15 @@ class PaperPage(param.Parameterized):
 
         # ── Iframe ───────────────────────────────────────────────────────────
         self._iframe = pn.pane.HTML(
-            '<div style="border:1px dashed #555;padding:2rem;text-align:center;'
-            'color:#888;border-radius:4px;">Paper preview will appear here '
-            'after first build.</div>',
+            f'<div style="border:1px dashed {THEME["border_subtle"]};padding:2rem;'
+            f'text-align:center;color:{THEME["text_muted"]};border-radius:4px;">'
+            f'Paper preview will appear here after first build.</div>',
             min_height=750,
             sizing_mode="stretch_width",
         )
 
         # ── PDF link (persistent if file exists) ──────────────────────────────
-        self._pdf_link = pn.pane.HTML("", sizing_mode="stretch_width", margin=(10, 8))
+        self._pdf_link = pn.pane.HTML("", sizing_mode="stretch_width", margin=(0, 4))
         self._set_pdf_link_if_exists()
 
         self._rebuild_html_btn.on_click(self._on_rebuild_html)
@@ -82,11 +89,12 @@ class PaperPage(param.Parameterized):
             ts = int(time.time())
             self._pdf_link.object = (
                 f'<a href="/output/analysis_report.pdf?t={ts}" target="_blank" '
-                f'style="background:#007bff; color:white; padding:4px 8px; '
-                f'border-radius:4px; text-decoration:none; font-size:11px; '
-                f'font-weight:bold; font-family:sans-serif; display:inline-block;'
-                f'margin: 0 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">'
-                f'📄 PDF</a>'
+                f'style="background:{THEME["accent"]};color:#fff;padding:5px 10px;'
+                f'border-radius:4px;text-decoration:none;font-size:11px;'
+                f'font-weight:600;font-family:system-ui,sans-serif;display:inline-flex;'
+                f'align-items:center;gap:5px;margin:0 4px;'
+                f'box-shadow:0 1px 3px rgba(0,0,0,0.25);">'
+                f'<i class="bi bi-file-earmark-pdf"></i> PDF</a>'
             )
 
     # ── Overlay helpers ────────────────────────────────────────────────────
@@ -96,16 +104,18 @@ class PaperPage(param.Parameterized):
         self._status_text = status_text
         self._status_type = status_type
         colors = {
-            "info": "#17a2b8", "warning": "#ffc107",
-            "success": "#28a745", "danger": "#dc3545",
+            "info": THEME["info"],
+            "warning": THEME["warning"],
+            "success": THEME["success"],
+            "danger": THEME["danger"],
         }
-        color = colors.get(status_type, "#17a2b8")
+        color = colors.get(status_type, THEME["info"])
         elapsed_html = ""
         if self._build_start is not None and self.is_building:
             elapsed = int(time.time() - self._build_start)
             elapsed_html = (
-                f'<div style="color:#aaa;font-size:11px;margin-bottom:4px;">'
-                f'⏱ {elapsed}s elapsed</div>'
+                f'<div style="color:{THEME["text_muted"]};font-size:11px;margin-bottom:4px;">'
+                f'{elapsed}s elapsed</div>'
             )
         log_html = ""
         if show_log and self._log_lines:
@@ -117,9 +127,9 @@ class PaperPage(param.Parameterized):
                 f'max-height:180px;overflow-y:auto;">{escaped}</div>'
             )
         self._overlay.object = (
-            f'<div style="background:rgba(30,30,30,0.92);color:#d4d4d4;'
+            f'<div style="background:rgba(24,22,20,0.94);color:{THEME["text_primary"]};'
             f'padding:12px 16px;border-radius:6px;font-family:monospace;'
-            f'font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">'
+            f'font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.45);">'
             f'<div style="color:{color};font-weight:bold;margin-bottom:4px;">'
             f'{html_mod.escape(status_text)}</div>{elapsed_html}{log_html}</div>'
         )
@@ -267,11 +277,12 @@ class PaperPage(param.Parameterized):
             cache_bust = int(time.time())
             self._pdf_link.object = (
                 f'<a href="/output/analysis_report.pdf?t={cache_bust}" target="_blank" '
-                f'style="background:#007bff; color:white; padding:4px 8px; '
-                f'border-radius:4px; text-decoration:none; font-size:11px; '
-                f'font-weight:bold; font-family:sans-serif; display:inline-block;'
-                f'margin: 0 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3);">'
-                f'📄 PDF</a>'
+                f'style="background:{THEME["accent"]};color:#fff;padding:5px 10px;'
+                f'border-radius:4px;text-decoration:none;font-size:11px;'
+                f'font-weight:600;font-family:system-ui,sans-serif;display:inline-flex;'
+                f'align-items:center;gap:5px;margin:0 4px;'
+                f'box-shadow:0 1px 3px rgba(0,0,0,0.25);">'
+                f'<i class="bi bi-file-earmark-pdf"></i> PDF</a>'
             )
         else:
             self._update_overlay(

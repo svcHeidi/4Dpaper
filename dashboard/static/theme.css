@@ -1,0 +1,295 @@
+/* Hybrid IDE-dark shell + warm sidebar + teal accent. Mirrors dashboard/theme.py */
+
+:root {
+  /* Dark backgrounds (original) */
+  --bg-app: #0f0f0f;
+  --bg-panel: #121212;
+  --bg-sidebar: #1f1c19;
+  --border-subtle: #3d3834;
+  /* Clear text: white + light blues / yellows in explorer */
+  --text-primary: #ffffff;
+  --text-muted: #b8def5;
+  --accent: #138a7c;
+  --accent-hover: #1aad9a;
+  --accent-muted: rgba(19, 138, 124, 0.32);
+  --accent-muted-strong: rgba(19, 138, 124, 0.5);
+  --btn-secondary: #2a2623;
+  --btn-secondary-hover: #35302c;
+  --toolbar-bg: #181614;
+
+  /* Panel / Bokeh shadow DOM: dark surface, light labels */
+  --panel-background-color: #0f0f0f;
+  --panel-on-background-color: #ffffff;
+  --panel-surface-color: #2a2623;
+  --panel-on-surface-color: #ffffff;
+  --panel-primary-color: #138a7c;
+  --panel-on-primary-color: #ffffff;
+}
+
+html,
+body {
+  background: var(--bg-app) !important;
+}
+
+/* App chrome (Bokeh columns carry css_classes on the column root) */
+.bk-column.sidebar-pane {
+  background: var(--bg-sidebar) !important;
+}
+
+.bk-column.editor-pane {
+  background: var(--bg-panel) !important;
+}
+
+.bk-column.preview-pane {
+  background: var(--bg-panel) !important;
+}
+
+/* Toolbar zones */
+.dash-toolbar {
+  background: var(--toolbar-bg) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  align-items: center;
+}
+
+.dash-toolbar-title {
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+/* Toggle cluster: neutral */
+.dash-btn-toggle.bk-btn,
+.dash-btn-toggle.bk-btn-light,
+.dash-btn-toggle.bk-btn-primary {
+  background: var(--btn-secondary) !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  font-size: 11px !important;
+}
+
+.dash-btn-toggle.bk-btn:hover {
+  background: var(--btn-secondary-hover) !important;
+}
+
+.dash-btn-toggle.bk-btn.bk-active {
+  background: rgba(19, 138, 124, 0.22) !important;
+  border-color: var(--accent) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Build actions */
+.dash-btn-build-primary.bk-btn {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+
+.dash-btn-build-primary.bk-btn:hover:not(:disabled) {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+}
+
+.dash-btn-build-secondary.bk-btn {
+  background: var(--btn-secondary) !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+}
+
+.dash-btn-build-secondary.bk-btn:hover:not(:disabled) {
+  background: var(--btn-secondary-hover) !important;
+  border-color: var(--accent) !important;
+}
+
+/* File tree rows */
+.dash-tree-btn.bk-btn,
+.dash-tree-btn.bk-btn-light {
+  background: var(--btn-secondary) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  text-align: left !important;
+  font-size: 12px !important;
+  border-radius: 4px;
+}
+
+.dash-tree-btn.bk-btn:hover:not(:disabled) {
+  background: var(--btn-secondary-hover) !important;
+  border-color: var(--accent) !important;
+}
+
+.dash-tree-refresh-btn.bk-btn {
+  background: var(--btn-secondary) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  font-size: 12px !important;
+  border-radius: 4px;
+}
+
+.dash-tree-refresh-btn.bk-btn:hover:not(:disabled) {
+  border-color: var(--accent) !important;
+}
+
+.dash-sidebar-heading {
+  color: var(--text-primary) !important;
+  font-size: 13px !important;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+/* Icon + label rows in file tree */
+.dash-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.dash-tree-row .dash-tree-icon {
+  flex: 0 0 1.1rem;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.dash-tree-row .bk-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* VS Code–style paper explorer (narrow, flat rows) */
+.bk-column.sidebar-pane.dash-explorer {
+  max-width: 240px;
+}
+
+.dash-explorer-section-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d4eefc;
+  margin: 2px 0 2px 2px;
+  user-select: none;
+}
+
+.dash-explorer-title-chevron {
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+.dash-explorer-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  min-height: 20px;
+}
+
+.dash-explorer-icon {
+  flex: 0 0 13px;
+  width: 13px;
+  text-align: center;
+  font-size: 10px !important;
+  line-height: 1;
+  color: var(--text-muted);
+  opacity: 0.92;
+}
+
+/*
+ * Flat list rows (VS Code–like). Targets full-width explorer buttons (not only .dash-explorer-row).
+ */
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-item.bk-btn,
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-item.bk-btn.bk-btn-light,
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-item.bk-btn.bk-btn-default,
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-item.bk-btn.bk-btn-secondary,
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-item.bk-btn.bk-btn-primary {
+  border: none !important;
+  outline: none !important;
+  border-radius: 2px !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  padding: 0 2px 0 1px !important;
+  text-align: left !important;
+  color: var(--text-primary) !important;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif !important;
+}
+
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-item.bk-btn:hover:not(:disabled),
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-item.bk-btn:focus:not(:disabled),
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-item.bk-btn:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  background-image: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--text-primary) !important;
+}
+
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-file.bk-btn {
+  color: #b8ecff !important;
+}
+
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-file.dash-explorer-config.bk-btn {
+  color: #7ec8ff !important;
+}
+
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-folder.bk-btn {
+  color: #fff176 !important;
+}
+
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-refresh.bk-btn {
+  color: #9fd4f5 !important;
+  font-size: 10px !important;
+}
+
+.bk-column.sidebar-pane.dash-explorer .dash-explorer-inline-action.bk-btn {
+  color: #d4eefc !important;
+}
+
+.bk-column.sidebar-pane.dash-explorer
+  .dash-explorer-inline-action.dash-explorer-inline-active.bk-btn {
+  color: #7efff0 !important;
+  background: rgba(19, 138, 124, 0.28) !important;
+}
+
+/* Insert figure toggle in sidebar */
+.dash-btn-sidebar-action.bk-btn {
+  background: var(--btn-secondary) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  font-size: 12px !important;
+  border-radius: 4px;
+}
+
+.dash-btn-sidebar-action.bk-btn.bk-active {
+  background: rgba(19, 138, 124, 0.2) !important;
+  border-color: var(--accent) !important;
+}
+
+/* Toolbar: compact text toggles (not large switch chrome) */
+.dash-toolbar .dash-btn-toggle.bk-btn {
+  min-height: 24px !important;
+  max-height: 26px !important;
+  padding: 0 9px !important;
+  line-height: 22px !important;
+  border-radius: 3px !important;
+  font-size: 11px !important;
+}
+
+/* Dividers inside explorer: subtle, not bright white */
+.bk-column.sidebar-pane.dash-explorer hr,
+.bk-column.sidebar-pane.dash-explorer .bk-hr {
+  border: none !important;
+  border-top: 1px solid var(--border-subtle) !important;
+  opacity: 0.65 !important;
+  margin: 4px 0 !important;
+}

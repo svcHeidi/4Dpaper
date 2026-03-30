@@ -17,13 +17,20 @@ if str(_repo_root) not in sys.path:
 
 import panel as pn
 
+from dashboard.theme import THEME
 from dashboard.utils import load_config
 from dashboard.pages.paper_page import build_paper_page
-from dashboard.file_tree import build_file_tree_sidebar, get_language
+from dashboard.file_tree import (
+    EXPLORER_BUTTON_STYLESHEETS,
+    EXPLORER_INNER_WIDTH,
+    EXPLORER_LIST_BTN_STYLES,
+    build_file_tree_sidebar,
+    get_language,
+)
 
 _RAW_CSS = """
 #header{display:none!important;height:0!important}
-html,body{overflow-x:hidden!important;margin:0!important;padding:0!important;background:#000!important;height:100%!important}
+html,body{overflow-x:hidden!important;margin:0!important;padding:0!important;height:100%!important}
 .container-fluid{padding:0!important;max-width:100%!important;height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important}
 #main{padding:0!important;flex:1 1 auto!important;min-height:0!important;display:flex!important;flex-direction:column!important}
 div.ace_editor{overflow:hidden!important}
@@ -60,6 +67,10 @@ pn.extension(
     sizing_mode="stretch_width",
     template="bootstrap",
     raw_css=[_RAW_CSS],
+    css_files=[
+        "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css",
+        "/assets/theme.css?v=16",
+    ],
     js_files={
         "insert_figure": "/assets/insert_figure_overlay.js?v=1",
         # Defer split_pane until .app-shell exists (see split_loader.js).
@@ -113,23 +124,35 @@ def create_app():
 
     paper_content, paper_page = build_paper_page(config)
 
-    toolbar = pn.Row(
-        pn.layout.HSpacer(),
-        paper_page.rebuild_btn, paper_page.export_btn,
+    title_pane = pn.pane.HTML(
+        '<span class="dash-toolbar-title">4Dpaper</span>',
+        sizing_mode="fixed",
+        width=80,
+        margin=(0, 8, 0, 4),
+    )
+    build_cluster = pn.Row(
+        paper_page.rebuild_btn,
+        paper_page.export_btn,
         paper_page.pdf_link,
+        sizing_mode="fixed",
+        margin=0,
+        styles={"align-items": "center"},
+    )
+
+    toolbar = pn.Row(
+        title_pane,
+        pn.layout.HSpacer(),
+        build_cluster,
         pn.pane.HTML('<span style="color:#555;font-size:14px">│</span>', margin=(2, 4)),
         pn.pane.HTML(
             '<span id="split-status" class="split-status-target" data-split-status="1">split: …</span>',
         ),
-        sizing_mode="stretch_width", height=28,
-        styles={"padding": "1px 6px", "background": "#111", "border-bottom": "1px solid #333"},
+        sizing_mode="stretch_width",
+        height=32,
+        margin=0,
+        css_classes=["dash-toolbar"],
+        styles={"padding": "4px 10px", "align-items": "center"},
     )
-
-    sidebar_files = build_file_tree_sidebar(
-        project_root=qmd_path.parent, on_file_click=_on_file_click,
-    )
-    sidebar_files.sizing_mode = "stretch_both"
-    sidebar_files.styles = {**getattr(sidebar_files, "styles", {}), "min-height": "0"}
 
     editor_panel = pn.Column(
         editor,
@@ -159,25 +182,36 @@ def create_app():
         styles={"min-height": "0", "flex": "1 1 auto"},
     )
 
-    insert_btn = pn.widgets.Button(
-        name="Insert Figure",
+    insert_figure_btn = pn.widgets.Button(
+        name="Insert figure",
+        icon="photo",
+        icon_size="11px",
         button_type="default",
-        width=150,
-        height=26,
-        margin=(0, 0, 8, 0),
-        styles={"font-size": "11px"},
+        button_style="outline",
+        width=EXPLORER_INNER_WIDTH,
+        sizing_mode="fixed",
+        margin=(0, 0, 2, 0),
+        css_classes=["dash-explorer-item", "dash-explorer-refresh"],
+        styles={**EXPLORER_LIST_BTN_STYLES, "color": "#9fd4f5", "font-size": "13px"},
+        stylesheets=list(EXPLORER_BUTTON_STYLESHEETS),
     )
-    insert_btn.js_on_click(
+    insert_figure_btn.js_on_click(
         code="if (window.showInsertFigureModal) window.showInsertFigureModal();",
     )
 
-    left_header = pn.Row(
-        pn.pane.Markdown("**Explorer**", styles={"color": "#ddd"}),
-        pn.layout.HSpacer(),
-        insert_btn,
+    left_header = pn.pane.Markdown(
+        "**Explorer**",
         sizing_mode="stretch_width",
-        styles={"padding-bottom": "2px"},
+        styles={"color": THEME["text_muted"], "padding-bottom": "4px", "margin": "0"},
     )
+
+    sidebar_files = build_file_tree_sidebar(
+        project_root=qmd_path.parent,
+        on_file_click=_on_file_click,
+        insert_figure_button=insert_figure_btn,
+    )
+    sidebar_files.sizing_mode = "stretch_both"
+    sidebar_files.styles = {**getattr(sidebar_files, "styles", {}), "min-height": "0"}
 
     left_container = pn.Column(
         left_header,
@@ -185,7 +219,7 @@ def create_app():
         sizing_mode="stretch_both",
         min_width=240,
         styles={"min-height": "0", "overflow": "hidden", "flex": "1 1 auto"},
-        css_classes=["pane-left", "sidebar-pane"],
+        css_classes=["pane-left", "sidebar-pane", "dash-explorer"],
     )
     center_container = pn.Column(
         center_tabs,
@@ -219,8 +253,8 @@ def create_app():
         sizing_mode="stretch_both",
         css_classes=["app-shell"],
         styles={
-            "border": "2px solid #000",
-            "background": "#000",
+            "border": f"2px solid {THEME['border_subtle']}",
+            "background": THEME["bg_app"],
             "overflow": "hidden",
             "min-height": "0",
             "flex": "1 1 auto",
