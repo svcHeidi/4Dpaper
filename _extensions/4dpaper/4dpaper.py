@@ -297,9 +297,10 @@ def generate_pdf3d_asset(
         )
         mesh_input = tmp_dir / f"{fig_id}.{intermediate}"
         mesh_input, field_mapped = _write_pdf3d_intermediate_asset(mesh, field, intermediate, mesh_input)
+        mapping_status = "mapped" if field_mapped else "geometry-only"
         print(
             f"[4dpaper] PDF3D converter input: {mesh_input} "
-            f"({mesh_input.stat().st_size} bytes, field_mapped={field_mapped})",
+            f"({mesh_input.stat().st_size} bytes, {mapping_status})",
             file=sys.stderr,
         )
 
