@@ -180,6 +180,40 @@ def _candidate_converter_templates(kind: str) -> list[str]:
     return templates
 
 
+def _write_pdf3d_manifest(
+    manifest_path: Path,
+    *,
+    fig_id: str,
+    field: str,
+    intermediate: str,
+    intermediate_path: Path,
+    converter_targets: list[str],
+    final_asset_path: Path | None,
+    final_format: str | None,
+) -> None:
+    """Write a small manifest describing a PDF3D experiment run."""
+    payload = {
+        "fig_id": fig_id,
+        "field": field,
+        "intermediate": {
+            "kind": intermediate,
+            "path": intermediate_path.name,
+            "size_bytes": intermediate_path.stat().st_size if intermediate_path.exists() else 0,
+        },
+        "converter_targets": list(converter_targets),
+        "final_asset": (
+            {
+                "format": final_format,
+                "path": final_asset_path.name,
+                "size_bytes": final_asset_path.stat().st_size,
+            }
+            if final_asset_path is not None and final_asset_path.exists() and final_format is not None
+            else None
+        ),
+    }
+    manifest_path.write_text(json.dumps(payload, indent=2))
+
+
 def generate_pdf3d_asset(
     src_path: Path,
     field: str,
@@ -231,6 +265,7 @@ def generate_pdf3d_asset(
     output_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="4dpaper-pdf3d-") as tmpdir:
         tmp_dir = Path(tmpdir)
+        manifest_path = output_dir / f"{fig_id}-pdf3d-manifest.json"
         print(
             f"[4dpaper] PDF3D intermediate for {fig_id}: {intermediate} "
             f"(converter targets: {', '.join(order)})",
@@ -242,19 +277,49 @@ def generate_pdf3d_asset(
         else:
             mesh_input = tmp_dir / f"{fig_id}.obj"
             surface.save(str(mesh_input))
-        print(f"[4dpaper] PDF3D converter input: {mesh_input}", file=sys.stderr)
+        print(
+            f"[4dpaper] PDF3D converter input: {mesh_input} "
+            f"({mesh_input.stat().st_size} bytes)",
+            file=sys.stderr,
+        )
 
         for kind in order:
             out_path = output_dir / f"{fig_id}.{kind}"
             for template in _candidate_converter_templates(kind):
                 ok, err = _run_converter_template(template, mesh_input, out_path)
                 if ok:
-                    print(f"[4dpaper] Generated PDF 3D asset: {out_path}", file=sys.stderr)
+                    _write_pdf3d_manifest(
+                        manifest_path,
+                        fig_id=fig_id,
+                        field=field,
+                        intermediate=intermediate,
+                        intermediate_path=mesh_input,
+                        converter_targets=order,
+                        final_asset_path=out_path,
+                        final_format=kind,
+                    )
+                    print(
+                        f"[4dpaper] Generated PDF 3D asset: {out_path} "
+                        f"({out_path.stat().st_size} bytes); "
+                        f"manifest: {manifest_path.name}",
+                        file=sys.stderr,
+                    )
                     return out_path
                 print(
                     f"[4dpaper] {kind.upper()} converter failed ({template}): {err}",
                     file=sys.stderr,
                 )
+
+        _write_pdf3d_manifest(
+            manifest_path,
+            fig_id=fig_id,
+            field=field,
+            intermediate=intermediate,
+            intermediate_path=mesh_input,
+            converter_targets=order,
+            final_asset_path=None,
+            final_format=None,
+        )
 
     print(
         "[4dpaper] Could not generate U3D/PRC asset. "

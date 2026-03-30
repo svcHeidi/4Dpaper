@@ -475,6 +475,13 @@ class TestPdf3DExperimentalHelpers:
 
         assert result == tmp_path / "fig-vm.u3d"
         assert any(path.endswith(".obj") for path in saved_paths)
+        manifest = json.loads((tmp_path / "fig-vm.pdf3d-manifest.json").read_text())
+        assert manifest["intermediate_kind"] == "obj"
+        assert manifest["output_kind"] == "u3d"
+        assert manifest["converter"]["status"] == "ok"
+        assert manifest["intermediate_path"].endswith(".obj")
+        assert manifest["intermediate_size_bytes"] > 0
+        assert manifest["output_size_bytes"] > 0
 
     def test_generate_pdf3d_asset_routes_ply_intermediate(self, tmp_path, monkeypatch):
         mod = _load_4dpaper()
@@ -509,4 +516,11 @@ class TestPdf3DExperimentalHelpers:
         assert result == tmp_path / "fig-vm.u3d"
         assert routed_inputs
         assert routed_inputs[0].name == "fig-vm.ply"
+        manifest = json.loads((tmp_path / "fig-vm.pdf3d-manifest.json").read_text())
+        assert manifest["intermediate_kind"] == "ply"
+        assert manifest["output_kind"] == "u3d"
+        assert manifest["converter"]["status"] == "ok"
+        assert manifest["intermediate_path"].endswith(".ply")
+        assert manifest["intermediate_size_bytes"] > 0
+        assert manifest["output_size_bytes"] > 0
 
