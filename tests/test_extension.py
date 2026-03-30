@@ -398,3 +398,48 @@ class TestPdf3DExperimentalHelpers:
         assert ok is False
         assert "invalid converter template" in err
 
+    def test_write_pdf3d_ply_asset_writes_colored_ply(self, tmp_path):
+        mod = _load_4dpaper()
+        import pyvista as pv
+
+        mesh = pv.Sphere(theta_resolution=12, phi_resolution=12).cast_to_unstructured_grid()
+        mesh.point_data["Vm"] = mesh.points[:, 2]
+
+        out = tmp_path / "fig-vm.ply"
+        result = mod._mesh_to_pdf3d_ply(
+            mesh=mesh,
+            field="Vm",
+            output_path=out,
+            compress=False,
+        )
+
+        assert result == out
+        assert out.exists()
+        loaded = pv.read(str(out))
+        color_arrays = {name.lower(): name for name in loaded.point_data.keys()}
+        assert "rgb" in color_arrays or (
+            "red" in color_arrays and "green" in color_arrays and "blue" in color_arrays
+        )
+
+    def test_write_pdf3d_ply_asset_can_compress_output(self, tmp_path):
+        mod = _load_4dpaper()
+        import pyvista as pv
+        import gzip
+
+        mesh = pv.Sphere(theta_resolution=8, phi_resolution=8).cast_to_unstructured_grid()
+        mesh.point_data["Vm"] = mesh.points[:, 2]
+
+        out = tmp_path / "fig-vm.ply"
+        result = mod._mesh_to_pdf3d_ply(
+            mesh=mesh,
+            field="Vm",
+            output_path=out,
+            compress=True,
+        )
+
+        assert result.name == "fig-vm.ply.gz"
+        assert result.exists()
+        with gzip.open(result, "rt", encoding="utf-8", errors="ignore") as fh:
+            header = fh.read(256)
+        assert "ply" in header
+
