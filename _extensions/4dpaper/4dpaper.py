@@ -214,6 +214,38 @@ def _write_pdf3d_manifest(
     manifest_path.write_text(json.dumps(payload, indent=2))
 
 
+def _load_pdf3d_source_mesh(src_path: Path, time_spec: str):
+    """Load the mesh for a PDF3D export from a simulation source."""
+    from scripts.data_loader import SimulationData
+
+    sim = SimulationData(str(src_path)).load()
+    if sim.n_steps == 0:
+        raise RuntimeError(f"[4dpaper] Simulation at {src_path} has no time steps.")
+
+    idx = _resolve_time_index(time_spec, sim.n_steps)
+    mesh = sim.get_mesh(idx)
+    if mesh is None:
+        raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
+    return mesh
+
+
+def _write_pdf3d_intermediate_asset(
+    mesh,
+    field: str,
+    intermediate: str,
+    output_path: Path,
+) -> Path:
+    """Write the requested PDF3D intermediate artifact and return its path."""
+    surface = mesh.extract_surface()
+    if intermediate == "ply":
+        return _mesh_to_pdf3d_ply(surface, field, output_path, compress=False)
+    if intermediate == "obj":
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        surface.save(str(output_path))
+        return output_path
+    raise ValueError(f"Unsupported PDF3D intermediate kind: {intermediate}")
+
+
 def generate_pdf3d_asset(
     src_path: Path,
     field: str,
@@ -231,17 +263,7 @@ def generate_pdf3d_asset(
     Example:
       FOURDPAPER_U3D_CONVERTER_CMD="assimp export {input} {output}"
     """
-    from scripts.data_loader import SimulationData
-
-    sim = SimulationData(str(src_path)).load()
-    if sim.n_steps == 0:
-        raise RuntimeError(f"[4dpaper] Simulation at {src_path} has no time steps.")
-
-    idx = _resolve_time_index(time_spec, sim.n_steps)
-    mesh = sim.get_mesh(idx)
-    if mesh is None:
-        raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
-    surface = mesh.extract_surface()
+    mesh = _load_pdf3d_source_mesh(src_path, time_spec)
 
     preferred = os.environ.get("FOURDPAPER_PDF3D_FORMAT", "auto").strip().lower()
     order = ["u3d", "prc"] if preferred in ("", "auto") else [preferred]
@@ -271,12 +293,8 @@ def generate_pdf3d_asset(
             f"(converter targets: {', '.join(order)})",
             file=sys.stderr,
         )
-        if intermediate == "ply":
-            mesh_input = tmp_dir / f"{fig_id}.ply"
-            _mesh_to_pdf3d_ply(surface, field, mesh_input, compress=False)
-        else:
-            mesh_input = tmp_dir / f"{fig_id}.obj"
-            surface.save(str(mesh_input))
+        mesh_input = tmp_dir / f"{fig_id}.{intermediate}"
+        _write_pdf3d_intermediate_asset(mesh, field, intermediate, mesh_input)
         print(
             f"[4dpaper] PDF3D converter input: {mesh_input} "
             f"({mesh_input.stat().st_size} bytes)",
@@ -408,16 +426,7 @@ def export_pdf3d_ply_asset(
     replace the OBJ -> U3D/PRC converter flow, but provides a dedicated export
     artifact for evaluating PLY-based PDF3D conversion.
     """
-    from scripts.data_loader import SimulationData
-
-    sim = SimulationData(str(src_path)).load()
-    if sim.n_steps == 0:
-        raise RuntimeError(f"[4dpaper] Simulation at {src_path} has no time steps.")
-
-    idx = _resolve_time_index(time_spec, sim.n_steps)
-    mesh = sim.get_mesh(idx)
-    if mesh is None:
-        raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
+    mesh = _load_pdf3d_source_mesh(src_path, time_spec)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     ply_path = output_dir / f"{fig_id}.pdf3d.ply"
