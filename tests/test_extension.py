@@ -407,7 +407,7 @@ class TestPdf3DExperimentalHelpers:
         mesh.point_data["Vm"] = mesh.points[:, 2]
 
         out = tmp_path / "fig-vm.ply"
-        result = mod._mesh_to_pdf3d_ply(
+        result, mapped = mod._mesh_to_pdf3d_ply(
             mesh=mesh,
             field="Vm",
             output_path=out,
@@ -415,6 +415,7 @@ class TestPdf3DExperimentalHelpers:
         )
 
         assert result == out
+        assert mapped is True
         assert out.exists()
         loaded = pv.read(str(out))
         color_arrays = {name.lower(): name for name in loaded.point_data.keys()}
@@ -431,7 +432,7 @@ class TestPdf3DExperimentalHelpers:
         mesh.point_data["Vm"] = mesh.points[:, 2]
 
         out = tmp_path / "fig-vm.ply"
-        result = mod._mesh_to_pdf3d_ply(
+        result, mapped = mod._mesh_to_pdf3d_ply(
             mesh=mesh,
             field="Vm",
             output_path=out,
@@ -439,6 +440,7 @@ class TestPdf3DExperimentalHelpers:
         )
 
         assert result.name == "fig-vm.ply.gz"
+        assert mapped is True
         assert result.exists()
         with gzip.open(result, "rt", encoding="utf-8", errors="ignore") as fh:
             header = fh.read(256)
