@@ -1,0 +1,14 @@
+<script>
+document.addEventListener('click', function(e) {
+    let target = e.target.closest('[data-pos]');
+    if (target) {
+        let pos = target.getAttribute('data-pos');
+        // Match standard pandoc --sourcepos format: "...file.qmd:123:1-125:4"
+        let match = pos.match(/:(\d+):\d+-/);
+        if (match && match[1]) {
+            let lineNum = parseInt(match[1], 10);
+            window.parent.postMessage({type: 'jump_to_line', line: lineNum}, '*');
+        }
+    }
+});
+</script>

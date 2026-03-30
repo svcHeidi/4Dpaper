@@ -3,81 +3,18 @@
 from __future__ import annotations
 
 THEME: dict[str, str] = {
-    "bg_app": "#1c1c1c",
-    "bg_panel": "#262626",
-    "bg_sidebar": "#1f1f1f",
-    "border_subtle": "#383838",
+    "bg_app": "#0f0f0f",
+    "bg_panel": "#121212",
+    "bg_sidebar": "#1f1c19",
+    "border_subtle": "#3d3834",
+    # High-contrast text: white + light blue accents in CSS explorer
     "text_primary": "#ffffff",
-    "text_muted": "#aaaaaa",
-    "accent": "#4a9c6d",  # Overleaf muted green
-    "accent_hover": "#3c7d57",
-    "toolbar_bg": "#222222",
-    "success": "#5cb85c",
-    "warning": "#f0ad4e",
-    "danger": "#d9534f",
-    "info": "#5bc0de",
-    "chrome_font_size": "13px",
+    "text_muted": "#b8def5",
+    "accent": "#138a7c",
+    "accent_hover": "#1aad9a",
+    "toolbar_bg": "#181614",
+    "success": "#5ee4a8",
+    "warning": "#ffe066",
+    "danger": "#ff8a8a",
+    "info": "#7ec8ff",
 }
-
-
-def chrome_css() -> str:
-    """Dark Overleaf-style overrides for Panel's default Bootstrap/Bokeh chrome."""
-    t = THEME
-    return f"""
-        html, body,
-        .bk-root, .bk-app,
-        #main, .main-content {{
-            background-color: {t["bg_app"]} !important;
-            color: {t["text_primary"]} !important;
-        }}
-        .bk.pn-container, .bk.pn-column, .bk.pn-row {{
-            background-color: transparent !important;
-        }}
-        .bk-input-group > label,
-        .bk-clearfix > label,
-        label.bk {{
-            color: {t["text_muted"]} !important;
-        }}
-        .bk-btn.bk-btn-light, button.bk-btn-light {{
-            background-color: {t["bg_panel"]} !important;
-            color: {t["text_primary"]} !important;
-            border-color: {t["border_subtle"]} !important;
-        }}
-        .bk-btn.bk-btn-light:hover, button.bk-btn-light:hover {{
-            background-color: #2f2f2f !important;
-        }}
-        .bk-btn.bk-btn-primary, button.bk-btn-primary {{
-            background-color: {t["accent"]} !important;
-            border-color: {t["accent_hover"]} !important;
-        }}
-        .bk-btn.bk-btn-primary:hover, button.bk-btn-primary:hover {{
-            background-color: {t["accent_hover"]} !important;
-        }}
-        .bk-btn.bk-btn-default, button.bk-btn-default {{
-            background-color: {t["bg_panel"]} !important;
-            color: {t["text_primary"]} !important;
-            border-color: {t["border_subtle"]} !important;
-        }}
-        .bk-markdown, .bk.markdown, .bk-clearfix.bk-markdown {{
-            color: {t["text_muted"]} !important;
-        }}
-        /* Dark alerts (save status, insert feedback) */
-        .bk.alert, .bk-clearfix.bk.alert {{
-            background-color: {t["bg_panel"]} !important;
-            border-color: {t["border_subtle"]} !important;
-            color: {t["text_primary"]} !important;
-        }}
-        .bk.alert.alert-success {{ border-left: 3px solid {t["success"]} !important; }}
-        .bk.alert.alert-danger {{ border-left: 3px solid {t["danger"]} !important; }}
-        .bk.alert.alert-warning {{ border-left: 3px solid {t["warning"]} !important; }}
-        .bk.alert.alert-info {{ border-left: 3px solid {t["info"]} !important; }}
-        /* Toolbar rows: vertically center controls */
-        .ide-toolbar-row.bk.pn-row {{
-            align-items: center !important;
-            min-height: 40px;
-        }}
-        /* Preview column: fill vertical space */
-        .paper-preview-root.bk.pn-column {{
-            min-height: 0 !important;
-        }}
-    """

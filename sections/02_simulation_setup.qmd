@@ -1,0 +1,13 @@
+# Simulation Setup
+
+Describe your simulation setup here. The benchmark follows the protocol defined
+by @niederer2011, using a unit cube geometry with stimulation applied at one
+corner.
+
+
+
+
+
+
+
+

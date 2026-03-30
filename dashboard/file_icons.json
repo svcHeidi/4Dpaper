@@ -1,0 +1,26 @@
+{
+  "default": "file-text",
+  "by_name": {
+    "_quarto.yml": "settings",
+    "_quarto.yaml": "settings",
+    "metadata.yml": "settings",
+    "metadata.yaml": "settings",
+    "custom.yml": "settings",
+    "custom.yaml": "settings",
+    "readme.md": "book"
+  },
+  "by_extension": {
+    ".qmd": "markdown",
+    ".md": "markdown",
+    ".tex": "file-text",
+    ".bib": "book",
+    ".sty": "file-code",
+    ".cls": "file-code",
+    ".yml": "settings",
+    ".yaml": "settings",
+    ".json": "braces",
+    ".py": "file-code",
+    ".css": "file-code",
+    ".txt": "file-text"
+  }
+}

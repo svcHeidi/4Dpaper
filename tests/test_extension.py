@@ -5,7 +5,6 @@ import json
 import sys
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -64,6 +63,18 @@ class TestParseShortcodes:
         result = mod.parse_shortcodes(text)
         assert result[0]["time"] == "mid"
 
+    def test_parses_fields_attribute(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-image src="case.foam" field="Vm" fields="Vm,activationTime" id="fig-vm" >}}'
+        result = mod.parse_shortcodes(text)
+        assert result[0]["fields"] == "Vm,activationTime"
+
+    def test_defaults_fields_to_empty(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-image src="case.foam" field="Vm" id="fig-vm" >}}'
+        result = mod.parse_shortcodes(text)
+        assert result[0]["fields"] == ""
+
     def test_ignores_shortcode_in_fenced_code_block(self):
         mod = _load_4dpaper()
         text = (
@@ -85,6 +96,248 @@ class TestParseShortcodes:
         assert len(result) == 1
         assert result[0]["src"] == "case.foam"
         assert result[0]["id"] == "fig-vm"
+
+
+class TestParsePanelShortcodes:
+    def test_finds_single_panel(self):
+        mod = _load_4dpaper()
+        text = (
+            '{{< 4d-panel id="panel-1" layout="2x2" '
+            'src1="a.foam" id1="fig-a" field1="Vm" '
+            'src2="b.stl" id2="fig-b" field2="" >}}'
+        )
+        result = mod.parse_panel_shortcodes(text)
+        assert len(result) == 1
+        p = result[0]
+        assert p["id"] == "panel-1"
+        assert p["layout"] == "2x2"
+        assert len(p["subfigures"]) == 2
+        assert p["subfigures"][0] == {"src": "a.foam", "id": "fig-a", "field": "Vm", "time": "mid", "fields": ""}
+        assert p["subfigures"][1] == {"src": "b.stl",  "id": "fig-b", "field": "",   "time": "mid", "fields": ""}
+
+    def test_defaults_height_and_caption(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-panel id="p" layout="1x1" src1="a.foam" id1="fig-a" field1="" >}}'
+        result = mod.parse_panel_shortcodes(text)
+        assert result[0]["height"] == "800px"
+        assert result[0]["caption"] == ""
+
+    def test_reads_custom_height_and_caption(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-panel id="p" layout="1x1" height="600px" caption="My panel" src1="a.foam" id1="fig-a" field1="" >}}'
+        result = mod.parse_panel_shortcodes(text)
+        assert result[0]["height"] == "600px"
+        assert result[0]["caption"] == "My panel"
+
+    def test_reads_time_per_subfigure(self):
+        mod = _load_4dpaper()
+        text = (
+            '{{< 4d-panel id="p" layout="1x2" '
+            'src1="a.foam" id1="fig-a" field1="" time1="first" '
+            'src2="b.foam" id2="fig-b" field2="" time2="last" >}}'
+        )
+        result = mod.parse_panel_shortcodes(text)
+        subs = result[0]["subfigures"]
+        assert subs[0]["time"] == "first"
+        assert subs[1]["time"] == "last"
+
+    def test_skips_panel_missing_id(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-panel layout="1x1" src1="a.foam" id1="fig-a" field1="" >}}'
+        result = mod.parse_panel_shortcodes(text)
+        assert result == []
+
+    def test_skips_panel_with_no_subfigures(self):
+        mod = _load_4dpaper()
+        text = '{{< 4d-panel id="p" layout="1x1" >}}'
+        result = mod.parse_panel_shortcodes(text)
+        assert result == []
+
+    def test_ignores_panel_in_fenced_code_block(self):
+        mod = _load_4dpaper()
+        text = (
+            "```\n"
+            '{{< 4d-panel id="p" layout="1x1" src1="a.foam" id1="fig-a" field1="" >}}\n'
+            "```\n"
+            '{{< 4d-panel id="real" layout="1x1" src1="b.foam" id1="fig-b" field1="" >}}'
+        )
+        result = mod.parse_panel_shortcodes(text)
+        assert len(result) == 1
+        assert result[0]["id"] == "real"
+
+    def test_finds_multiple_panels(self):
+        mod = _load_4dpaper()
+        text = (
+            '{{< 4d-panel id="p1" layout="1x1" src1="a.foam" id1="fig-a" field1="" >}}\n'
+            '{{< 4d-panel id="p2" layout="2x1" src1="b.stl" id1="fig-b" field1="" src2="c.stl" id2="fig-c" field2="" >}}'
+        )
+        result = mod.parse_panel_shortcodes(text)
+        assert len(result) == 2
+        assert result[0]["id"] == "p1"
+        assert result[1]["id"] == "p2"
+        assert len(result[1]["subfigures"]) == 2
+
+
+class TestGeneratePanelHtml:
+    """generate_panel_html() composes sub-figure HTMLs into a CSS grid."""
+
+    def _make_panel(self, layout="2x1", subfigures=None):
+        if subfigures is None:
+            subfigures = [
+                {"src": "a.foam", "id": "fig-a", "field": "", "time": "mid", "fields": ""},
+                {"src": "b.stl",  "id": "fig-b", "field": "", "time": "mid", "fields": ""},
+            ]
+        return {
+            "id": "panel-test",
+            "layout": layout,
+            "height": "800px",
+            "caption": "",
+            "subfigures": subfigures,
+        }
+
+    def test_creates_composite_html(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
+            output_path.write_text(f"<html>content-{fig_id}</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            mod.generate_panel_html(self._make_panel(), tmp_path)
+
+        out = tmp_path / "panel-test.html"
+        assert out.exists()
+
+    def test_composite_contains_css_grid(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
+            output_path.write_text("<html>x</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            mod.generate_panel_html(self._make_panel("2x1"), tmp_path)
+
+        html = (tmp_path / "panel-test.html").read_text()
+        assert "display:grid" in html
+        assert "grid-template-columns:repeat(2,1fr)" in html
+        assert "grid-template-rows:repeat(1,1fr)" in html
+
+    def test_composite_contains_re_relay_script(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
+            output_path.write_text("<html>x</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            mod.generate_panel_html(self._make_panel(), tmp_path)
+
+        html = (tmp_path / "panel-test.html").read_text()
+        assert "top.postMessage" in html           # upward relay
+        assert "4dpaper-camera-ack" in html        # downward ack relay
+        assert "querySelectorAll" in html          # broadcast to child iframes
+
+    def test_composite_contains_subfigure_content(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
+            output_path.write_text(f"<html>unique-{fig_id}</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            mod.generate_panel_html(self._make_panel(), tmp_path)
+
+        import base64, re
+        html = (tmp_path / "panel-test.html").read_text()
+        # Content is base64-encoded in data URLs — decode to verify sub-figure content
+        b64_chunks = re.findall(r'data:text/html;base64,([A-Za-z0-9+/=]+)', html)
+        decoded = [base64.b64decode(b).decode() for b in b64_chunks]
+        assert any("unique-fig-a" in d for d in decoded)
+        assert any("unique-fig-b" in d for d in decoded)
+
+    def test_invalid_layout_raises(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
+            output_path.write_text("<html>x</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            with pytest.raises(ValueError, match="layout"):
+                mod.generate_panel_html(self._make_panel("bad"), tmp_path)
+
+    def test_3x1_layout_has_three_columns(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+        subs = [{"src": f"{i}.stl", "id": f"fig-{i}", "field": "", "time": "mid"} for i in range(3)]
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
+            output_path.write_text("<html>x</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+            mod.generate_panel_html(self._make_panel("3x1", subs), tmp_path)
+
+        html = (tmp_path / "panel-test.html").read_text()
+        assert "grid-template-columns:repeat(3,1fr)" in html
+
+
+class TestGeneratePanelPng:
+    """generate_panel_png() composes sub-figure PNGs into a 1920×1080 grid."""
+
+    def _make_panel(self, layout="2x1", n_subs=2):
+        return {
+            "id": "panel-test",
+            "layout": layout,
+            "height": "800px",
+            "caption": "",
+            "subfigures": [
+                {"src": f"{i}.stl", "id": f"fig-{i}", "field": "", "time": "mid"}
+                for i in range(n_subs)
+            ],
+        }
+
+    def _fake_png_gen(self, color):
+        """Return a side_effect that writes a solid-color 1920×1080 PNG."""
+        from PIL import Image
+        def _write(src, field, time_spec, output_path, fig_id=None, **kwargs):
+            img = Image.new("RGB", (1920, 1080), color=color)
+            img.save(str(output_path))
+        return _write
+
+    def test_creates_composite_png(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("red")):
+            mod.generate_panel_png(self._make_panel(), tmp_path)
+        assert (tmp_path / "panel-test.png").exists()
+
+    def test_composite_2x1_is_correct_size(self, tmp_path):
+        from unittest.mock import patch
+        from PIL import Image
+        mod = _load_4dpaper()
+        # Subfigures are 1920×1080; 2x1 → 2 cols × 1 row = 3840×1080
+        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("blue")):
+            mod.generate_panel_png(self._make_panel("2x1", 2), tmp_path)
+        img = Image.open(tmp_path / "panel-test.png")
+        assert img.size == (1920 * 2, 1080 * 1)
+
+    def test_2x2_layout_produces_correct_size(self, tmp_path):
+        from unittest.mock import patch
+        from PIL import Image
+        mod = _load_4dpaper()
+        # Subfigures are 1920×1080; 2x2 → 2 cols × 2 rows = 3840×2160
+        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("green")):
+            mod.generate_panel_png(self._make_panel("2x2", 4), tmp_path)
+        img = Image.open(tmp_path / "panel-test.png")
+        assert img.size == (1920 * 2, 1080 * 2)
+
+    def test_invalid_layout_raises(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("red")):
+            with pytest.raises(ValueError, match="layout"):
+                mod.generate_panel_png(self._make_panel("bad"), tmp_path)
 
 
 class TestIsCacheValid:
@@ -167,74 +420,267 @@ class TestIsCacheValid:
         assert mod.is_cache_valid(fig, src, camera_path=cam) is True
 
 
-class TestCameraSyncSnippet:
-    def test_contains_fig_id(self):
+class TestParseVideoShortcodes:
+    def test_finds_shortcode(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-test")
-        assert "fig-test" in snippet
+        text = '{{< 4d-video src="case.foam" field="Vm" fps="10" id="vid-vm" >}}'
+        result = mod.parse_video_shortcodes(text)
+        assert len(result) == 1
+        assert result[0]["id"] == "vid-vm"
+        assert result[0]["src"] == "case.foam"
+        assert result[0]["field"] == "Vm"
 
-    def test_uses_postmessage(self):
+    def test_parses_fps(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        assert "parent.postMessage" in snippet
+        text = '{{< 4d-video src="case.foam" field="Vm" fps="24" id="vid-vm" >}}'
+        result = mod.parse_video_shortcodes(text)
+        assert result[0]["fps"] == "24"
 
-    def test_message_type(self):
+    def test_defaults_fps_to_10(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        assert "4dpaper-camera" in snippet
+        text = '{{< 4d-video src="case.foam" field="Vm" id="vid-vm" >}}'
+        result = mod.parse_video_shortcodes(text)
+        assert result[0]["fps"] == "10"
 
-    def test_no_fetch_in_snippet(self):
-        """Snippet must NOT contain fetch() — that's now in the relay script."""
+    def test_defaults_time_to_mid(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        assert "fetch(" not in snippet
+        text = '{{< 4d-video src="case.foam" field="Vm" id="vid-vm" >}}'
+        result = mod.parse_video_shortcodes(text)
+        assert result[0]["time"] == "mid"
 
-    def test_ack_listener(self):
+    def test_skips_missing_id(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        assert "4dpaper-camera-ack" in snippet
+        text = '{{< 4d-video src="case.foam" field="Vm" >}}'
+        result = mod.parse_video_shortcodes(text)
+        assert result == []
 
-    def test_contains_badge_element(self):
+    def test_skips_missing_src(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        assert "camera-badge" in snippet
+        text = '{{< 4d-video field="Vm" id="vid-vm" >}}'
+        result = mod.parse_video_shortcodes(text)
+        assert result == []
 
-    def test_debounce_order(self):
+    def test_ignores_4d_image_shortcodes(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        # Inside the interaction handler, clearTimeout(timer) must appear
-        # before timer=setTimeout(...) to correctly cancel a pending debounce.
-        assert snippet.index("clearTimeout(timer)") < snippet.index("timer=setTimeout")
+        text = (
+            '{{< 4d-image src="case.foam" field="Vm" id="fig-vm" >}}\n'
+            '{{< 4d-video src="case.foam" field="Vm" id="vid-vm" >}}'
+        )
+        result = mod.parse_video_shortcodes(text)
+        assert len(result) == 1
+        assert result[0]["id"] == "vid-vm"
 
-    def test_camera_api_chain(self):
+    def test_ignores_shortcode_in_fenced_code_block(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        # renderer is passed as second arg to the waitRW callback;
-        # camera is accessed via renderer.getActiveCamera()
-        assert "renderer.getActiveCamera()" in snippet
+        text = (
+            "```\n"
+            '{{< 4d-video src="case.foam" field="Vm" id="vid-example" >}}\n'
+            "```\n"
+            '{{< 4d-video src="real.foam" field="Vm" id="vid-real" >}}'
+        )
+        result = mod.parse_video_shortcodes(text)
+        assert len(result) == 1
+        assert result[0]["id"] == "vid-real"
 
-    def test_waits_for_renderer_global(self):
+    def test_accepts_single_quoted_attributes(self):
         mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        # Snippet derives renderer from renderWindow.getRenderers()
-        assert "getRenderers" in snippet
-        assert "window.__4dRenderer" not in snippet
-        # Must iterate renderers and find the one with actors, NOT use getFirst()
-        assert "getActors" in snippet
-        assert ".getFirst()" not in snippet
+        text = "{{< 4d-video src='case.foam' field='Vm' id='vid-vm' >}}"
+        result = mod.parse_video_shortcodes(text)
+        assert len(result) == 1
+        assert result[0]["src"] == "case.foam"
 
-    def test_fetch_body_keys(self):
-        mod = _load_4dpaper()
-        snippet = mod._camera_sync_snippet("fig-vm")
-        assert "position" in snippet
-        assert "focal_point" in snippet
-        assert "view_up" in snippet
 
-    def test_script_tag_injection_safe(self):
+class TestApplyCameraFromDict:
+    def test_falls_back_to_isometric_when_none(self):
         mod = _load_4dpaper()
-        # A fig_id with </script> must not appear unescaped
-        snippet = mod._camera_sync_snippet("fig</script>vm")
-        assert "</script>" not in snippet.split("<script>", 1)[1].rsplit("</script>", 1)[0]
+
+        class MockCam:
+            position = None
+            focal_point = None
+            up = None
+            parallel_scale = None
+            parallel_projection = False
+
+        class MockPlotter:
+            camera = MockCam()
+            _isometric_called = False
+
+            def isometric_view(self):
+                self._isometric_called = True
+
+        pl = MockPlotter()
+        mod._apply_camera_from_dict(pl, "fig-vm", None)
+        assert pl._isometric_called
+
+    def test_applies_position_focal_view_up(self):
+        mod = _load_4dpaper()
+
+        class MockCam:
+            position = None
+            focal_point = None
+            up = None
+            parallel_scale = None
+            parallel_projection = False
+
+        class MockPlotter:
+            camera = MockCam()
+            _isometric_called = False
+
+            def isometric_view(self):
+                self._isometric_called = True
+
+        pl = MockPlotter()
+        data = {
+            "position": [1.0, 2.0, 3.0],
+            "focal_point": [0.0, 0.0, 0.0],
+            "view_up": [0.0, 1.0, 0.0],
+        }
+        mod._apply_camera_from_dict(pl, "fig-vm", data)
+        assert not pl._isometric_called
+        assert pl.camera.position == [1.0, 2.0, 3.0]
+        assert pl.camera.focal_point == [0.0, 0.0, 0.0]
+        assert pl.camera.up == [0.0, 1.0, 0.0]
+
+    def test_falls_back_on_missing_key(self):
+        mod = _load_4dpaper()
+
+        class MockCam:
+            position = None
+            focal_point = None
+            up = None
+
+        class MockPlotter:
+            camera = MockCam()
+            _isometric_called = False
+
+            def isometric_view(self):
+                self._isometric_called = True
+
+        pl = MockPlotter()
+        # Missing "view_up" key → should fall back to isometric
+        data = {"position": [1.0, 2.0, 3.0], "focal_point": [0.0, 0.0, 0.0]}
+        mod._apply_camera_from_dict(pl, "fig-vm", data)
+        assert pl._isometric_called
+
+
+class TestVideoCacheLogic:
+    def test_mp4_stale_when_missing(self, tmp_path):
+        mod = _load_4dpaper()
+        src = tmp_path / "case.foam"
+        src.write_text("")
+        mp4 = tmp_path / "vid-vm-video.mp4"
+        assert mod.is_cache_valid(mp4, src) is False
+
+    def test_mp4_valid_when_newer_than_src(self, tmp_path):
+        mod = _load_4dpaper()
+        import os
+        import time as _time
+        now = _time.time()
+        src = tmp_path / "case.foam"
+        src.write_text("")
+        mp4 = tmp_path / "vid-vm-video.mp4"
+        mp4.write_bytes(b"")
+        os.utime(src, (now - 1, now - 1))
+        os.utime(mp4, (now, now))
+        assert mod.is_cache_valid(mp4, src) is True
+
+    def test_mp4_stale_when_camera_newer(self, tmp_path):
+        mod = _load_4dpaper()
+        import os
+        import time as _time
+        now = _time.time()
+        src = tmp_path / "case.foam"
+        src.write_text("")
+        mp4 = tmp_path / "vid-vm-video.mp4"
+        mp4.write_bytes(b"")
+        cam = tmp_path / "camera_vid-vm.json"
+        cam.write_text("{}")
+        os.utime(src, (now - 2, now - 2))
+        os.utime(mp4, (now - 1, now - 1))
+        os.utime(cam, (now, now))
+        assert mod.is_cache_valid(mp4, src, camera_path=cam) is False
+
+    def test_frame_stale_when_missing(self, tmp_path):
+        mod = _load_4dpaper()
+        src = tmp_path / "case.foam"
+        src.write_text("")
+        frame = tmp_path / "vid-vm-frame.png"
+        assert mod.is_cache_valid(frame, src) is False
+
+
+class TestGenerateVideoFigure:
+    def test_creates_mp4_frame_and_html(self, tmp_path):
+        mod = _load_4dpaper()
+        case_path = Path(
+            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+        )
+        if not case_path.exists():
+            pytest.skip("Niederer case not available")
+
+        mp4_path = tmp_path / "vid-vm-video.mp4"
+        frame_path = tmp_path / "vid-vm-frame.png"
+        html_path = tmp_path / "vid-vm-video.html"
+        preview_path = tmp_path / "vid-vm-preview.html"
+
+        mod.generate_video_figure(
+            src_path=case_path,
+            field="Vm",
+            fps=5,
+            time_spec="mid",
+            mp4_path=mp4_path,
+            frame_path=frame_path,
+            video_html_path=html_path,
+            fig_id="vid-vm",
+            preview_html_path=preview_path,
+        )
+
+        assert mp4_path.exists(), "MP4 not created"
+        assert mp4_path.stat().st_size > 1000, "MP4 suspiciously small"
+        assert frame_path.exists(), "Frame PNG not created"
+        assert frame_path.stat().st_size > 500, "Frame PNG suspiciously small"
+        assert html_path.exists(), "Video HTML not created"
+        content = html_path.read_text()
+        assert "data:video/mp4;base64," in content, "HTML does not contain base64 MP4"
+        assert "<video" in content, "HTML does not contain <video> element"
+        assert "cam-modal-vid-vm" in content, "HTML missing camera modal"
+        assert "data-srcdoc=" in content, "HTML missing deferred srcdoc"
+        assert preview_path.exists(), "Preview HTML not created"
+
+    def test_mp4_is_valid_h264(self, tmp_path):
+        mod = _load_4dpaper()
+        case_path = Path(
+            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+        )
+        if not case_path.exists():
+            pytest.skip("Niederer case not available")
+
+        try:
+            import imageio.v3 as iio
+        except ImportError:
+            pytest.skip("imageio.v3 not available")
+
+        try:
+            import av  # pyav backend required for plugin="pyav"
+        except ImportError:
+            pytest.skip("pyav not installed — run: pip install imageio[pyav]")
+
+        mp4_path = tmp_path / "vid-vm-video.mp4"
+        frame_path = tmp_path / "vid-vm-frame.png"
+        html_path = tmp_path / "vid-vm-video.html"
+
+        mod.generate_video_figure(
+            src_path=case_path,
+            field="Vm",
+            fps=5,
+            time_spec="mid",
+            mp4_path=mp4_path,
+            frame_path=frame_path,
+            video_html_path=html_path,
+            fig_id="vid-vm",
+        )
+
+        props = iio.improps(str(mp4_path), plugin="pyav")
+        assert props.n_frames > 0, "MP4 has no frames"
 
 
 class TestGenerateHtmlFigure:
@@ -258,6 +704,156 @@ class TestGenerateHtmlFigure:
         assert out.stat().st_size > 1000, "Output HTML is suspiciously small"
         content = out.read_text()
         assert "<html" in content.lower() or "<!DOCTYPE" in content.lower() or "vtk" in content.lower() or "script" in content.lower()
+
+
+class TestBuildVideoHtmlFragment:
+    """Unit tests for _build_video_html_fragment — no foam case required."""
+
+    def test_contains_camera_button(self):
+        mod = _load_4dpaper()
+        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
+        assert "cam-open-vid-vm" in html
+
+    def test_contains_modal(self):
+        mod = _load_4dpaper()
+        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
+        assert "cam-modal-vid-vm" in html
+
+    def test_deferred_srcdoc_set_with_preview(self):
+        mod = _load_4dpaper()
+        html = mod._build_video_html_fragment("abc123", "vid-vm", "preview-content-here")
+        assert 'data-srcdoc="preview-content-here"' in html
+
+    def test_srcdoc_initially_empty(self):
+        mod = _load_4dpaper()
+        html = mod._build_video_html_fragment("abc123", "vid-vm", "preview-content")
+        # srcdoc="" means the iframe is initially empty (preview loads on click)
+        assert 'srcdoc=""' in html
+
+    def test_video_element_with_b64_src(self):
+        mod = _load_4dpaper()
+        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
+        assert "data:video/mp4;base64,abc123" in html
+        assert "<video" in html
+
+    def test_camera_iframe_id(self):
+        mod = _load_4dpaper()
+        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
+        assert "cam-iframe-vid-vm" in html
+
+    def test_camera_button_label(self):
+        mod = _load_4dpaper()
+        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
+        assert "Camera View" in html
+
+    def test_close_button_present(self):
+        mod = _load_4dpaper()
+        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
+        # Close button triggers display:none on the modal
+        assert "cam-modal-vid-vm" in html
+        assert "display='none'" in html or "display:none" in html or "style.display='none'" in html
+
+    def test_different_fig_ids_dont_collide(self):
+        mod = _load_4dpaper()
+        html_a = mod._build_video_html_fragment("aaa", "vid-vm", "")
+        html_b = mod._build_video_html_fragment("bbb", "vid-at", "")
+        assert "cam-open-vid-vm" in html_a
+        assert "cam-open-vid-vm" not in html_b
+        assert "cam-open-vid-at" in html_b
+
+
+class TestVideoCameraViewModal:
+    """Integration tests for camera modal in generated video HTML (foam case required)."""
+
+    def test_video_html_contains_camera_button(self, tmp_path):
+        mod = _load_4dpaper()
+        case_path = Path(
+            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+        )
+        if not case_path.exists():
+            pytest.skip("Niederer case not available")
+
+        html_path = tmp_path / "vid-vm-video.html"
+        mod.generate_video_figure(
+            src_path=case_path,
+            field="Vm",
+            fps=3,
+            time_spec="mid",
+            mp4_path=tmp_path / "vid-vm-video.mp4",
+            frame_path=tmp_path / "vid-vm-frame.png",
+            video_html_path=html_path,
+            fig_id="vid-vm",
+        )
+        assert "cam-open-vid-vm" in html_path.read_text()
+
+    def test_video_html_contains_modal(self, tmp_path):
+        mod = _load_4dpaper()
+        case_path = Path(
+            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+        )
+        if not case_path.exists():
+            pytest.skip("Niederer case not available")
+
+        html_path = tmp_path / "vid-vm-video.html"
+        mod.generate_video_figure(
+            src_path=case_path,
+            field="Vm",
+            fps=3,
+            time_spec="mid",
+            mp4_path=tmp_path / "vid-vm-video.mp4",
+            frame_path=tmp_path / "vid-vm-frame.png",
+            video_html_path=html_path,
+            fig_id="vid-vm",
+        )
+        assert "cam-modal-vid-vm" in html_path.read_text()
+
+    def test_modal_uses_deferred_srcdoc(self, tmp_path):
+        mod = _load_4dpaper()
+        case_path = Path(
+            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+        )
+        if not case_path.exists():
+            pytest.skip("Niederer case not available")
+
+        html_path = tmp_path / "vid-vm-video.html"
+        mod.generate_video_figure(
+            src_path=case_path,
+            field="Vm",
+            fps=3,
+            time_spec="mid",
+            mp4_path=tmp_path / "vid-vm-video.mp4",
+            frame_path=tmp_path / "vid-vm-frame.png",
+            video_html_path=html_path,
+            fig_id="vid-vm",
+        )
+        content = html_path.read_text()
+        assert "data-srcdoc=" in content, "Modal missing deferred srcdoc attribute"
+        assert 'srcdoc=""' in content, "iframe srcdoc should be empty initially"
+
+    def test_preview_html_has_camera_sync(self, tmp_path):
+        mod = _load_4dpaper()
+        case_path = Path(
+            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+        )
+        if not case_path.exists():
+            pytest.skip("Niederer case not available")
+
+        preview_path = tmp_path / "vid-vm-preview.html"
+        mod.generate_video_figure(
+            src_path=case_path,
+            field="Vm",
+            fps=3,
+            time_spec="mid",
+            mp4_path=tmp_path / "vid-vm-video.mp4",
+            frame_path=tmp_path / "vid-vm-frame.png",
+            video_html_path=tmp_path / "vid-vm-video.html",
+            fig_id="vid-vm",
+            preview_html_path=preview_path,
+        )
+        assert preview_path.exists(), "Preview HTML not created"
+        preview_content = preview_path.read_text()
+        assert "4dpaper-camera" in preview_content, "Preview HTML missing camera sync postMessage"
+        assert "parent.postMessage" in preview_content, "Preview HTML missing postMessage call"
 
 
 class TestCameraSyncIntegration:
@@ -284,7 +880,7 @@ class TestCameraSyncIntegration:
         # The camera sync snippet should be in the HTML
         assert "parent.postMessage" in content
         assert "4dpaper-camera" in content
-        assert "camera-badge-fig-vm" in content
+        assert "cs-badge-fig_vm" in content
         # Must find the renderer with actors, not use getFirst()
         assert "getActors" in content
         assert ".getFirst()" not in content
@@ -327,222 +923,56 @@ class TestCameraSyncIntegration:
         assert png_out.stat().st_size > 500, "PNG is suspiciously small"
 
 
-class TestPdf3DExperimentalHelpers:
-    def test_truthy_env_parser(self, monkeypatch):
-        mod = _load_4dpaper()
-        monkeypatch.setenv("FOURDPAPER_TEST_BOOL", "true")
-        assert mod._truthy_env("FOURDPAPER_TEST_BOOL") is True
-        monkeypatch.setenv("FOURDPAPER_TEST_BOOL", "0")
-        assert mod._truthy_env("FOURDPAPER_TEST_BOOL") is False
-        monkeypatch.delenv("FOURDPAPER_TEST_BOOL", raising=False)
-        assert mod._truthy_env("FOURDPAPER_TEST_BOOL", default=True) is True
+class TestPanelEndToEnd:
+    """End-to-end integration tests for generate_panel_html/png with real test data."""
 
-    def test_write_pdf3d_tex_snippet_contains_media9(self, tmp_path, monkeypatch):
-        mod = _load_4dpaper()
-        monkeypatch.setattr(mod, "_project_root", tmp_path)
-        tex = tmp_path / "state" / "figures" / "fig-vm.pdf3d.tex"
-        png = tmp_path / "state" / "figures" / "fig-vm.png"
-        u3d = tmp_path / "state" / "figures" / "fig-vm.u3d"
-        png.parent.mkdir(parents=True, exist_ok=True)
-        png.write_text("poster")
-        u3d.write_text("asset")
-        mod._write_pdf3d_tex_snippet(tex, poster_path=png, asset_path=u3d)
-        content = tex.read_text()
-        assert "\\includemedia" in content
-        assert "addresource={state/figures/fig-vm.u3d}" in content
-        assert "state/figures/fig-vm.png" in content
+    _PANEL = {
+        "id": "panel-e2e",
+        "layout": "2x1",
+        "height": "600px",
+        "caption": "",
+        "subfigures": [
+            {"src": "tests/data/base.stl",    "id": "e2e-stl", "field": "", "time": "mid", "fields": ""},
+            {"src": "tests/data/airplane.ply", "id": "e2e-ply", "field": "", "time": "mid", "fields": ""},
+        ],
+    }
 
-    def test_generate_pdf3d_tex_figure_fallback_png_only(self, tmp_path, monkeypatch):
+    def test_generate_panel_html_real_files(self, tmp_path):
+        """generate_panel_html creates composite HTML and sub-figure HTMLs from real STL/PLY files."""
+        pytest.importorskip("pyvista")
         mod = _load_4dpaper()
-        monkeypatch.setattr(mod, "_project_root", tmp_path)
-        out = tmp_path / "state" / "figures" / "fig-vm.pdf3d.tex"
-        png = tmp_path / "state" / "figures" / "fig-vm.png"
-        png.parent.mkdir(parents=True, exist_ok=True)
-        png.write_text("poster")
-        ok = mod.generate_pdf3d_tex_figure(
-            fig_id="fig-vm",
-            caption="Vm field",
-            png_path=png,
-            asset_path=None,
-            output_tex_path=out,
+        stl_path = Path(__file__).parent / "data" / "base.stl"
+        ply_path = Path(__file__).parent / "data" / "airplane.ply"
+        if not stl_path.exists() or not ply_path.exists():
+            pytest.skip("Test data files not found")
+
+        mod.generate_panel_html(self._PANEL, tmp_path)
+
+        assert (tmp_path / "panel-e2e.html").exists(), "Composite panel HTML not created"
+        assert (tmp_path / "e2e-stl.html").exists(), "Sub-figure e2e-stl.html not created"
+        assert (tmp_path / "e2e-ply.html").exists(), "Sub-figure e2e-ply.html not created"
+
+        html = (tmp_path / "panel-e2e.html").read_text()
+        assert "grid-template-columns:repeat(2,1fr)" in html, "CSS grid columns not found"
+        assert "4dpaper-camera-ack" in html, "Bidirectional re-relay script not found"
+
+    def test_generate_panel_png_real_files(self, tmp_path):
+        """generate_panel_png creates composite PNG whose size matches subfig dims × layout."""
+        pytest.importorskip("pyvista")
+        from PIL import Image
+
+        mod = _load_4dpaper()
+        stl_path = Path(__file__).parent / "data" / "base.stl"
+        ply_path = Path(__file__).parent / "data" / "airplane.ply"
+        if not stl_path.exists() or not ply_path.exists():
+            pytest.skip("Test data files not found")
+
+        mod.generate_panel_png(self._PANEL, tmp_path)
+
+        assert (tmp_path / "panel-e2e.png").exists(), "Composite panel PNG not created"
+        img = Image.open(tmp_path / "panel-e2e.png")
+        sub_img = Image.open(tmp_path / "e2e-stl.png")
+        # 2x1 layout: width = 2 × subfig_width, height = 1 × subfig_height
+        assert img.size == (sub_img.size[0] * 2, sub_img.size[1] * 1), (
+            f"Expected {(sub_img.size[0]*2, sub_img.size[1])}, got {img.size}"
         )
-        assert ok is True
-        content = out.read_text()
-        assert "\\includegraphics" in content
-        assert "\\includemedia" not in content
-
-    def test_write_pdf3d_tex_snippet_uses_ifdefined_guard(self, tmp_path, monkeypatch):
-        mod = _load_4dpaper()
-        monkeypatch.setattr(mod, "_project_root", tmp_path)
-        tex = tmp_path / "state" / "figures" / "fig_vm.pdf3d.tex"
-        png = tmp_path / "state" / "figures" / "fig_vm.png"
-        u3d = tmp_path / "state" / "figures" / "fig_vm.u3d"
-        png.parent.mkdir(parents=True, exist_ok=True)
-        png.write_text("poster")
-        u3d.write_text("asset")
-        mod._write_pdf3d_tex_snippet(tex, poster_path=png, asset_path=u3d)
-        content = tex.read_text()
-        assert "\\ifdefined\\includemedia" in content
-        assert "\\fi" in content
-
-    def test_latex_path_escape_escapes_spaces_and_underscores(self):
-        mod = _load_4dpaper()
-        escaped = mod._latex_path_escape("state/figures/my_fig 01.png")
-        assert escaped == r"state/figures/my\_fig\ 01.png"
-
-    def test_run_converter_template_handles_bad_format_string(self, tmp_path):
-        mod = _load_4dpaper()
-        inp = tmp_path / "in.obj"
-        out = tmp_path / "out.u3d"
-        inp.write_text("o mesh\n")
-        ok, err = mod._run_converter_template("assimp export {input {output}", inp, out)
-        assert ok is False
-        assert "invalid converter template" in err
-
-    def test_write_pdf3d_ply_asset_writes_colored_ply(self, tmp_path):
-        mod = _load_4dpaper()
-        import pyvista as pv
-
-        mesh = pv.Sphere(theta_resolution=12, phi_resolution=12).cast_to_unstructured_grid()
-        mesh.point_data["Vm"] = mesh.points[:, 2]
-
-        out = tmp_path / "fig-vm.ply"
-        result, mapped = mod._mesh_to_pdf3d_ply(
-            mesh=mesh,
-            field="Vm",
-            output_path=out,
-            compress=False,
-        )
-
-        assert result == out
-        assert mapped is True
-        assert out.exists()
-        loaded = pv.read(str(out))
-        color_arrays = {name.lower(): name for name in loaded.point_data.keys()}
-        assert "rgb" in color_arrays or (
-            "red" in color_arrays and "green" in color_arrays and "blue" in color_arrays
-        )
-
-    def test_write_pdf3d_ply_asset_can_compress_output(self, tmp_path):
-        mod = _load_4dpaper()
-        import pyvista as pv
-        import gzip
-
-        mesh = pv.Sphere(theta_resolution=8, phi_resolution=8).cast_to_unstructured_grid()
-        mesh.point_data["Vm"] = mesh.points[:, 2]
-
-        out = tmp_path / "fig-vm.ply"
-        result, mapped = mod._mesh_to_pdf3d_ply(
-            mesh=mesh,
-            field="Vm",
-            output_path=out,
-            compress=True,
-        )
-
-        assert result.name == "fig-vm.ply.gz"
-        assert mapped is True
-        assert result.exists()
-        with gzip.open(result, "rt", encoding="utf-8", errors="ignore") as fh:
-            header = fh.read(256)
-        assert "ply" in header
-
-    def test_write_pdf3d_ply_asset_allows_missing_field(self, tmp_path):
-        mod = _load_4dpaper()
-        import pyvista as pv
-
-        mesh = pv.Sphere(theta_resolution=8, phi_resolution=8).cast_to_unstructured_grid()
-        out = tmp_path / "fig-vm.ply"
-
-        result, mapped = mod._mesh_to_pdf3d_ply(
-            mesh=mesh,
-            field="MissingField",
-            output_path=out,
-            compress=False,
-        )
-
-        assert result == out
-        assert mapped is False
-        assert out.exists()
-
-    def test_generate_pdf3d_asset_routes_obj_intermediate(self, tmp_path, monkeypatch):
-        mod = _load_4dpaper()
-        fake_mesh = MagicMock()
-        fake_mesh.extract_surface.return_value = fake_mesh
-        saved_paths: list[str] = []
-
-        def _fake_save(path: str):
-            saved_paths.append(path)
-            Path(path).write_text("obj")
-
-        fake_mesh.save.side_effect = _fake_save
-
-        fake_sim = MagicMock()
-        fake_sim.n_steps = 1
-        fake_sim.get_mesh.return_value = fake_mesh
-
-        monkeypatch.setenv("FOURDPAPER_PDF3D_INTERMEDIATE", "obj")
-        monkeypatch.setenv("FOURDPAPER_U3D_CONVERTER_CMD", "python3 -c \"from pathlib import Path; Path(r'{output}').write_text('u3d')\"")
-
-        with patch("scripts.data_loader.SimulationData") as sim_cls:
-            sim_cls.return_value.load.return_value = fake_sim
-            result = mod.generate_pdf3d_asset(
-                src_path=Path("/tmp/case.foam"),
-                field="Vm",
-                time_spec="mid",
-                output_dir=tmp_path,
-                fig_id="fig-vm",
-            )
-
-        assert result == tmp_path / "fig-vm.u3d"
-        assert any(path.endswith(".obj") for path in saved_paths)
-        manifest = json.loads((tmp_path / "fig-vm-pdf3d-manifest.json").read_text())
-        assert manifest["intermediate"]["kind"] == "obj"
-        assert manifest["intermediate"]["path"].endswith(".obj")
-        assert manifest["intermediate"]["size_bytes"] > 0
-        assert manifest["intermediate"]["field_mapped"] is False
-        assert manifest["converter_targets"] == ["u3d", "prc"]
-        assert manifest["final_asset"]["format"] == "u3d"
-        assert manifest["final_asset"]["size_bytes"] > 0
-
-    def test_generate_pdf3d_asset_routes_ply_intermediate(self, tmp_path, monkeypatch):
-        mod = _load_4dpaper()
-        fake_mesh = MagicMock()
-
-        fake_sim = MagicMock()
-        fake_sim.n_steps = 1
-        fake_sim.get_mesh.return_value = fake_mesh
-
-        routed_inputs: list[Path] = []
-
-        def _fake_ply_export(mesh, field, output_path, compress=True):
-            routed_inputs.append(output_path)
-            output_path.write_text("ply")
-            return output_path, True
-
-        monkeypatch.setenv("FOURDPAPER_PDF3D_INTERMEDIATE", "ply")
-        monkeypatch.setenv("FOURDPAPER_U3D_CONVERTER_CMD", "python3 -c \"from pathlib import Path; Path(r'{output}').write_text('u3d')\"")
-
-        with patch("scripts.data_loader.SimulationData") as sim_cls, patch.object(
-            mod, "_mesh_to_pdf3d_ply", side_effect=_fake_ply_export
-        ):
-            sim_cls.return_value.load.return_value = fake_sim
-            result = mod.generate_pdf3d_asset(
-                src_path=Path("/tmp/case.foam"),
-                field="Vm",
-                time_spec="mid",
-                output_dir=tmp_path,
-                fig_id="fig-vm",
-            )
-
-        assert result == tmp_path / "fig-vm.u3d"
-        assert routed_inputs
-        assert routed_inputs[0].name == "fig-vm.ply"
-        manifest = json.loads((tmp_path / "fig-vm-pdf3d-manifest.json").read_text())
-        assert manifest["intermediate"]["kind"] == "ply"
-        assert manifest["intermediate"]["path"].endswith(".ply")
-        assert manifest["intermediate"]["size_bytes"] > 0
-        assert manifest["intermediate"]["field_mapped"] is True
-        assert manifest["converter_targets"] == ["u3d", "prc"]
-        assert manifest["final_asset"]["format"] == "u3d"
-        assert manifest["final_asset"]["size_bytes"] > 0
-

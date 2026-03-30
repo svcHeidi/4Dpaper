@@ -37,9 +37,23 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
     _venv_python = _venv_bin / "python"
     env["QUARTO_PYTHON"] = str(_venv_python) if _venv_python.exists() else sys.executable
     env["PATH"] = str(_venv_bin) + ":" + env.get("PATH", "")
+    # App mode: figures served as static files + embed-resources disabled.
+    # embed-resources makes pandoc inline every iframe src (reads & base64s each
+    # figure file), which causes 9GB RAM usage and 3-min builds.
+    # In the app the HTML is always served locally so standalone is not needed.
+    cmd = ["quarto", "render", str(qmd_path), "--to", output_format]
+    if output_format == "html":
+        env["FOURD_APP_MODE"] = "1"
+        # Use the apphtml profile which sets embed-resources:false at the
+        # Quarto format level. Using --metadata embed-resources:false doesn't
+        # work because Quarto passes self-contained/embed-resources as pandoc
+        # *options* (via defaults file), not as metadata — so the metadata
+        # override is silently ignored and pandoc still embeds all resources,
+        # causing 10+ GB RAM usage and multi-hour hangs on vtk.js figures.
+        cmd += ["--profile", "apphtml"]
 
     proc = subprocess.Popen(
-        ["quarto", "render", str(qmd_path), "--to", output_format],
+        cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

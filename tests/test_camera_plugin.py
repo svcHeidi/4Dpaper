@@ -22,7 +22,7 @@ def _make_handler(body_bytes: bytes) -> "CameraHandler":
 def test_camera_plugin_imports():
     from dashboard.camera_plugin import CameraHandler, ROUTES
     assert CameraHandler is not None
-    assert len(ROUTES) == 1
+    assert len(ROUTES) == 2  # /camera/<id> + /camera-lock/<id>
     assert "/camera/" in ROUTES[0][0]
 
 

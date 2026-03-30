@@ -1,0 +1,3 @@
+# Optional: dashboard browser E2E (Playwright). Install browsers: playwright install chromium
+pytest>=7.0
+playwright>=1.40

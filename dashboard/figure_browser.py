@@ -15,8 +15,6 @@ from typing import Any
 
 import panel as pn
 
-from dashboard.theme import THEME
-
 
 # ── Filesystem helpers ────────────────────────────────────────────────────────
 
@@ -136,8 +134,8 @@ _W = 360
 _IW = _W - 20
 
 _SIDEBAR_STYLES = {
-    "background": THEME["bg_sidebar"],
-    "border-right": f"1px solid {THEME['border_subtle']}",
+    "background": "#1a1a1a",
+    "border-right": "1px solid #333",
     "padding": "10px",
     "overflow-x": "hidden",
     "overflow-y": "auto",
@@ -161,6 +159,14 @@ def build_figure_insert_form(
     cf_root_str = config.get("cardiacfoam_root", str(Path.home()))
 
     # ── File selector ─────────────────────────────────────────────────────────
+    root_select = pn.widgets.RadioButtonGroup(
+        name="Root",
+        options=["Cases", "Project"],
+        value="Cases",
+        button_type="default",
+        width=_IW,
+    )
+
     # Explicit width so it never overflows the sidebar.
     file_selector = pn.widgets.FileSelector(
         directory=cf_root_str,
@@ -168,6 +174,12 @@ def build_figure_insert_form(
         width=_IW,
         height=300,
     )
+
+    def _on_root_change(event):
+        directory = cf_root_str if event.new == "Cases" else str(project_root)
+        file_selector.directory = directory
+
+    root_select.param.watch(_on_root_change, "value")
 
     # ── Figure settings ───────────────────────────────────────────────────────
     # Explicit width on every widget instead of sizing_mode="stretch_width" so
@@ -223,7 +235,7 @@ def build_figure_insert_form(
         "",
         styles={
             "font-size": "10px",
-            "color": THEME["text_muted"],
+            "color": "#888",
             "white-space": "pre",
             "max-height": "60px",
             "overflow-y": "auto",
@@ -319,10 +331,8 @@ def build_figure_insert_form(
 
     # ── Form layout ───────────────────────────────────────────────────────────
     return pn.Column(
-        pn.pane.Markdown(
-            "### Insert Figure",
-            styles={"color": THEME["text_primary"]},
-        ),
+        pn.pane.Markdown("### Insert Figure", styles={"color": "#ddd"}),
+        root_select,
         file_selector,
         pn.layout.Divider(margin=(6, 0)),
         field_input,

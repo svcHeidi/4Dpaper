@@ -11,8 +11,6 @@ abstract: |
   output, and high-resolution static figures in the PDF export.
 format:
   html:
-    self-contained: true
-    embed-resources: true
     code-fold: true
     toc: true
     toc-depth: 3
@@ -46,11 +44,15 @@ In the HTML version this is a fully interactive 3D viewer — you can rotate,
 zoom, and inspect the mesh. In the PDF version it is a high-resolution static
 render from the camera angle you locked in the dashboard.
 
-{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" id="fig-vm" caption="Transmembrane potential $V_m$ at mid-activation" >}}
+{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" fields="Vm,activationTime,activationVelocity" id="fig-vm" style="vm-dark" caption="Transmembrane potential $V_m$ at mid-activation" >}}
 
 ## Activation Time
 
-{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="activationTime" id="fig-at" time="last" caption="Activation time distribution" >}}
+{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="activationTime" fields="Vm,activationTime,activationVelocity" id="fig-at" time="last" caption="Activation time distribution" >}}
+
+## Transmembrane Potential Animation
+
+{{< 4d-video src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" fps="10" id="vid-vm" caption="Transmembrane potential $V_m$ over time" >}}
 
 ## Render-spec VTU/VTK Path
 
@@ -64,3 +66,18 @@ real PVSM-derived `.vtu` without changing the shortcode usage.
 # Conclusion
 
 Write your conclusions here.
+
+
+## Side-by-Side Comparison
+
+{{< 4d-panel id="panel-compare" layout="2x1" height="500px"
+    caption="$V_m$ (left) vs activation time (right) — same mesh, same camera."
+    src1="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+    id1="fig-vm" field1="Vm"
+    src2="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+    id2="fig-at" field2="activationTime" >}}
+
+
+## PVSM Figure Test
+
+{{< 4d-pvsm src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/example_state.pvsm" data="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" id="fig-pvsm-vm" caption="Transmembrane voltage - ParaView pipeline" >}}

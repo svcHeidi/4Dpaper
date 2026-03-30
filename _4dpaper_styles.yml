@@ -1,0 +1,27 @@
+# 4Dpapers figure style templates
+# Reference in shortcodes: {{< 4d-image style="vm-dark" ... >}}
+#
+# defaults: applied to all figures with no style= or missing field mapping
+# styles:   named templates referenced via style="name"
+
+defaults:
+  background: "white"
+  axis_color: "black"
+  cmap: "coolwarm"
+
+styles:
+  vm-dark:
+    background: "#1a1a2e"
+    axis_color: "white"
+    fields:
+      Vm: coolwarm
+      activationTime: viridis
+      activationVelocity: plasma
+
+  publication:
+    background: "white"
+    axis_color: "black"
+    fields:
+      Vm: RdBu
+      activationTime: YlOrRd
+      activationVelocity: plasma
