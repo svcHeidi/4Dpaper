@@ -182,8 +182,8 @@ def _build_html(qmd_path: Path) -> str:
     return (
         '<div style="padding:8px 6px;font-family:monospace;overflow-y:auto;">'
         '<div style="color:#888;font-size:10px;margin-bottom:10px;line-height:1.5;">'
-        'Pick a colormap per field.<br>'
-        'Click <b style="color:#ccc;">Rebuild HTML</b> to apply.'
+        'Preview a colormap per field.<br>'
+        'This is local dashboard preview state only and does not rewrite the authored figure config.'
         '</div>'
         + rows_html
         + "</div>"
