@@ -10,6 +10,7 @@ When enabled, pre-render attempts to generate:
 
 - `state/figures/<id>.u3d` or `state/figures/<id>.prc` (interactive 3D asset)
 - `state/figures/<id>.pdf3d.tex` (LaTeX snippet for PDF embedding)
+- `state/figures/<id>.pdf3d-manifest.json` (route/size metadata for experiment comparison)
 
 The shortcode layer uses `<id>.pdf3d.tex` for PDF output when present; otherwise
 it falls back to the existing PNG figure.
@@ -55,6 +56,24 @@ During pre-render, the PDF3D path now logs:
 - the chosen output format (`u3d` / `prc`)
 - the chosen intermediate artifact (`obj` / `ply`)
 - the temporary intermediate file path handed to the converter
+- the intermediate and final asset sizes when available
+
+## Manifest output
+
+Each successful PDF3D asset-generation attempt now writes a small manifest:
+
+- `state/figures/<id>.pdf3d-manifest.json`
+
+The manifest records:
+
+- source figure id
+- selected output format target order
+- chosen intermediate artifact (`obj` / `ply`)
+- intermediate artifact path and byte size
+- final generated asset path and byte size
+
+This is intended to make OBJ-vs-PLY comparison repeatable without changing the
+media9 embedding path.
 
 This makes it easier to compare converter behavior between OBJ and PLY
 intermediates without changing the media9 embedding path.
