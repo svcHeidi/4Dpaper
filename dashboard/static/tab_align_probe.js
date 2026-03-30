@@ -15,11 +15,12 @@
     return out;
   }
 
-  // #region agent log
+  /** Optional: set window.__TAB_ALIGN_PROBE_URL__ to a string to POST probe JSON (local debugging only). */
   function send(payload){
-    fetch('http://127.0.0.1:7740/ingest/40e615c9-5ddc-404d-9a79-8f3c1bd53150',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'53f858'},body:JSON.stringify(payload)}).catch(function(){});
+    var url = window.__TAB_ALIGN_PROBE_URL__;
+    if (typeof url !== 'string' || !url) return;
+    fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}).catch(function(){});
   }
-  // #endregion
 
   function probe(){
     var wraps = deepQueryAll('.editor-tabwrap');
@@ -169,7 +170,7 @@
     }
     data.composedButtonsByWrap = grouped;
 
-    send({sessionId:'53f858',runId:'tab-align-run1',hypothesisId:'H1-H4',location:'tab_align_probe.js:probe',message:'tab alignment metrics',data:data,timestamp:Date.now()});
+    send({runId:'tab-align-probe', location:'tab_align_probe.js:probe', message:'tab alignment metrics', data:data, timestamp:Date.now()});
   }
 
   setTimeout(probe, 500);
