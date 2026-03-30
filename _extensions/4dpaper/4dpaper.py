@@ -231,12 +231,18 @@ def generate_pdf3d_asset(
     output_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="4dpaper-pdf3d-") as tmpdir:
         tmp_dir = Path(tmpdir)
+        print(
+            f"[4dpaper] PDF3D intermediate for {fig_id}: {intermediate} "
+            f"(converter targets: {', '.join(order)})",
+            file=sys.stderr,
+        )
         if intermediate == "ply":
             mesh_input = tmp_dir / f"{fig_id}.ply"
             _mesh_to_pdf3d_ply(surface, field, mesh_input, compress=False)
         else:
             mesh_input = tmp_dir / f"{fig_id}.obj"
             surface.save(str(mesh_input))
+        print(f"[4dpaper] PDF3D converter input: {mesh_input}", file=sys.stderr)
 
         for kind in order:
             out_path = output_dir / f"{fig_id}.{kind}"

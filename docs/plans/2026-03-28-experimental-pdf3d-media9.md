@@ -22,7 +22,17 @@ Set environment variables before `quarto render`:
 export FOURDPAPER_PDF3D_EXPERIMENTAL=1
 export FOURDPAPER_PDF3D_TARGET_ID=fig-vm
 export FOURDPAPER_PDF3D_FORMAT=auto   # auto | u3d | prc
+export FOURDPAPER_PDF3D_INTERMEDIATE=obj  # obj | ply
 ```
+
+`FOURDPAPER_PDF3D_INTERMEDIATE` selects the temporary mesh artifact passed to the
+converter pipeline:
+
+- `obj` — current baseline path (`surface -> OBJ -> converter -> U3D/PRC`)
+- `ply` — experimental path (`surface + field colors -> PLY -> converter -> U3D/PRC`)
+
+When `ply` is selected, the pre-render hook exports a surface-only, vertex-colored
+PLY using the active scalar field before invoking the configured converter.
 
 ## Configure converters
 
@@ -37,6 +47,17 @@ export FOURDPAPER_U3D_CONVERTER_CMD='assimp export {input} {output}'
 
 If no converter succeeds, the system writes a PNG-only TeX fallback and PDF
 rendering remains functional.
+
+## Logging
+
+During pre-render, the PDF3D path now logs:
+
+- the chosen output format (`u3d` / `prc`)
+- the chosen intermediate artifact (`obj` / `ply`)
+- the temporary intermediate file path handed to the converter
+
+This makes it easier to compare converter behavior between OBJ and PLY
+intermediates without changing the media9 embedding path.
 
 ## Media9 and reader compatibility
 
