@@ -77,15 +77,18 @@ def create_app():
     editor = pn.widgets.CodeEditor(
         value=qmd_content,
         language="markdown",
-        sizing_mode="stretch_width",
-        height=800,
+        sizing_mode="stretch_both",
+        min_height=400,
         theme="tomorrow_night",
     )
 
     # ── Multi-file state ──────────────────────────────────────────────────────
     current_file = {"path": str(qmd_path)}
 
-    editor_title = pn.pane.Markdown(f"### `{qmd_path.name}`")
+    editor_title = pn.pane.Markdown(
+        f"### `{qmd_path.name}`",
+        styles={"margin-bottom": "4px"},
+    )
 
     def _on_file_click(file_path: str, language: str):
         # Auto-save current file before switching
@@ -99,7 +102,7 @@ def create_app():
 
     # ── Save button ───────────────────────────────────────────────────────────
     save_btn = pn.widgets.Button(
-        name="💾  Save",
+        name="💾 Save",
         button_type="default",
         width=110,
     )
@@ -135,6 +138,18 @@ def create_app():
 
     save_btn.on_click(_on_save)
 
+    insert_fig_btn = pn.widgets.Toggle(
+        name="📐 Insert figure",
+        value=False,
+        button_type="default",
+        width=140,
+    )
+    figure_form = build_figure_insert_form(editor, qmd_path, config)
+    figure_form.visible = False
+    insert_fig_btn.param.watch(
+        lambda e: setattr(figure_form, "visible", e.new), "value"
+    )
+
     # ── Ace word-wrap via Bokeh jscallback (reliable client-side JS) ──────────
     # pn.pane.HTML script tags are stripped by Bokeh's innerHTML injection.
     # jscallback creates a real Bokeh CustomJS that is sent to the browser over
@@ -146,52 +161,87 @@ def create_app():
         clicks="""
         (function init(){
             if(typeof ace==='undefined'){setTimeout(init,200);return;}
-            // ── Enable word-wrap on every Ace editor instance ────────────
-            document.querySelectorAll('.ace_editor').forEach(function(el){
-                try{
-                    var ed=ace.edit(el);
-                    ed.session.setUseWrapMode(true);
-                    if(ed.renderer && ed.renderer.$scrollbarV)
-                        ed.renderer.$scrollbarV.element.style.overflowX='hidden';
-                }catch(e){}
-            });
-            // ── Force equal widths on editor + preview panels ────────────
-            // Bokeh uses shadow DOM; we traverse shadow roots to find the
-            // body Row (3 visible children: sidebar, editor, preview) and
-            // force the last two to share space equally via inline flex.
-            // Delay to ensure Bokeh's layout is fully rendered first.
-            setTimeout(function(){
+            function wrapAce(){
+                document.querySelectorAll('.ace_editor').forEach(function(el){
+                    try{
+                        var ed=ace.edit(el);
+                        ed.session.setUseWrapMode(true);
+                        if(ed.renderer && ed.renderer.$scrollbarV)
+                            ed.renderer.$scrollbarV.element.style.overflowX='hidden';
+                    }catch(e){}
+                });
+            }
+            function hasAce(el){
+                try{ return el.querySelector && el.querySelector('.ace_editor'); }catch(e){ return null; }
+            }
+            function hasIframe(el){
+                try{ return el.querySelector && el.querySelector('iframe'); }catch(e){ return null; }
+            }
+            // Equal flex on center editor + right preview (3-column body row).
+            function equalizeMainColumns(){
                 var found=false;
-                function fix(root,depth){
-                    if(found||depth>12)return;
-                    var kids=root.children||[];
+                function walk(root, depth){
+                    if(found || depth>16) return;
+                    var kids = root.children || [];
                     for(var i=0;i<kids.length;i++){
-                        if(found)return;
-                        var sr=kids[i].shadowRoot;
+                        if(found) return;
+                        var node = kids[i];
+                        var sr = node.shadowRoot;
                         if(sr){
                             var vis=[];
                             for(var j=0;j<sr.children.length;j++){
-                                if(sr.children[j].offsetWidth>10)vis.push(sr.children[j]);
+                                var c = sr.children[j];
+                                if(c.offsetWidth>10) vis.push(c);
                             }
-                            if(vis.length===3&&vis[0].offsetWidth<350&&vis[1].offsetWidth>350){
-                                vis[1].style.setProperty('flex','1 1 0%','important');
-                                vis[1].style.setProperty('width','auto','important');
-                                vis[2].style.setProperty('flex','1 1 0%','important');
-                                vis[2].style.setProperty('width','auto','important');
-                                found=true;
-                                // Trigger Ace editor resize after layout change
-                                document.querySelectorAll('.ace_editor').forEach(function(el){
-                                    try{ace.edit(el).resize();}catch(e){}
-                                });
-                                return;
+                            if(vis.length===3){
+                                var a=vis[0], b=vis[1], c=vis[2];
+                                var deepHasAce=function(el){
+                                    if(hasAce(el)) return true;
+                                    var q=el.querySelectorAll ? el.querySelectorAll('*') : [];
+                                    for(var k=0;k<q.length;k++){
+                                        if(q[k].shadowRoot && deepHasAceInRoot(q[k].shadowRoot)) return true;
+                                    }
+                                    return false;
+                                };
+                                var deepHasAceInRoot=function(root){
+                                    if(!root) return false;
+                                    if(root.querySelector && root.querySelector('.ace_editor')) return true;
+                                    var q=root.querySelectorAll('*');
+                                    for(var k=0;k<q.length;k++){
+                                        if(q[k].shadowRoot && deepHasAceInRoot(q[k].shadowRoot)) return true;
+                                    }
+                                    return false;
+                                };
+                                if(deepHasAce(b) && (deepHasAce(c) || hasIframe(c) || c.innerText && c.innerText.indexOf('Paper preview')>=0)){
+                                    [b,c].forEach(function(col){
+                                        col.style.setProperty('flex','1 1 0%','important');
+                                        col.style.setProperty('min-width','0','important');
+                                        col.style.setProperty('width','auto','important');
+                                    });
+                                    found=true;
+                                    wrapAce();
+                                    document.querySelectorAll('.ace_editor').forEach(function(el){
+                                        try{ ace.edit(el).resize(); }catch(e){}
+                                    });
+                                    return;
+                                }
                             }
-                            fix(sr,depth+1);
+                            walk(sr, depth+1);
                         }
-                        fix(kids[i],depth+1);
+                        walk(node, depth+1);
                     }
                 }
-                fix(document.body,0);
-            },1000);
+                walk(document.body, 0);
+            }
+            wrapAce();
+            var tries=0;
+            function tick(){
+                equalizeMainColumns();
+                tries++;
+                if(tries<12) setTimeout(tick, 400);
+            }
+            setTimeout(tick, 300);
+            window.addEventListener('resize', function(){ setTimeout(equalizeMainColumns, 50); });
         })();
         """,
     )
@@ -199,42 +249,39 @@ def create_app():
     # Fire the callback as soon as the session WebSocket is ready.
     pn.state.onload(lambda: setattr(_wrap_trigger, "clicks", 1))
 
+    editor_toolbar = pn.Row(
+        insert_fig_btn,
+        save_btn,
+        save_status,
+        sizing_mode="stretch_width",
+        margin=(0, 0, 6, 0),
+        css_classes=["ide-toolbar-row"],
+    )
+
     editor_panel = pn.Column(
         editor_title,
-        pn.Row(save_btn, save_status),
+        editor_toolbar,
+        figure_form,
         editor,
         _wrap_trigger,          # invisible; must be in the layout to be served
         sizing_mode="stretch_both",
-        min_width=400,
+        min_width=360,
+        css_classes=["ide-editor-root"],
     )
 
-    # ── File tree sidebar (+ Insert Figure at the bottom) ─────────────────────
+    # ── File tree sidebar (Insert figure lives in editor toolbar — design doc) ─
     sidebar = build_file_tree_sidebar(
         project_root=qmd_path.parent,
         on_file_click=_on_file_click,
     )
 
-    # ── Insert Figure toggle + form (lives in sidebar) ────────────────────────
-    insert_fig_btn = pn.widgets.Toggle(
-        name="📐 Insert Figure",
-        value=False,
-        button_type="default",
-        width=260,
-    )
-    figure_form = build_figure_insert_form(editor, qmd_path, config)
-    figure_form.visible = False
-    insert_fig_btn.param.watch(
-        lambda e: setattr(figure_form, "visible", e.new), "value"
-    )
-    sidebar.append(pn.layout.Divider(margin=(8, 0, 4, 0)))
-    sidebar.append(insert_fig_btn)
-    sidebar.append(figure_form)
-
     # ── Paper preview ──────────────────────────────────────────────────────────
     paper_panel = pn.Column(
         build_paper_page(config),
         sizing_mode="stretch_both",
-        min_width=400,
+        min_width=360,
+        margin=(0, 0, 0, 0),
+        css_classes=["paper-preview-root"],
     )
 
     # ── Panel toggle toolbar ───────────────────────────────────────────────────

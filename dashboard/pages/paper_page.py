@@ -10,6 +10,7 @@ from typing import Any
 import panel as pn
 import param
 
+from dashboard.theme import THEME
 from dashboard.utils import run_quarto_render
 
 
@@ -30,12 +31,12 @@ class PaperPage(param.Parameterized):
         self._rebuild_html_btn = pn.widgets.Button(
             name="⚙  Rebuild HTML",
             button_type="primary",
-            width=180,
+            width=170,
         )
         self._export_pdf_btn = pn.widgets.Button(
             name="📥  Export PDF",
             button_type="default",
-            width=180,
+            width=170,
         )
 
         # ── Build overlay (appears over the preview, auto-hides) ─────────
@@ -53,12 +54,16 @@ class PaperPage(param.Parameterized):
         )
 
         # ── Iframe ───────────────────────────────────────────────────────────
+        b = THEME["border_subtle"]
+        m = THEME["text_muted"]
         self._iframe = pn.pane.HTML(
-            '<div style="border:1px dashed #555;padding:2rem;text-align:center;'
-            'color:#888;border-radius:4px;">Paper preview will appear here '
-            'after first build.</div>',
-            min_height=750,
-            sizing_mode="stretch_width",
+            f'<div style="border:1px dashed {b};padding:2.5rem 1.5rem;text-align:center;'
+            f'color:{m};border-radius:6px;background:{THEME["bg_panel"]};'
+            f'font-size:13px;line-height:1.5;">'
+            f'<strong style="color:{THEME["text_primary"]};">HTML preview</strong><br><br>'
+            f'Run <strong>Rebuild HTML</strong> to render the paper here.</div>',
+            min_height=520,
+            sizing_mode="stretch_both",
         )
 
         # ── PDF download link ─────────────────────────────────────────────────
@@ -74,10 +79,12 @@ class PaperPage(param.Parameterized):
         self._status_text = status_text
         self._status_type = status_type
         colors = {
-            "info": "#17a2b8", "warning": "#ffc107",
-            "success": "#28a745", "danger": "#dc3545",
+            "info": THEME["info"],
+            "warning": THEME["warning"],
+            "success": THEME["success"],
+            "danger": THEME["danger"],
         }
-        color = colors.get(status_type, "#17a2b8")
+        color = colors.get(status_type, THEME["info"])
         log_html = ""
         if show_log and self._log_lines:
             escaped = "<br>".join(
@@ -167,8 +174,9 @@ class PaperPage(param.Parameterized):
             ts = int(time.time())
             self._iframe.object = (
                 f'<iframe src="/output/analysis_report.html?t={ts}" '
-                f'width="100%" height="750px" frameborder="0" '
-                f'style="border:none;border-radius:4px;"></iframe>'
+                f'width="100%" frameborder="0" '
+                f'style="border:none;border-radius:4px;min-height:520px;'
+                f'height:min(78vh,920px);display:block;background:{THEME["bg_app"]};"></iframe>'
             )
         else:
             self._update_overlay(
@@ -232,8 +240,11 @@ class PaperPage(param.Parameterized):
             import time
             cache_bust = int(time.time())
             self._pdf_link.object = (
+                f'<div style="margin-top:10px;padding:10px 12px;background:{THEME["bg_panel"]};'
+                f'border:1px solid {THEME["border_subtle"]};border-radius:6px;">'
                 f'<a href="/output/analysis_report.pdf?t={cache_bust}" target="_blank" '
-                f'style="font-size:1rem;">\U0001f4c4 Open analysis_report.pdf</a>'
+                f'style="font-size:14px;color:{THEME["accent"]};text-decoration:none;">'
+                f'\U0001f4c4 Download PDF (analysis_report.pdf)</a></div>'
             )
         else:
             self._update_overlay(
@@ -252,13 +263,32 @@ class PaperPage(param.Parameterized):
             self._overlay,
             self._iframe,
             self._pdf_link,
+            sizing_mode="stretch_both",
+            min_height=0,
+            styles={"position": "relative", "flex": "1 1 auto"},
+        )
+        header = pn.pane.Markdown(
+            "### Paper preview",
+            styles={
+                "color": THEME["text_primary"],
+                "margin-bottom": "2px",
+                "font-size": "15px",
+            },
+        )
+        actions = pn.Row(
+            self._rebuild_html_btn,
+            self._export_pdf_btn,
+            pn.layout.HSpacer(),
             sizing_mode="stretch_width",
-            styles={"position": "relative"},
+            margin=(0, 0, 8, 0),
+            css_classes=["ide-toolbar-row"],
         )
         return pn.Column(
-            pn.Row(self._rebuild_html_btn, self._export_pdf_btn),
+            header,
+            actions,
             preview_container,
-            sizing_mode="stretch_width",
+            sizing_mode="stretch_both",
+            min_height=0,
         )
 
 

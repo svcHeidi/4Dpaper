@@ -61,4 +61,23 @@ def chrome_css() -> str:
         .bk-markdown, .bk.markdown, .bk-clearfix.bk-markdown {{
             color: {t["text_muted"]} !important;
         }}
+        /* Dark alerts (save status, insert feedback) */
+        .bk.alert, .bk-clearfix.bk.alert {{
+            background-color: {t["bg_panel"]} !important;
+            border-color: {t["border_subtle"]} !important;
+            color: {t["text_primary"]} !important;
+        }}
+        .bk.alert.alert-success {{ border-left: 3px solid {t["success"]} !important; }}
+        .bk.alert.alert-danger {{ border-left: 3px solid {t["danger"]} !important; }}
+        .bk.alert.alert-warning {{ border-left: 3px solid {t["warning"]} !important; }}
+        .bk.alert.alert-info {{ border-left: 3px solid {t["info"]} !important; }}
+        /* Toolbar rows: vertically center controls */
+        .ide-toolbar-row.bk.pn-row {{
+            align-items: center !important;
+            min-height: 40px;
+        }}
+        /* Preview column: fill vertical space */
+        .paper-preview-root.bk.pn-column {{
+            min-height: 0 !important;
+        }}
     """
