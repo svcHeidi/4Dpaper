@@ -59,6 +59,45 @@ class CameraHandler(tornado.web.RequestHandler):
         self.write({"status": "ok"})
 
 
+class CameraLockHandler(tornado.web.RequestHandler):
+    def set_default_headers(self) -> None:
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Content-Type", "application/json")
+
+    def options(self, fig_id: str) -> None:
+        self.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.set_header("Access-Control-Allow-Headers", "Content-Type")
+        self.finish()
+
+    def get(self, fig_id: str) -> None:
+        if not _SAFE_FIG_ID.fullmatch(fig_id):
+            self.set_status(400)
+            self.write({"status": "error"})
+            return
+        lock_path = _PROJECT_ROOT / "state" / f"camera_{fig_id}_lock.json"
+        if lock_path.exists():
+            self.write(json.loads(lock_path.read_text()))
+        else:
+            self.write({"locked": False})
+
+    def post(self, fig_id: str) -> None:
+        if not _SAFE_FIG_ID.fullmatch(fig_id):
+            self.set_status(400)
+            self.write({"status": "error"})
+            return
+        try:
+            body = json.loads(self.request.body)
+        except json.JSONDecodeError as exc:
+            self.set_status(400)
+            self.write({"status": "error", "detail": f"invalid JSON: {exc}"})
+            return
+        lock_path = _PROJECT_ROOT / "state" / f"camera_{fig_id}_lock.json"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(json.dumps({"locked": bool(body.get("locked", False))}))
+        self.write({"status": "ok"})
+
+
 ROUTES = [
     (r"/camera/(?P<fig_id>[^/]+)", CameraHandler),
+    (r"/camera-lock/(?P<fig_id>[^/]+)", CameraLockHandler),
 ]

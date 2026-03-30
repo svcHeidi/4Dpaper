@@ -5,7 +5,7 @@ import html as html_mod
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Tuple
 
 import panel as pn
 import param
@@ -26,17 +26,23 @@ class PaperPage(param.Parameterized):
         self._hide_timer: threading.Timer | None = None
         self._status_text = ""
         self._status_type = "info"
+        self._build_start: float | None = None
 
-        # ── Buttons ──────────────────────────────────────────────────────────
         self._rebuild_html_btn = pn.widgets.Button(
-            name="⚙  Rebuild HTML",
+            name="⚙ HTML",
             button_type="primary",
-            width=170,
+            width=78,
+            height=26,
+            margin=(0, 2),
+            styles={"font-size": "11px"},
         )
         self._export_pdf_btn = pn.widgets.Button(
-            name="📥  Export PDF",
+            name="📥 PDF",
             button_type="default",
-            width=170,
+            width=72,
+            height=26,
+            margin=(0, 2),
+            styles={"font-size": "11px"},
         )
 
         # ── Build overlay (appears over the preview, auto-hides) ─────────
@@ -66,11 +72,23 @@ class PaperPage(param.Parameterized):
             sizing_mode="stretch_both",
         )
 
-        # ── PDF download link ─────────────────────────────────────────────────
-        self._pdf_link = pn.pane.HTML("", sizing_mode="stretch_width")
+        self._pdf_link = pn.pane.HTML("", sizing_mode="stretch_width", margin=(2, 4))
+        self._set_pdf_link_if_exists()
 
         self._rebuild_html_btn.on_click(self._on_rebuild_html)
         self._export_pdf_btn.on_click(self._on_export_pdf)
+
+    def _set_pdf_link_if_exists(self) -> None:
+        pdf_path = self._qmd_path.parent / "_output" / "analysis_report.pdf"
+        if pdf_path.exists():
+            ts = int(time.time())
+            self._pdf_link.object = (
+                f'<a href="/output/analysis_report.pdf?t={ts}" target="_blank" '
+                f'style="font-size:11px;color:{THEME["accent"]};text-decoration:none;'
+                f'padding:3px 8px;border:1px solid {THEME["border_subtle"]};'
+                f'border-radius:4px;background:{THEME["bg_panel"]};display:inline-block;">'
+                f"📄 PDF</a>"
+            )
 
     # ── Overlay helpers ────────────────────────────────────────────────────
 
@@ -85,6 +103,13 @@ class PaperPage(param.Parameterized):
             "danger": THEME["danger"],
         }
         color = colors.get(status_type, THEME["info"])
+        elapsed_html = ""
+        if self._build_start is not None and self.is_building:
+            elapsed = int(time.time() - self._build_start)
+            elapsed_html = (
+                f'<div style="color:#aaa;font-size:11px;margin-bottom:4px;">'
+                f"⏱ {elapsed}s elapsed</div>"
+            )
         log_html = ""
         if show_log and self._log_lines:
             escaped = "<br>".join(
@@ -99,7 +124,7 @@ class PaperPage(param.Parameterized):
             f'padding:12px 16px;border-radius:6px;font-family:monospace;'
             f'font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">'
             f'<div style="color:{color};font-weight:bold;margin-bottom:4px;">'
-            f'{html_mod.escape(status_text)}</div>{log_html}</div>'
+            f'{html_mod.escape(status_text)}</div>{elapsed_html}{log_html}</div>'
         )
         self._overlay.visible = True
 
@@ -136,6 +161,7 @@ class PaperPage(param.Parameterized):
         self._export_pdf_btn.disabled = True
         self._log_lines.clear()
         self._pdf_link.object = ""
+        self._build_start = time.time()
         self._update_overlay("Building HTML paper\u2026", "warning")
 
         # Capture Bokeh document here (on the event loop) before spawning thread.
@@ -167,8 +193,10 @@ class PaperPage(param.Parameterized):
         self._export_pdf_btn.disabled = False
 
         if exit_code == 0:
+            elapsed = f" ({int(time.time() - self._build_start)}s)" if self._build_start else ""
+            self._build_start = None
             self._update_overlay(
-                "\u2713 HTML paper built successfully!", "success", show_log=False,
+                f"\u2713 HTML paper built successfully!{elapsed}", "success", show_log=False,
             )
             self._schedule_hide_overlay(doc, delay_s=4.0)
             ts = int(time.time())
@@ -179,6 +207,7 @@ class PaperPage(param.Parameterized):
                 f'height:min(78vh,920px);display:block;background:{THEME["bg_app"]};"></iframe>'
             )
         else:
+            self._build_start = None
             self._update_overlay(
                 f"\u2717 Build failed (exit code {exit_code}). See log.",
                 "danger",
@@ -194,6 +223,7 @@ class PaperPage(param.Parameterized):
         self._export_pdf_btn.disabled = True
         self._log_lines.clear()
         self._pdf_link.object = ""
+        self._build_start = time.time()
         self._update_overlay("Exporting PDF\u2026", "warning")
 
         doc = pn.state.curdoc
@@ -233,11 +263,12 @@ class PaperPage(param.Parameterized):
         self._export_pdf_btn.disabled = False
 
         if exit_code == 0 and pdf_path and Path(pdf_path).exists():
+            elapsed = f" ({int(time.time() - self._build_start)}s)" if self._build_start else ""
+            self._build_start = None
             self._update_overlay(
-                "\u2713 PDF exported successfully!", "success", show_log=False,
+                f"\u2713 PDF exported successfully!{elapsed}", "success", show_log=False,
             )
             self._schedule_hide_overlay(doc, delay_s=4.0)
-            import time
             cache_bust = int(time.time())
             self._pdf_link.object = (
                 f'<div style="margin-top:10px;padding:10px 12px;background:{THEME["bg_panel"]};'
@@ -247,6 +278,7 @@ class PaperPage(param.Parameterized):
                 f'\U0001f4c4 Download PDF (analysis_report.pdf)</a></div>'
             )
         else:
+            self._build_start = None
             self._update_overlay(
                 f"\u2717 PDF export failed (exit code {exit_code}). See log.",
                 "danger",
@@ -258,40 +290,32 @@ class PaperPage(param.Parameterized):
         if self.is_building:
             self._update_overlay(self._status_text, self._status_type)
 
+    @property
+    def rebuild_btn(self) -> pn.widgets.Button:
+        return self._rebuild_html_btn
+
+    @property
+    def export_btn(self) -> pn.widgets.Button:
+        return self._export_pdf_btn
+
+    @property
+    def pdf_link(self) -> pn.pane.HTML:
+        return self._pdf_link
+
     def layout(self) -> pn.Column:
-        preview_container = pn.Column(
-            self._overlay,
-            self._iframe,
-            self._pdf_link,
-            sizing_mode="stretch_both",
-            min_height=0,
-            styles={"position": "relative", "flex": "1 1 auto"},
-        )
-        header = pn.pane.Markdown(
-            "### Paper preview",
-            styles={
-                "color": THEME["text_primary"],
-                "margin-bottom": "2px",
-                "font-size": "15px",
-            },
-        )
-        actions = pn.Row(
-            self._rebuild_html_btn,
-            self._export_pdf_btn,
-            pn.layout.HSpacer(),
-            sizing_mode="stretch_width",
-            margin=(0, 0, 8, 0),
-            css_classes=["ide-toolbar-row"],
-        )
         return pn.Column(
-            header,
-            actions,
-            preview_container,
+            pn.Column(
+                self._overlay,
+                self._iframe,
+                sizing_mode="stretch_both",
+                min_height=0,
+                styles={"position": "relative", "flex": "1 1 auto"},
+            ),
             sizing_mode="stretch_both",
             min_height=0,
         )
 
 
-def build_paper_page(config: dict[str, Any]) -> pn.Column:
+def build_paper_page(config: dict[str, Any]) -> Tuple[pn.Column, PaperPage]:
     page = PaperPage(config=config)
-    return page.layout()
+    return page.layout(), page
