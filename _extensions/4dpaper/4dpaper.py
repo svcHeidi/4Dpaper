@@ -245,6 +245,101 @@ def generate_pdf3d_asset(
     return None
 
 
+def _mesh_to_pdf3d_ply(
+    mesh,
+    field: str,
+    output_path: Path,
+    *,
+    compress: bool = True,
+) -> Path:
+    """
+    Convert a mesh to a compact, field-colored PLY asset for PDF 3D experiments.
+
+    The output is a surface-only PolyData with RGB vertex colors derived from
+    the selected scalar field using a fixed publication colormap.
+    """
+    import numpy as np
+    import pyvista as pv
+    from matplotlib import colormaps
+    from scripts.data_loader import SimulationData
+
+    surface = mesh.extract_surface()
+    if field and field in surface.point_data:
+        scalars = np.asarray(surface.point_data[field], dtype=float)
+    elif field and field in surface.cell_data:
+        surface = surface.cell_data_to_point_data()
+        scalars = np.asarray(surface.point_data[field], dtype=float)
+    else:
+        raise RuntimeError(
+            f"[4dpaper] Field '{field}' not found on extracted surface for PDF3D PLY export."
+        )
+
+    if scalars.size == 0:
+        raise RuntimeError(f"[4dpaper] Field '{field}' is empty on extracted surface.")
+
+    finite = scalars[np.isfinite(scalars)]
+    if finite.size == 0:
+        raise RuntimeError(f"[4dpaper] Field '{field}' has no finite values on extracted surface.")
+
+    vmin = float(finite.min())
+    vmax = float(finite.max())
+    span = vmax - vmin
+    if span <= 1e-12:
+        norm = np.zeros_like(scalars, dtype=float)
+    else:
+        norm = np.clip((scalars - vmin) / span, 0.0, 1.0)
+    norm = np.nan_to_num(norm, nan=0.0, posinf=1.0, neginf=0.0)
+
+    colors = (colormaps["coolwarm"](norm)[:, :3] * 255.0).astype(np.uint8)
+    ply_mesh = pv.PolyData(surface.points, surface.faces)
+    # PLY color export goes through the texture argument in PyVista's writer.
+    ply_mesh.point_data["RGB"] = colors
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ply_mesh.save(str(output_path), texture="RGB")
+
+    if compress:
+        gz_path = SimulationData.compress_ply(str(output_path))
+        print(f"[4dpaper] Generated compressed PDF3D PLY asset: {gz_path}", file=sys.stderr)
+        return gz_path
+
+    print(f"[4dpaper] Generated PDF3D PLY asset: {output_path}", file=sys.stderr)
+    return output_path
+
+
+def export_pdf3d_ply_asset(
+    src_path: Path,
+    field: str,
+    time_spec: str,
+    output_dir: Path,
+    fig_id: str,
+    *,
+    compress: bool = True,
+) -> Path:
+    """
+    Export a compact, field-colored PLY surface asset for future PDF 3D pipelines.
+
+    This is a test implementation that prepares a surface-only artifact with
+    RGB vertex colors derived from the selected scalar field. It does not yet
+    replace the OBJ -> U3D/PRC converter flow, but provides a dedicated export
+    artifact for evaluating PLY-based PDF3D conversion.
+    """
+    from scripts.data_loader import SimulationData
+
+    sim = SimulationData(str(src_path)).load()
+    if sim.n_steps == 0:
+        raise RuntimeError(f"[4dpaper] Simulation at {src_path} has no time steps.")
+
+    idx = _resolve_time_index(time_spec, sim.n_steps)
+    mesh = sim.get_mesh(idx)
+    if mesh is None:
+        raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ply_path = output_dir / f"{fig_id}.pdf3d.ply"
+    return _mesh_to_pdf3d_ply(mesh, field, ply_path, compress=compress)
+
+
 def _project_relative_posix(path: Path) -> str:
     """Return ``path`` as a project-relative POSIX string when possible."""
     try:
