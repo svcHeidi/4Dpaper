@@ -78,12 +78,14 @@ def get_language(filename: str) -> str:
 
 import panel as pn  # noqa: E402
 
+from dashboard.theme import THEME
+
 _W = 280  # sidebar width in pixels
 _IW = _W - 20  # inner widget width
 
 _SIDEBAR_STYLES = {
-    "background": "#1a1a1a",
-    "border-right": "1px solid #333",
+    "background": THEME["bg_sidebar"],
+    "border-right": f"1px solid {THEME['border_subtle']}",
     "padding": "10px",
     "overflow-x": "hidden",
     "overflow-y": "auto",
@@ -149,7 +151,7 @@ def build_file_tree_sidebar(
                 widgets.append(btn)
             else:
                 widgets.append(pn.pane.Markdown(
-                    f"{indent}<span style='color:#666;font-size:12px;'>"
+                    f"{indent}<span style='color:{THEME['text_muted']};font-size:12px;'>"
                     f"  {item['name']}</span>",
                     width=_IW,
                 ))
@@ -169,7 +171,10 @@ def build_file_tree_sidebar(
     tree_container.extend(_render_tree(project_root))
 
     return pn.Column(
-        pn.pane.Markdown("### Project Files", styles={"color": "#ddd"}),
+        pn.pane.Markdown(
+            "### Project Files",
+            styles={"color": THEME["text_primary"]},
+        ),
         refresh_btn,
         pn.layout.Divider(margin=(6, 0)),
         tree_container,

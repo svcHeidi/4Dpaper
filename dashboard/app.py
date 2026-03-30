@@ -22,6 +22,7 @@ if str(_repo_root) not in sys.path:
 
 import panel as pn
 
+from dashboard.theme import THEME, chrome_css
 from dashboard.utils import load_config
 from dashboard.pages.paper_page import build_paper_page
 from dashboard.file_tree import build_file_tree_sidebar, get_language
@@ -32,7 +33,8 @@ pn.extension(
     sizing_mode="stretch_width",
     template="bootstrap",
     raw_css=[
-        """
+        chrome_css()
+        + """
         /* ── Hide the "Panel Application" header bar ─────────────────────── */
         #header { display: none !important; height: 0 !important; }
 
@@ -260,8 +262,8 @@ def create_app():
         height=42,
         styles={
             "padding": "4px 8px",
-            "background": "#212529",
-            "border-bottom": "1px solid #343a40",
+            "background": THEME["toolbar_bg"],
+            "border-bottom": f"1px solid {THEME['border_subtle']}",
         },
     )
 

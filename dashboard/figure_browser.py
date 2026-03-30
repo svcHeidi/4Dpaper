@@ -15,6 +15,8 @@ from typing import Any
 
 import panel as pn
 
+from dashboard.theme import THEME
+
 
 # ── Filesystem helpers ────────────────────────────────────────────────────────
 
@@ -134,8 +136,8 @@ _W = 360
 _IW = _W - 20
 
 _SIDEBAR_STYLES = {
-    "background": "#1a1a1a",
-    "border-right": "1px solid #333",
+    "background": THEME["bg_sidebar"],
+    "border-right": f"1px solid {THEME['border_subtle']}",
     "padding": "10px",
     "overflow-x": "hidden",
     "overflow-y": "auto",
@@ -221,7 +223,7 @@ def build_figure_insert_form(
         "",
         styles={
             "font-size": "10px",
-            "color": "#888",
+            "color": THEME["text_muted"],
             "white-space": "pre",
             "max-height": "60px",
             "overflow-y": "auto",
@@ -317,7 +319,10 @@ def build_figure_insert_form(
 
     # ── Form layout ───────────────────────────────────────────────────────────
     return pn.Column(
-        pn.pane.Markdown("### Insert Figure", styles={"color": "#ddd"}),
+        pn.pane.Markdown(
+            "### Insert Figure",
+            styles={"color": THEME["text_primary"]},
+        ),
         file_selector,
         pn.layout.Divider(margin=(6, 0)),
         field_input,
