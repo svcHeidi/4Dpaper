@@ -443,3 +443,69 @@ class TestPdf3DExperimentalHelpers:
             header = fh.read(256)
         assert "ply" in header
 
+    def test_generate_pdf3d_asset_routes_obj_intermediate(self, tmp_path, monkeypatch):
+        mod = _load_4dpaper()
+        fake_mesh = MagicMock()
+        fake_mesh.extract_surface.return_value = fake_mesh
+        saved_paths: list[str] = []
+
+        def _fake_save(path: str):
+            saved_paths.append(path)
+            Path(path).write_text("obj")
+
+        fake_mesh.save.side_effect = _fake_save
+
+        fake_sim = MagicMock()
+        fake_sim.n_steps = 1
+        fake_sim.get_mesh.return_value = fake_mesh
+
+        monkeypatch.setenv("FOURDPAPER_PDF3D_INTERMEDIATE", "obj")
+        monkeypatch.setenv("FOURDPAPER_U3D_CONVERTER_CMD", "python3 -c \"from pathlib import Path; Path(r'{output}').write_text('u3d')\"")
+
+        with patch("scripts.data_loader.SimulationData") as sim_cls:
+            sim_cls.return_value.load.return_value = fake_sim
+            result = mod.generate_pdf3d_asset(
+                src_path=Path("/tmp/case.foam"),
+                field="Vm",
+                time_spec="mid",
+                output_dir=tmp_path,
+                fig_id="fig-vm",
+            )
+
+        assert result == tmp_path / "fig-vm.u3d"
+        assert any(path.endswith(".obj") for path in saved_paths)
+
+    def test_generate_pdf3d_asset_routes_ply_intermediate(self, tmp_path, monkeypatch):
+        mod = _load_4dpaper()
+        fake_mesh = MagicMock()
+
+        fake_sim = MagicMock()
+        fake_sim.n_steps = 1
+        fake_sim.get_mesh.return_value = fake_mesh
+
+        routed_inputs: list[Path] = []
+
+        def _fake_ply_export(mesh, field, output_path, compress=True):
+            routed_inputs.append(output_path)
+            output_path.write_text("ply")
+            return output_path
+
+        monkeypatch.setenv("FOURDPAPER_PDF3D_INTERMEDIATE", "ply")
+        monkeypatch.setenv("FOURDPAPER_U3D_CONVERTER_CMD", "python3 -c \"from pathlib import Path; Path(r'{output}').write_text('u3d')\"")
+
+        with patch("scripts.data_loader.SimulationData") as sim_cls, patch.object(
+            mod, "_mesh_to_pdf3d_ply", side_effect=_fake_ply_export
+        ):
+            sim_cls.return_value.load.return_value = fake_sim
+            result = mod.generate_pdf3d_asset(
+                src_path=Path("/tmp/case.foam"),
+                field="Vm",
+                time_spec="mid",
+                output_dir=tmp_path,
+                fig_id="fig-vm",
+            )
+
+        assert result == tmp_path / "fig-vm.u3d"
+        assert routed_inputs
+        assert routed_inputs[0].name == "fig-vm.ply"
+
