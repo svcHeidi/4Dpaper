@@ -248,6 +248,7 @@ def create_app():
                 height=22,
                 margin=0,
                 css_classes=["editor-tab", "editor-tab-active" if is_active else "editor-tab-inactive"],
+                stylesheets=[_TAB_ACTIVE_SS if is_active else _TAB_INACTIVE_SS],
             )
             tab_btn.on_click(lambda _e, p=path: _on_tab_activate(p))
             close_btn = pn.widgets.Button(
@@ -257,6 +258,7 @@ def create_app():
                 height=22,
                 margin=0,
                 css_classes=["editor-tab-close"],
+                stylesheets=[_CLOSE_ACTIVE_SS if is_active else _CLOSE_INACTIVE_SS],
             )
             close_btn.on_click(lambda _e, p=path: _on_tab_close(p))
             objects.extend([tab_btn, close_btn])
@@ -310,12 +312,54 @@ def create_app():
 
     save_btn.on_click(_on_save)
 
+    # Shadow-DOM stylesheets for tab buttons — :host pierces Panel's shadow root
+    _BG_ACTIVE = THEME["bg_panel"]       # #121212
+    _BG_INACTIVE = "#1a1a1a"
+    _BORDER = THEME["border_subtle"]     # #3d3834
+    _ACCENT = THEME["accent"]            # #138a7c
+    _MUTED = THEME["text_muted"]         # #b8def5
+
+    _TAB_ACTIVE_SS = (
+        f":host{{background:{_BG_ACTIVE}!important;margin:0!important;padding:0!important;flex-shrink:0!important}}"
+        f":host .bk-btn{{background:{_BG_ACTIVE}!important;color:#fff!important;"
+        f"border:none!important;border-bottom:2px solid {_ACCENT}!important;"
+        f"border-radius:0!important;height:22px!important;font-size:11px!important;"
+        f"padding:0 4px 0 6px!important;white-space:nowrap!important;"
+        f"overflow:hidden!important;text-overflow:ellipsis!important}}"
+    )
+    _TAB_INACTIVE_SS = (
+        f":host{{background:{_BG_INACTIVE}!important;margin:0!important;padding:0!important;flex-shrink:0!important}}"
+        f":host .bk-btn{{background:{_BG_INACTIVE}!important;color:{_MUTED}!important;"
+        f"border:none!important;border-radius:0!important;height:22px!important;"
+        f"font-size:11px!important;padding:0 4px 0 6px!important;"
+        f"white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}}"
+        f":host .bk-btn:hover{{background:rgba(255,255,255,0.08)!important;color:#fff!important}}"
+    )
+    _CLOSE_ACTIVE_SS = (
+        f":host{{background:{_BG_ACTIVE}!important;margin:0!important;padding:0!important;"
+        f"width:18px!important;flex-shrink:0!important}}"
+        f":host .bk-btn{{background:{_BG_ACTIVE}!important;color:{_MUTED}!important;"
+        f"border:none!important;border-right:1px solid {_BORDER}!important;"
+        f"border-bottom:2px solid {_ACCENT}!important;border-radius:0!important;"
+        f"height:22px!important;width:18px!important;font-size:12px!important;padding:0!important}}"
+        f":host .bk-btn:hover{{color:#fff!important;background:rgba(255,255,255,0.1)!important}}"
+    )
+    _CLOSE_INACTIVE_SS = (
+        f":host{{background:{_BG_INACTIVE}!important;margin:0!important;padding:0!important;"
+        f"width:18px!important;flex-shrink:0!important}}"
+        f":host .bk-btn{{background:{_BG_INACTIVE}!important;color:{_MUTED}!important;"
+        f"border:none!important;border-right:1px solid {_BORDER}!important;"
+        f"border-radius:0!important;height:22px!important;width:18px!important;"
+        f"font-size:12px!important;padding:0!important}}"
+        f":host .bk-btn:hover{{color:#fff!important;background:rgba(255,255,255,0.1)!important}}"
+    )
+
     tab_bar = pn.Row(
         sizing_mode="stretch_width",
         height=22,
         margin=0,
         css_classes=["editor-tab-bar"],
-        styles={"min-height": "0", "flex": "0 0 22px"},
+        styles={"min-height": "0", "flex": "0 0 22px", "gap": "0"},
     )
     editor_placeholder = pn.pane.HTML(
         f'<div style="display:flex;align-items:center;justify-content:center;'
@@ -420,8 +464,6 @@ def create_app():
     )
 
     preview_toolbar = pn.Row(
-        save_btn,
-        save_status,
         paper_page.rebuild_btn,
         paper_page.export_btn,
         paper_page.pdf_link,
