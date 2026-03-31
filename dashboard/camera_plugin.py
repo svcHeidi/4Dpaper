@@ -18,12 +18,11 @@ import tornado.web
 from dashboard.utils import save_camera_state
 
 _PROJECT_ROOT = Path(__file__).parent.parent
-_SAFE_FIG_ID = re.compile(r'^[A-Za-z0-9_-]+$')
+_SAFE_FIG_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class CameraHandler(tornado.web.RequestHandler):
     def set_default_headers(self) -> None:
-        # srcdoc iframes have a null origin — allow all for local-only server
         self.set_header("Access-Control-Allow-Origin", "*")
         self.set_header("Content-Type", "application/json")
 
@@ -92,6 +91,7 @@ class CameraLockHandler(tornado.web.RequestHandler):
             self.write({"status": "error", "detail": f"invalid JSON: {exc}"})
             return
         lock_path = _PROJECT_ROOT / "state" / f"camera_{fig_id}_lock.json"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.write_text(json.dumps({"locked": bool(body.get("locked", False))}))
         self.write({"status": "ok"})
 

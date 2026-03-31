@@ -28,7 +28,6 @@ class PaperPage(param.Parameterized):
         self._status_type = "info"
         self._build_start: float | None = None
 
-        # ── Buttons ──────────────────────────────────────────────────────────
         self._rebuild_html_btn = pn.widgets.Button(
             name="HTML",
             icon="file-type-html",
@@ -52,7 +51,6 @@ class PaperPage(param.Parameterized):
             css_classes=["dash-btn-build-secondary"],
         )
 
-        # ── Build overlay (appears over the preview, auto-hides) ─────────
         self._overlay = pn.pane.HTML(
             "",
             sizing_mode="stretch_width",
@@ -66,24 +64,23 @@ class PaperPage(param.Parameterized):
             },
         )
 
-        # ── Iframe ───────────────────────────────────────────────────────────
         self._iframe = pn.pane.HTML(
-            f'<div style="border:1px dashed {THEME["border_subtle"]};padding:2rem;'
-            f'text-align:center;color:{THEME["text_muted"]};border-radius:4px;">'
-            f'Paper preview will appear here after first build.</div>',
-            min_height=750,
-            sizing_mode="stretch_width",
+            f'<div style="border:1px dashed {THEME["border_subtle"]};padding:2.5rem 1.5rem;'
+            f'text-align:center;color:{THEME["text_muted"]};border-radius:6px;'
+            f'background:{THEME["bg_panel"]};font-size:13px;line-height:1.5;">'
+            f'<strong style="color:{THEME["text_primary"]};">HTML preview</strong><br><br>'
+            f'Run <strong>HTML</strong> to render the paper here.</div>',
+            min_height=520,
+            sizing_mode="stretch_both",
         )
 
-        # ── PDF link (persistent if file exists) ──────────────────────────────
-        self._pdf_link = pn.pane.HTML("", sizing_mode="stretch_width", margin=(0, 4))
+        self._pdf_link = pn.pane.HTML("", sizing_mode="stretch_width", margin=(2, 4))
         self._set_pdf_link_if_exists()
 
         self._rebuild_html_btn.on_click(self._on_rebuild_html)
         self._export_pdf_btn.on_click(self._on_export_pdf)
 
     def _set_pdf_link_if_exists(self) -> None:
-        """Check if analysis_report.pdf exists and set the link if so."""
         pdf_path = self._qmd_path.parent / "_output" / "analysis_report.pdf"
         if pdf_path.exists():
             ts = int(time.time())
@@ -93,14 +90,15 @@ class PaperPage(param.Parameterized):
                 f'border-radius:4px;text-decoration:none;font-size:11px;'
                 f'font-weight:600;font-family:system-ui,sans-serif;display:inline-flex;'
                 f'align-items:center;gap:5px;margin:0 4px;'
-                f'box-shadow:0 1px 3px rgba(0,0,0,0.25);">'
-                f'<i class="bi bi-file-earmark-pdf"></i> PDF</a>'
+                f'box-shadow:0 1px 3px rgba(0,0,0,0.25);">PDF</a>'
             )
 
-    # ── Overlay helpers ────────────────────────────────────────────────────
-
-    def _update_overlay(self, status_text: str, status_type: str = "info",
-                        show_log: bool = True) -> None:
+    def _update_overlay(
+        self,
+        status_text: str,
+        status_type: str = "info",
+        show_log: bool = True,
+    ) -> None:
         self._status_text = status_text
         self._status_type = status_type
         colors = {
@@ -115,7 +113,7 @@ class PaperPage(param.Parameterized):
             elapsed = int(time.time() - self._build_start)
             elapsed_html = (
                 f'<div style="color:{THEME["text_muted"]};font-size:11px;margin-bottom:4px;">'
-                f'{elapsed}s elapsed</div>'
+                f"{elapsed}s elapsed</div>"
             )
         log_html = ""
         if show_log and self._log_lines:
@@ -140,11 +138,6 @@ class PaperPage(param.Parameterized):
         self._hide_timer = None
 
     def _schedule_hide_overlay(self, doc, delay_s: float = 4.0) -> None:
-        """Schedule _hide_overlay to run on the Bokeh doc after *delay_s* seconds.
-
-        Uses a threading.Timer + doc.add_next_tick_callback so it works in
-        background threads and doesn't require a running asyncio event loop.
-        """
         if self._hide_timer is not None:
             self._hide_timer.cancel()
 
@@ -152,13 +145,11 @@ class PaperPage(param.Parameterized):
             try:
                 doc.add_next_tick_callback(self._hide_overlay)
             except Exception:
-                pass  # session may have closed
+                pass
 
         self._hide_timer = threading.Timer(delay_s, _trigger)
         self._hide_timer.daemon = True
         self._hide_timer.start()
-
-    # ── HTML rebuild ──────────────────────────────────────────────────────────
 
     def _on_rebuild_html(self, event) -> None:
         if self.is_building:
@@ -169,14 +160,13 @@ class PaperPage(param.Parameterized):
         self._log_lines.clear()
         self._pdf_link.object = ""
         self._build_start = time.time()
-        self._update_overlay("Building HTML paper\u2026", "warning")
+        self._update_overlay("Building HTML paper...", "warning")
 
-        # Capture Bokeh document here (on the event loop) before spawning thread.
         doc = pn.state.curdoc
 
         def _run() -> None:
             try:
-                self._log_lines.append("[INFO] Running quarto render --to html\u2026")
+                self._log_lines.append("[INFO] Running quarto render --to html...")
                 code = run_quarto_render(self._qmd_path, self._log_lines)
                 doc.add_next_tick_callback(lambda: self._finish_html(code, doc))
             except Exception as exc:
@@ -188,7 +178,9 @@ class PaperPage(param.Parameterized):
             self._log_cb.stop()
             self._log_cb = None
         self._log_cb = pn.state.add_periodic_callback(
-            self._refresh_log, period=500, count=600,
+            self._refresh_log,
+            period=500,
+            count=600,
         )
 
     def _finish_html(self, exit_code: int, doc) -> None:
@@ -200,25 +192,31 @@ class PaperPage(param.Parameterized):
         self._export_pdf_btn.disabled = False
 
         if exit_code == 0:
-            elapsed = f" ({int(time.time() - self._build_start)}s)" if self._build_start else ""
+            elapsed = (
+                f" ({int(time.time() - self._build_start)}s)"
+                if self._build_start
+                else ""
+            )
             self._build_start = None
             self._update_overlay(
-                f"\u2713 HTML paper built successfully!{elapsed}", "success", show_log=False,
+                f"HTML paper built successfully!{elapsed}",
+                "success",
+                show_log=False,
             )
             self._schedule_hide_overlay(doc, delay_s=4.0)
             ts = int(time.time())
             self._iframe.object = (
                 f'<iframe src="/output/analysis_report.html?t={ts}" '
-                f'width="100%" height="750px" frameborder="0" '
-                f'style="border:none;border-radius:4px;"></iframe>'
+                f'width="100%" frameborder="0" '
+                f'style="border:none;border-radius:4px;min-height:520px;'
+                f'height:min(78vh,920px);display:block;background:{THEME["bg_app"]};"></iframe>'
             )
         else:
+            self._build_start = None
             self._update_overlay(
-                f"\u2717 Build failed (exit code {exit_code}). See log.",
+                f"Build failed (exit code {exit_code}). See log.",
                 "danger",
             )
-
-    # ── PDF export ────────────────────────────────────────────────────────────
 
     def _on_export_pdf(self, event) -> None:
         if self.is_building:
@@ -229,19 +227,21 @@ class PaperPage(param.Parameterized):
         self._log_lines.clear()
         self._pdf_link.object = ""
         self._build_start = time.time()
-        self._update_overlay("Exporting PDF\u2026", "warning")
+        self._update_overlay("Exporting PDF...", "warning")
 
         doc = pn.state.curdoc
 
         def _run() -> None:
             try:
                 self._log_lines.append(
-                    "[INFO] Running quarto render --to pdf\u2026\n"
+                    "[INFO] Running quarto render --to pdf...\n"
                     "[INFO] Using camera positions from current HTML preview. "
                     "Rotate figures in the HTML view to update the viewpoint before exporting."
                 )
                 exit_code = run_quarto_render(
-                    self._qmd_path, self._log_lines, output_format="pdf",
+                    self._qmd_path,
+                    self._log_lines,
+                    output_format="pdf",
                 )
                 pdf_path = self._qmd_path.parent / "_output" / "analysis_report.pdf"
                 doc.add_next_tick_callback(
@@ -256,7 +256,9 @@ class PaperPage(param.Parameterized):
             self._log_cb.stop()
             self._log_cb = None
         self._log_cb = pn.state.add_periodic_callback(
-            self._refresh_log, period=500, count=600,
+            self._refresh_log,
+            period=500,
+            count=600,
         )
 
     def _finish_pdf(self, exit_code: int, pdf_path, doc) -> None:
@@ -268,10 +270,16 @@ class PaperPage(param.Parameterized):
         self._export_pdf_btn.disabled = False
 
         if exit_code == 0 and pdf_path and Path(pdf_path).exists():
-            elapsed = f" ({int(time.time() - self._build_start)}s)" if self._build_start else ""
+            elapsed = (
+                f" ({int(time.time() - self._build_start)}s)"
+                if self._build_start
+                else ""
+            )
             self._build_start = None
             self._update_overlay(
-                f"✓ PDF exported successfully!{elapsed}", "success", show_log=False,
+                f"PDF exported successfully!{elapsed}",
+                "success",
+                show_log=False,
             )
             self._schedule_hide_overlay(doc, delay_s=4.0)
             cache_bust = int(time.time())
@@ -281,16 +289,14 @@ class PaperPage(param.Parameterized):
                 f'border-radius:4px;text-decoration:none;font-size:11px;'
                 f'font-weight:600;font-family:system-ui,sans-serif;display:inline-flex;'
                 f'align-items:center;gap:5px;margin:0 4px;'
-                f'box-shadow:0 1px 3px rgba(0,0,0,0.25);">'
-                f'<i class="bi bi-file-earmark-pdf"></i> PDF</a>'
+                f'box-shadow:0 1px 3px rgba(0,0,0,0.25);">PDF</a>'
             )
         else:
+            self._build_start = None
             self._update_overlay(
-                f"\u2717 PDF export failed (exit code {exit_code}). See log.",
+                f"PDF export failed (exit code {exit_code}). See log.",
                 "danger",
             )
-
-    # ── Shared ────────────────────────────────────────────────────────────────
 
     def _refresh_log(self) -> None:
         if self.is_building:
@@ -309,19 +315,19 @@ class PaperPage(param.Parameterized):
         return self._pdf_link
 
     def layout(self) -> pn.Column:
-        preview_container = pn.Column(
-            self._overlay,
-            self._iframe,
-            sizing_mode="stretch_width",
-            styles={"position": "relative"},
-        )
         return pn.Column(
-            preview_container,
-            sizing_mode="stretch_width",
+            pn.Column(
+                self._overlay,
+                self._iframe,
+                sizing_mode="stretch_both",
+                min_height=0,
+                styles={"position": "relative", "flex": "1 1 auto"},
+            ),
+            sizing_mode="stretch_both",
+            min_height=0,
         )
 
 
 def build_paper_page(config: dict[str, Any]) -> tuple[pn.Column, PaperPage]:
-    """Return (layout, page_instance) so callers can access buttons."""
     page = PaperPage(config=config)
     return page.layout(), page

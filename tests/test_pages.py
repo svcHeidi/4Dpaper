@@ -17,5 +17,5 @@ FAKE_CONFIG = {
 def test_paper_page_builds():
     with patch("dashboard.utils.load_config", return_value=FAKE_CONFIG):
         from dashboard.pages.paper_page import build_paper_page
-        page = build_paper_page(config=FAKE_CONFIG)
-    assert page is not None
+        layout, _page = build_paper_page(config=FAKE_CONFIG)
+    assert layout is not None

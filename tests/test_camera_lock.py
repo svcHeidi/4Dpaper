@@ -79,10 +79,10 @@ def _load_4dpaper():
     return mod
 
 
-def test_lock_button_in_snippet():
+def test_lock_widget_in_snippet():
     mod = _load_4dpaper()
     snippet = mod._controls_strip_snippet("fig-vm")
-    assert 'id="cs-btn-lock-fig_vm"' in snippet
+    assert 'id="cs-lock-widget-fig_vm"' in snippet
     assert "&#x1F513;" in snippet
 
 
@@ -90,7 +90,7 @@ def test_snippet_has_set_locked_function():
     mod = _load_4dpaper()
     snippet = mod._controls_strip_snippet("fig-vm")
     assert "function _setLocked" in snippet
-    assert "_lockBtn.innerHTML" in snippet
+    assert 'cs-lock-widget-fig_vm' in snippet
 
 
 def test_snippet_has_lock_guard_in_send_camera():

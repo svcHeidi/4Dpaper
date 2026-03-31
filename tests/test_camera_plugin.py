@@ -24,6 +24,7 @@ def test_camera_plugin_imports():
     assert CameraHandler is not None
     assert len(ROUTES) == 2  # /camera/<id> + /camera-lock/<id>
     assert "/camera/" in ROUTES[0][0]
+    assert "/camera-lock/" in ROUTES[1][0]
 
 
 def test_camera_handler_post_writes_json(tmp_path):

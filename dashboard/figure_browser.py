@@ -15,8 +15,8 @@ from typing import Any
 
 import panel as pn
 
+from dashboard.theme import THEME
 
-# ── Filesystem helpers ────────────────────────────────────────────────────────
 
 def find_foam_files(directory: Path) -> list[Path]:
     """Return .foam files found recursively in *directory*, sorted."""
@@ -30,7 +30,7 @@ def get_timesteps(case_root: Path) -> list[str]:
     Discover numeric time-step directory names inside an OpenFOAM case.
 
     Checks ``processor0/`` first (parallel), then *case_root* (serial).
-    Returns a float-sorted list, e.g. ``["0.005", "0.01", …]``.
+    Returns a float-sorted list, e.g. ``["0.005", "0.01", ...]``.
     """
     search_root = case_root / "processor0"
     if not search_root.exists():
@@ -38,13 +38,14 @@ def get_timesteps(case_root: Path) -> list[str]:
 
     timesteps: list[str] = []
     if search_root.is_dir():
-        for d in search_root.iterdir():
-            if d.is_dir():
-                try:
-                    float(d.name)
-                    timesteps.append(d.name)
-                except ValueError:
-                    pass
+        for directory in search_root.iterdir():
+            if not directory.is_dir():
+                continue
+            try:
+                float(directory.name)
+            except ValueError:
+                continue
+            timesteps.append(directory.name)
     return sorted(timesteps, key=float)
 
 
@@ -57,7 +58,7 @@ def copy_case_data(foam_path: Path, dest_data_dir: Path, log_lines: list[str]) -
     - The .foam marker file
     - constant/polyMesh/
     - processor*/constant/polyMesh/
-    - processor*/<timestep>/  (all timesteps)
+    - processor*/<timestep>/ (all timesteps)
 
     Returns the path to the new .foam marker file.
     """
@@ -92,22 +93,21 @@ def copy_case_data(foam_path: Path, dest_data_dir: Path, log_lines: list[str]) -
             shutil.copytree(proc_mesh, dst)
 
         for item in proc_dir.iterdir():
-            if item.is_dir():
-                try:
-                    float(item.name)
-                    dst = dest_proc / item.name
-                    if dst.exists():
-                        shutil.rmtree(dst)
-                    shutil.copytree(item, dst)
-                except ValueError:
-                    pass
+            if not item.is_dir():
+                continue
+            try:
+                float(item.name)
+            except ValueError:
+                continue
+            dst = dest_proc / item.name
+            if dst.exists():
+                shutil.rmtree(dst)
+            shutil.copytree(item, dst)
 
         log_lines.append(f"  Copied {proc_dir.name}/")
 
     return dest_foam
 
-
-# ── Shortcode generator ───────────────────────────────────────────────────────
 
 def generate_shortcode(
     *,
@@ -117,7 +117,7 @@ def generate_shortcode(
     time: str,
     caption: str,
 ) -> str:
-    """Return a ``{{< 4d-image … >}}`` shortcode string."""
+    """Return a ``{{< 4d-image ... >}}`` shortcode string."""
     parts = [f'src="{src}"', f'field="{field}"', f'id="{fig_id}"']
     if time and time != "mid":
         parts.append(f'time="{time}"')
@@ -126,16 +126,12 @@ def generate_shortcode(
     return "{{< 4d-image " + " ".join(parts) + " >}}"
 
 
-# ── Panel sidebar widget ──────────────────────────────────────────────────────
-
-# Total sidebar column width in pixels.
 _W = 360
-# Inner widget width: sidebar minus 2×10 px padding.
 _IW = _W - 20
 
 _SIDEBAR_STYLES = {
-    "background": "#1a1a1a",
-    "border-right": "1px solid #333",
+    "background": THEME["bg_sidebar"],
+    "border-right": f"1px solid {THEME['border_subtle']}",
     "padding": "10px",
     "overflow-x": "hidden",
     "overflow-y": "auto",
@@ -152,13 +148,12 @@ def build_figure_insert_form(
     Build the figure-insertion form for browsing .foam files and inserting
     4d-image shortcodes into the QMD editor.
 
-    Returns a plain Column (no fixed width/styles) — the caller decides how
-    to present it (e.g. as a toggle panel or modal).
+    Returns a plain Column (no fixed width/styles) - the caller decides how
+    to present it.
     """
     project_root = qmd_path.parent
     cf_root_str = config.get("cardiacfoam_root", str(Path.home()))
 
-    # ── File selector ─────────────────────────────────────────────────────────
     root_select = pn.widgets.RadioButtonGroup(
         name="Root",
         options=["Cases", "Project"],
@@ -167,7 +162,6 @@ def build_figure_insert_form(
         width=_IW,
     )
 
-    # Explicit width so it never overflows the sidebar.
     file_selector = pn.widgets.FileSelector(
         directory=cf_root_str,
         file_pattern="*.foam",
@@ -181,9 +175,6 @@ def build_figure_insert_form(
 
     root_select.param.watch(_on_root_change, "value")
 
-    # ── Figure settings ───────────────────────────────────────────────────────
-    # Explicit width on every widget instead of sizing_mode="stretch_width" so
-    # Bokeh's layout engine doesn't miscompute the sidebar width.
     field_input = pn.widgets.TextInput(
         name="Field",
         value="Vm",
@@ -205,7 +196,7 @@ def build_figure_insert_form(
     caption_input = pn.widgets.TextInput(
         name="Caption",
         value="",
-        placeholder="Optional caption…",
+        placeholder="Optional caption...",
         width=_IW,
     )
 
@@ -225,7 +216,6 @@ def build_figure_insert_form(
 
     file_selector.param.watch(_on_foam_selected, "value")
 
-    # ── Copy-case option ──────────────────────────────────────────────────────
     copy_toggle = pn.widgets.Checkbox(
         name="Copy case data into project  (data/<case>/)",
         value=False,
@@ -235,7 +225,7 @@ def build_figure_insert_form(
         "",
         styles={
             "font-size": "10px",
-            "color": "#888",
+            "color": THEME["text_muted"],
             "white-space": "pre",
             "max-height": "60px",
             "overflow-y": "auto",
@@ -243,10 +233,8 @@ def build_figure_insert_form(
         width=_IW,
         visible=False,
     )
-
     copy_toggle.param.watch(lambda e: setattr(copy_log_pane, "visible", e.new), "value")
 
-    # ── Shortcode preview ─────────────────────────────────────────────────────
     shortcode_preview = pn.widgets.TextAreaInput(
         name="Shortcode",
         value="",
@@ -269,20 +257,24 @@ def build_figure_insert_form(
             caption=caption_input.value,
         )
 
-    for w in (file_selector, field_input, fig_id_input, time_select, caption_input, copy_toggle):
-        w.param.watch(lambda _e: _refresh_preview(), "value")
+    for widget in (
+        file_selector,
+        field_input,
+        fig_id_input,
+        time_select,
+        caption_input,
+        copy_toggle,
+    ):
+        widget.param.watch(lambda _event: _refresh_preview(), "value")
 
     _refresh_preview()
 
-    # ── Insert button ─────────────────────────────────────────────────────────
     insert_btn = pn.widgets.Button(
         name="Insert at end of QMD",
         button_type="success",
         width=_IW,
     )
-    insert_status = pn.pane.Alert(
-        "", alert_type="info", visible=False, width=_IW,
-    )
+    insert_status = pn.pane.Alert("", alert_type="info", visible=False, width=_IW)
 
     def _on_insert(_event):
         paths = file_selector.value
@@ -304,7 +296,7 @@ def build_figure_insert_form(
                 copy_log_pane.object = "\n".join(log_msgs)
                 src = f"data/{foam.parent.name}/{foam.name}"
             except Exception as exc:
-                insert_status.object = f"✗ Copy failed: {exc}"
+                insert_status.object = f"Copy failed: {exc}"
                 insert_status.alert_type = "danger"
                 insert_status.visible = True
                 return
@@ -323,15 +315,17 @@ def build_figure_insert_form(
             current += "\n"
         editor.value = current + "\n" + shortcode + "\n"
 
-        insert_status.object = f"✓ Inserted `{fig_id_input.value}` — remember to Save."
+        insert_status.object = f"Inserted `{fig_id_input.value}` - remember to Save."
         insert_status.alert_type = "success"
         insert_status.visible = True
 
     insert_btn.on_click(_on_insert)
 
-    # ── Form layout ───────────────────────────────────────────────────────────
     return pn.Column(
-        pn.pane.Markdown("### Insert Figure", styles={"color": "#ddd"}),
+        pn.pane.Markdown(
+            "### Insert Figure",
+            styles={"color": THEME["text_primary"]},
+        ),
         root_select,
         file_selector,
         pn.layout.Divider(margin=(6, 0)),

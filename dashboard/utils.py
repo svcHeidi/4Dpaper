@@ -44,12 +44,6 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
     cmd = ["quarto", "render", str(qmd_path), "--to", output_format]
     if output_format == "html":
         env["FOURD_APP_MODE"] = "1"
-        # Use the apphtml profile which sets embed-resources:false at the
-        # Quarto format level. Using --metadata embed-resources:false doesn't
-        # work because Quarto passes self-contained/embed-resources as pandoc
-        # *options* (via defaults file), not as metadata — so the metadata
-        # override is silently ignored and pandoc still embeds all resources,
-        # causing 10+ GB RAM usage and multi-hour hangs on vtk.js figures.
         cmd += ["--profile", "apphtml"]
 
     proc = subprocess.Popen(
