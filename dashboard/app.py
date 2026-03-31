@@ -19,6 +19,7 @@ if str(_repo_root) not in sys.path:
 
 import panel as pn
 
+from dashboard.editor_tabs import after_close_tab, open_in_tabs
 from dashboard.file_tree import build_file_tree_sidebar
 from dashboard.figure_browser import build_figure_insert_form
 from dashboard.pages.paper_page import build_paper_page
@@ -157,7 +158,12 @@ def create_app():
         theme="tomorrow_night",
     )
 
-    current_file = {"path": str(qmd_path)}
+    # ── Tab state ────────────────────────────────────────────────────────
+    _qmd_resolved = str(qmd_path.resolve())
+    tab_order: list[str] = [_qmd_resolved]
+    active_path: list[str | None] = [_qmd_resolved]   # list wraps scalar for closure mutation
+    file_cache: dict[str, str] = {_qmd_resolved: qmd_content}
+
     save_status = pn.pane.HTML(
         "",
         width=220,
@@ -193,21 +199,91 @@ def create_app():
         timer.start()
         _save_timer.append(timer)
 
-    def _write_editor_to_current_file() -> None:
-        target = current_file["path"]
-        if not target:
-            return
-        Path(target).write_text(editor.value, encoding="utf-8")
+    def _detect_language(path: str) -> str:
+        return {
+            ".qmd": "markdown", ".md": "markdown",
+            ".py": "python", ".yaml": "yaml", ".yml": "yaml",
+            ".bib": "text", ".lua": "lua", ".json": "json",
+            ".toml": "toml", ".css": "css",
+            ".js": "javascript", ".html": "html",
+        }.get(Path(path).suffix.lower(), "text")
 
-    def _on_file_click(file_path: str, language: str):
-        if current_file["path"]:
-            try:
-                _write_editor_to_current_file()
-            except Exception:
-                pass
-        current_file["path"] = file_path
-        editor.value = Path(file_path).read_text(encoding="utf-8")
-        editor.language = language
+    def _save_active() -> None:
+        ap = active_path[0]
+        if not ap:
+            return
+        content = editor.value
+        file_cache[ap] = content
+        Path(ap).write_text(content, encoding="utf-8")
+
+    def _load_path(path: str, language: str | None = None) -> None:
+        content = file_cache.get(path)
+        if content is None:
+            content = Path(path).read_text(encoding="utf-8")
+            file_cache[path] = content
+        editor.value = content
+        editor.language = language or _detect_language(path)
+
+    def _rebuild_tab_bar() -> None:
+        ap = active_path[0]
+        if not tab_order:
+            tab_bar.objects = []
+            editor.visible = False
+            editor_placeholder.visible = True
+            return
+        editor.visible = True
+        editor_placeholder.visible = False
+        objects: list = []
+        for path in tab_order:
+            is_active = path == ap
+            name = Path(path).name
+            tab_btn = pn.widgets.Button(
+                name=name,
+                button_type="primary" if is_active else "default",
+                height=28,
+                margin=0,
+                css_classes=["editor-tab", "editor-tab-active" if is_active else "editor-tab-inactive"],
+            )
+            tab_btn.on_click(lambda _e, p=path: _on_tab_activate(p))
+            close_btn = pn.widgets.Button(
+                name="×",
+                button_type="light",
+                width=22,
+                height=28,
+                margin=0,
+                css_classes=["editor-tab-close"],
+            )
+            close_btn.on_click(lambda _e, p=path: _on_tab_close(p))
+            objects.extend([tab_btn, close_btn])
+        tab_bar.objects = objects
+
+    def _on_tab_activate(path: str) -> None:
+        if active_path[0] and active_path[0] != path:
+            file_cache[active_path[0]] = editor.value
+        active_path[0] = path
+        _load_path(path)
+        _rebuild_tab_bar()
+
+    def _on_tab_close(path: str) -> None:
+        if active_path[0]:
+            file_cache[active_path[0]] = editor.value
+        new_order, new_active = after_close_tab(tab_order, active_path[0] or "", path)
+        tab_order.clear()
+        tab_order.extend(new_order)
+        active_path[0] = new_active if new_active else None
+        if active_path[0]:
+            _load_path(active_path[0])
+        _rebuild_tab_bar()
+
+    def _on_file_click(file_path: str, language: str) -> None:
+        if active_path[0]:
+            file_cache[active_path[0]] = editor.value
+        new_order, new_active = open_in_tabs(tab_order, file_path)
+        tab_order.clear()
+        tab_order.extend(new_order)
+        active_path[0] = new_active
+        _load_path(new_active, language)
+        _rebuild_tab_bar()
 
     save_btn = pn.widgets.Button(
         name="Save",
@@ -219,13 +295,31 @@ def create_app():
     )
 
     def _on_save(_event):
+        if not active_path[0]:
+            return
         try:
-            _write_editor_to_current_file()
-            _set_save_status(f"Saved {Path(current_file['path']).name}")
+            _save_active()
+            _set_save_status(f"Saved {Path(active_path[0]).name}")
         except Exception as exc:
             _set_save_status(f"Save failed: {exc}")
 
     save_btn.on_click(_on_save)
+
+    tab_bar = pn.Row(
+        sizing_mode="stretch_width",
+        height=28,
+        margin=0,
+        css_classes=["editor-tab-bar"],
+        styles={"min-height": "0", "flex": "0 0 28px"},
+    )
+    editor_placeholder = pn.pane.HTML(
+        f'<div style="display:flex;align-items:center;justify-content:center;'
+        f'height:100%;color:{THEME["text_muted"]};font-size:13px;">'
+        f"Click a file in the explorer to open it.</div>",
+        sizing_mode="stretch_both",
+        visible=False,
+        styles={"min-height": "0"},
+    )
 
     _ace_wrap = pn.widgets.Button(name="", width=1, height=1, margin=0, visible=False)
     _ace_wrap.jscallback(
@@ -260,7 +354,9 @@ def create_app():
     explorer_view.styles = {**getattr(explorer_view, "styles", {}), "min-height": "0"}
 
     editor_view = pn.Column(
+        tab_bar,
         editor,
+        editor_placeholder,
         _ace_wrap,
         sizing_mode="stretch_both",
         styles={"min-height": "0", "background": THEME["bg_panel"]},
@@ -279,6 +375,8 @@ def create_app():
     }
 
     settings_view = build_settings_page()
+
+    _rebuild_tab_bar()
 
     paper_content, paper_page = build_paper_page(config)
 
