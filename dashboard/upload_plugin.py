@@ -13,10 +13,85 @@ from pathlib import Path
 
 import tornado.web
 
-from dashboard.figure_browser import copy_case_data, generate_shortcode
-
 _PROJECT_ROOT = Path(__file__).parent.parent
 _UPLOAD_ROOT = _PROJECT_ROOT / "state" / "upload_tmp"
+
+
+def generate_shortcode(
+    *,
+    src: str,
+    field: str,
+    fig_id: str,
+    time: str,
+    caption: str,
+) -> str:
+    """Return a ``{{< 4d-image ... >}}`` shortcode string."""
+    parts = [f'src="{src}"', f'field="{field}"', f'id="{fig_id}"']
+    if time and time != "mid":
+        parts.append(f'time="{time}"')
+    if caption.strip():
+        parts.append(f'caption="{caption.strip()}"')
+    return "{{< 4d-image " + " ".join(parts) + " >}}"
+
+
+def copy_case_data(foam_path: Path, dest_data_dir: Path, log_lines: list[str]) -> Path:
+    """
+    Copy the minimal OpenFOAM case files required for PyVista rendering into
+    *dest_data_dir*/<case_name>/.
+
+    Copies:
+    - The .foam marker file
+    - constant/polyMesh/
+    - processor*/constant/polyMesh/
+    - processor*/<timestep>/ (all timesteps)
+
+    Returns the path to the new .foam marker file.
+    """
+    case_root = foam_path.parent
+    case_name = case_root.name
+    dest_case = dest_data_dir / case_name
+    dest_case.mkdir(parents=True, exist_ok=True)
+
+    dest_foam = dest_case / foam_path.name
+    shutil.copy2(foam_path, dest_foam)
+    log_lines.append(f"  Copied {foam_path.name}")
+
+    serial_mesh = case_root / "constant" / "polyMesh"
+    if serial_mesh.exists():
+        dst = dest_case / "constant" / "polyMesh"
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(serial_mesh, dst)
+        log_lines.append("  Copied constant/polyMesh/")
+
+    for proc_dir in sorted(case_root.glob("processor*")):
+        if not proc_dir.is_dir():
+            continue
+        dest_proc = dest_case / proc_dir.name
+        dest_proc.mkdir(exist_ok=True)
+
+        proc_mesh = proc_dir / "constant" / "polyMesh"
+        if proc_mesh.exists():
+            dst = dest_proc / "constant" / "polyMesh"
+            if dst.exists():
+                shutil.rmtree(dst)
+            shutil.copytree(proc_mesh, dst)
+
+        for item in proc_dir.iterdir():
+            if not item.is_dir():
+                continue
+            try:
+                float(item.name)
+            except ValueError:
+                continue
+            dst = dest_proc / item.name
+            if dst.exists():
+                shutil.rmtree(dst)
+            shutil.copytree(item, dst)
+
+        log_lines.append(f"  Copied {proc_dir.name}/")
+
+    return dest_foam
 
 
 def _safe_rel_path(rel_path: str) -> Path | None:

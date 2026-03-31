@@ -21,7 +21,6 @@ import panel as pn
 
 from dashboard.editor_tabs import after_close_tab, open_in_tabs
 from dashboard.file_tree import build_file_tree_sidebar
-from dashboard.figure_browser import build_figure_insert_form
 from dashboard.pages.paper_page import build_paper_page
 from dashboard.pages.settings_page import build_settings_page
 from dashboard.theme import THEME
@@ -362,18 +361,6 @@ def create_app():
         styles={"min-height": "0", "background": THEME["bg_panel"]},
     )
 
-    figure_browser_view = build_figure_insert_form(
-        editor=editor,
-        qmd_path=qmd_path,
-        config=config,
-    )
-    figure_browser_view.sizing_mode = "stretch_both"
-    figure_browser_view.styles = {
-        **getattr(figure_browser_view, "styles", {}),
-        "min-height": "0",
-        "background": THEME["bg_sidebar"],
-    }
-
     settings_view = build_settings_page()
 
     _rebuild_tab_bar()
@@ -385,7 +372,6 @@ def create_app():
     PANELS = [
         {"id": "explorer", "icon": "📁", "label": "Files",    "content": explorer_view},
         {"id": "editor",   "icon": "📝", "label": "Editor",   "content": editor_view},
-        {"id": "figures",  "icon": "🖼️", "label": "Figures",  "content": figure_browser_view},
         {"id": "settings", "icon": "⚙️", "label": "Settings", "content": settings_view, "bottom": True},
     ]
 
