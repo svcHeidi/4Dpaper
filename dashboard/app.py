@@ -245,7 +245,7 @@ def create_app():
             tab_btn = pn.widgets.Button(
                 name=name,
                 button_type="primary" if is_active else "default",
-                height=28,
+                height=22,
                 margin=0,
                 css_classes=["editor-tab", "editor-tab-active" if is_active else "editor-tab-inactive"],
             )
@@ -253,8 +253,8 @@ def create_app():
             close_btn = pn.widgets.Button(
                 name="×",
                 button_type="light",
-                width=22,
-                height=28,
+                width=18,
+                height=22,
                 margin=0,
                 css_classes=["editor-tab-close"],
             )
@@ -312,10 +312,10 @@ def create_app():
 
     tab_bar = pn.Row(
         sizing_mode="stretch_width",
-        height=28,
+        height=22,
         margin=0,
         css_classes=["editor-tab-bar"],
-        styles={"min-height": "0", "flex": "0 0 28px"},
+        styles={"min-height": "0", "flex": "0 0 22px"},
     )
     editor_placeholder = pn.pane.HTML(
         f'<div style="display:flex;align-items:center;justify-content:center;'
@@ -419,7 +419,25 @@ def create_app():
         css_classes=["main-panel"],
     )
 
+    preview_toolbar = pn.Row(
+        save_btn,
+        save_status,
+        paper_page.rebuild_btn,
+        paper_page.export_btn,
+        paper_page.pdf_link,
+        sizing_mode="stretch_width",
+        height=32,
+        margin=0,
+        styles={
+            "padding": "2px 6px",
+            "background": THEME["toolbar_bg"],
+            "border-bottom": f"1px solid {THEME['border_subtle']}",
+            "align-items": "center",
+            "flex": "0 0 32px",
+        },
+    )
     preview_container = pn.Column(
+        preview_toolbar,
         paper_content,
         sizing_mode="stretch_both",
         min_width=320,
@@ -452,20 +470,6 @@ def create_app():
             'style="font-size:12px;font-weight:600;color:#fff;">4Dpaper</span>',
             width=72,
             margin=(0, 6, 0, 2),
-        ),
-        pn.layout.HSpacer(),
-        save_btn,
-        save_status,
-        paper_page.rebuild_btn,
-        paper_page.export_btn,
-        paper_page.pdf_link,
-        pn.pane.HTML(
-            f'<span style="color:{THEME["border_subtle"]};font-size:14px">|</span>',
-            margin=(2, 4),
-        ),
-        pn.pane.HTML(
-            '<span id="split-status" class="split-status-target" '
-            'data-split-status="1">split: ...</span>',
         ),
         sizing_mode="stretch_width",
         height=32,

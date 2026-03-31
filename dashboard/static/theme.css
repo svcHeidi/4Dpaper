@@ -393,25 +393,25 @@ body {
   overflow-y: hidden !important;
   background: #111 !important;
   border-bottom: 1px solid var(--border-subtle) !important;
-  min-height: 28px !important;
-  max-height: 28px !important;
-  flex: 0 0 28px !important;
+  min-height: 22px !important;
+  max-height: 22px !important;
+  flex: 0 0 22px !important;
   scrollbar-width: none !important;
 }
 
 .editor-tab-bar::-webkit-scrollbar { display: none; }
 
+/* filename button — no right border; pairs with close btn as one unit */
 .editor-tab.bk-btn,
 .editor-tab.bk-btn-default,
 .editor-tab.bk-btn-primary {
   border-radius: 0 !important;
   border: none !important;
-  border-right: 1px solid var(--border-subtle) !important;
   font-size: 11px !important;
-  height: 28px !important;
-  min-height: 28px !important;
-  max-height: 28px !important;
-  padding: 0 6px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  max-height: 22px !important;
+  padding: 0 4px 0 6px !important;
   max-width: 160px !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
@@ -437,6 +437,7 @@ body {
   color: var(--text-primary) !important;
 }
 
+/* × button — carries the right border for the whole tab unit */
 .editor-tab-close.bk-btn,
 .editor-tab-close.bk-btn-light {
   background: transparent !important;
@@ -444,13 +445,13 @@ body {
   border-right: 1px solid var(--border-subtle) !important;
   color: var(--text-muted) !important;
   padding: 0 !important;
-  min-width: 22px !important;
-  width: 22px !important;
-  max-width: 22px !important;
-  height: 28px !important;
-  min-height: 28px !important;
-  max-height: 28px !important;
-  font-size: 14px !important;
+  min-width: 18px !important;
+  width: 18px !important;
+  max-width: 18px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  max-height: 22px !important;
+  font-size: 12px !important;
   margin: 0 !important;
   border-radius: 0 !important;
 }
