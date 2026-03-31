@@ -8,6 +8,7 @@ from the 4Dpapers repository root.
 """
 from __future__ import annotations
 
+import json
 import threading
 import sys
 from pathlib import Path
@@ -24,7 +25,9 @@ from dashboard.file_tree import (
     EXPLORER_LIST_BTN_STYLES,
     build_file_tree_sidebar,
 )
+from dashboard.figure_browser import build_figure_insert_form
 from dashboard.pages.paper_page import build_paper_page
+from dashboard.pages.settings_page import build_settings_page
 from dashboard.theme import THEME
 from dashboard.utils import load_config
 
@@ -39,7 +42,6 @@ div.ace_editor div.ace_scrollbar-h{display:none!important;height:0!important}
 div.ace_editor div.ace_content{overflow-x:hidden!important}
 .ace_editor .ace_cursor{border-left:2px solid #e6e6e6!important}
 .ace_editor.ace_focus .ace_cursor{border-left:2px solid #ffffff!important}
-.ace_editor .ace_cursor{opacity:1!important}
 .ace_editor .ace_hidden-cursors .ace_cursor{opacity:1!important}
 #split-status{color:#8ab4ff;font-size:10px;font-family:monospace;opacity:0.9;margin-left:8px;}
 .app-shell{height:100vh!important;min-height:0!important;display:flex!important;flex-direction:column!important;box-sizing:border-box!important}
@@ -64,10 +66,10 @@ pn.extension(
     sizing_mode="stretch_width",
     template="bootstrap",
     raw_css=[_RAW_CSS],
-    css_files=["/assets/theme.css?v=102"],
+    css_files=["/assets/theme.css?v=103"],
     js_files={
-        "insert_figure": "/assets/insert_figure_overlay.js?v=102",
-        "split_loader": "/assets/split_loader.js?v=102",
+        "insert_figure": "/assets/insert_figure_overlay.js?v=103",
+        "split_loader": "/assets/split_loader.js?v=103",
     },
 )
 
@@ -96,6 +98,52 @@ def _split_gutter(between: str) -> pn.Column:
             "border-left": "1px solid rgba(255,255,255,0.2)",
             "border-right": "1px solid rgba(0,0,0,0.35)",
         },
+    )
+
+
+def _build_split_config_script(panels: list[dict], default_panel: str) -> str:
+    """Return an inline <script> that sets window.SPLIT_CONFIG from PANELS."""
+    panel_entries = [
+        {
+            "id": p["id"],
+            "icon": p["icon"],
+            "label": p["label"],
+            "selector": f".panel-slot--{p['id']}",
+            **({"bottom": True} if p.get("bottom") else {}),
+        }
+        for p in panels
+    ]
+    config = {
+        "panels": panel_entries,
+        "defaultPanel": default_panel,
+        "mainPanelSelector": ".main-panel",
+        "previewPanelSelector": ".pane-right",
+        "gutterSelector": "[class*='split-gutter--between-main-preview']",
+    }
+    return f"<script>window.SPLIT_CONFIG = {json.dumps(config)};</script>"
+
+
+def _build_activity_bar_html(panels: list[dict]) -> str:
+    """Return HTML string for the activity bar (injected via pn.pane.HTML)."""
+    def btn(p: dict) -> str:
+        return (
+            f'<button class="activity-bar-btn" data-panel-id="{p["id"]}" '
+            f'title="{p["label"]}" '
+            f'onclick="if(window.__activityBarSwitch)window.__activityBarSwitch(\'{p["id"]}\');">'
+            f'{p["icon"]}'
+            f"</button>"
+        )
+
+    top_items = [p for p in panels if not p.get("bottom")]
+    bottom_items = [p for p in panels if p.get("bottom")]
+    top_html = "".join(btn(p) for p in top_items)
+    bottom_html = "".join(btn(p) for p in bottom_items)
+
+    return (
+        '<div class="activity-bar" id="activity-bar">'
+        f'<div class="activity-bar-top">{top_html}</div>'
+        f'<div class="activity-bar-bottom">{bottom_html}</div>'
+        "</div>"
     )
 
 
@@ -209,8 +257,7 @@ def create_app():
     )
     pn.state.onload(lambda: setattr(_ace_wrap, "clicks", 1))
 
-    paper_content, paper_page = build_paper_page(config)
-
+    # ── Build panel contents ───────────────────────────────────────────────
     insert_figure_btn = pn.widgets.Button(
         name="Insert figure",
         icon="photo",
@@ -236,6 +283,85 @@ def create_app():
     explorer_view.sizing_mode = "stretch_both"
     explorer_view.styles = {**getattr(explorer_view, "styles", {}), "min-height": "0"}
 
+    editor_view = pn.Column(
+        editor,
+        _ace_wrap,
+        sizing_mode="stretch_both",
+        styles={"min-height": "0", "background": THEME["bg_panel"]},
+    )
+
+    figure_browser_view = build_figure_insert_form(
+        editor=editor,
+        qmd_path=qmd_path,
+        config=config,
+    )
+    figure_browser_view.sizing_mode = "stretch_both"
+    figure_browser_view.styles = {
+        **getattr(figure_browser_view, "styles", {}),
+        "min-height": "0",
+        "background": THEME["bg_sidebar"],
+    }
+
+    settings_view = build_settings_page()
+
+    paper_content, paper_page = build_paper_page(config)
+
+    # ── PANELS config (single source of truth for layout) ─────────────────
+    DEFAULT_PANEL = "explorer"
+    PANELS = [
+        {"id": "explorer", "icon": "📁", "label": "Files",    "content": explorer_view},
+        {"id": "editor",   "icon": "📝", "label": "Editor",   "content": editor_view},
+        {"id": "figures",  "icon": "🖼️", "label": "Figures",  "content": figure_browser_view},
+        {"id": "settings", "icon": "⚙️", "label": "Settings", "content": settings_view, "bottom": True},
+    ]
+
+    # ── Build panel slots (all rendered, JS shows/hides them) ─────────────
+    panel_slots = []
+    for p in PANELS:
+        initial_display = "flex" if p["id"] == DEFAULT_PANEL else "none"
+        slot = pn.Column(
+            p["content"],
+            sizing_mode="stretch_both",
+            styles={"min-height": "0", "display": initial_display},
+            css_classes=["panel-slot", f"panel-slot--{p['id']}"],
+        )
+        panel_slots.append(slot)
+
+    main_panel = pn.Column(
+        *panel_slots,
+        sizing_mode="stretch_both",
+        min_width=200,
+        styles={"min-height": "0", "flex": "1 1 auto"},
+        css_classes=["main-panel"],
+    )
+
+    preview_container = pn.Column(
+        paper_content,
+        sizing_mode="stretch_both",
+        min_width=320,
+        styles={"min-height": "0", "flex": "1 1 auto"},
+        css_classes=["pane-right", "preview-pane"],
+    )
+
+    # ── Emit SPLIT_CONFIG before JS runs ──────────────────────────────────
+    split_config_pane = pn.pane.HTML(
+        _build_split_config_script(PANELS, DEFAULT_PANEL),
+        width=0,
+        height=0,
+        margin=0,
+        styles={"display": "none"},
+    )
+
+    # ── Activity bar ──────────────────────────────────────────────────────
+    activity_bar_pane = pn.pane.HTML(
+        _build_activity_bar_html(PANELS),
+        sizing_mode="stretch_height",
+        width=42,
+        margin=0,
+        styles={"flex": "0 0 42px", "min-height": "0"},
+    )
+
+    # ── Toolbar ───────────────────────────────────────────────────────────
     toolbar = pn.Row(
         pn.pane.HTML(
             '<span class="dash-toolbar-title" '
@@ -268,35 +394,12 @@ def create_app():
         },
     )
 
-    left_container = pn.Column(
-        explorer_view,
-        sizing_mode="stretch_both",
-        min_width=240,
-        styles={"min-height": "0", "overflow": "hidden", "flex": "1 1 auto"},
-        css_classes=["pane-left", "sidebar-pane"],
-    )
-    center_container = pn.Column(
-        editor,
-        _ace_wrap,
-        sizing_mode="stretch_both",
-        min_width=360,
-        styles={"min-height": "0", "flex": "1 1 auto"},
-        css_classes=["pane-center", "editor-pane"],
-    )
-    right_container = pn.Column(
-        paper_content,
-        sizing_mode="stretch_both",
-        min_width=360,
-        styles={"min-height": "0", "flex": "1 1 auto"},
-        css_classes=["pane-right", "preview-pane"],
-    )
-
     body = pn.Row(
-        left_container,
-        _split_gutter("left-center"),
-        center_container,
-        _split_gutter("center-right"),
-        right_container,
+        split_config_pane,
+        activity_bar_pane,
+        main_panel,
+        _split_gutter("main-preview"),
+        preview_container,
         sizing_mode="stretch_both",
         styles={"min-height": "0", "flex": "1 1 auto"},
         css_classes=["body-row"],
