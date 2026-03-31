@@ -143,3 +143,33 @@ class TestFourdPanelLua:
         # (avoids data:text/html;base64 iframes which break vtk.js WebGL rendering)
         assert 'data-panel="' in content
         assert '"id" .. n' in content  # iterates id1, id2, ... kwargs in sync mode
+
+
+class TestPanelLockToolbar:
+    def test_subfigure_snippet_handles_lock_all(self):
+        """Subfigure JS must respond to 4dpaper-lock-all message."""
+        mod = _load_4dpaper()
+        snippet = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        assert "4dpaper-lock-all" in snippet
+
+    def test_subfigure_snippet_handles_lock_all_without_lock_btn(self):
+        """4dpaper-lock-all handler emitted even when show_lock_btn=False."""
+        mod = _load_4dpaper()
+        snippet = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
+        assert "4dpaper-lock-all" in snippet
+
+    def test_subfigure_snippet_handles_hide_lock_btn(self):
+        """Subfigure JS must respond to 4dpaper-hide-lock-btn message."""
+        mod = _load_4dpaper()
+        snippet = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        assert "4dpaper-hide-lock-btn" in snippet
+
+    def test_shortcodes_lua_contains_panel_lock_toolbar(self):
+        """shortcodes.lua must contain the panel-level lock bar markup."""
+        lua_src = (
+            Path(__file__).parent.parent
+            / "_extensions" / "4dpaper" / "shortcodes.lua"
+        ).read_text()
+        assert "plb-btn-" in lua_src
+        assert "4dpaper-lock-all" in lua_src
+        assert "4dpaper-hide-lock-btn" in lua_src

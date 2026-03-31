@@ -781,6 +781,26 @@ def _controls_strip_snippet(
             f'    if(e.data.type==="4dpaper-lock-ack"&&e.data.fig_id===FIG_ID){{'
             f'if(e.data.status!=="ok")_setLocked(!_locked);}}\n'
         )
+    # Panel-level lock broadcast: always respond regardless of show_lock_btn.
+    _js.append(
+        f'    if(e.data.type==="4dpaper-lock-all"){{\n'
+        f'      _locked=!!e.data.locked;\n'
+        f'      var _rw=window.renderWindow;\n'
+        f'      var _li=_rw&&_rw.getInteractor?_rw.getInteractor():null;\n'
+        f'      if(_li&&_li.setEnabled)_li.setEnabled(_locked?0:1);\n'
+        f'      var _lc=_cont||(_li&&_li.getContainer?_li.getContainer():null);\n'
+        f'      if(_lc&&_lc.style){{_lc.style.pointerEvents=_locked?"none":"";_lc.style.touchAction=_locked?"none":"";}}\n'
+        f'      if(_locked&&_li&&_li.stopAnimating)_li.stopAnimating();\n'
+        f'      var _lw=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
+        f'      if(_lw)_lw.textContent=_locked?"\U0001F512":"\U0001F513";\n'
+        f'      var _ls=document.getElementById("cs-lock-shield-{fig_id_safe}");\n'
+        f'      if(_ls)_ls.style.display=_locked?"block":"none";\n'
+        f'    }}\n'
+        f'    if(e.data.type==="4dpaper-hide-lock-btn"){{\n'
+        f'      var _lhw=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
+        f'      if(_lhw)_lhw.style.display="none";\n'
+        f'    }}\n'
+    )
     _js.append(f'  }});\n')
 
     # sendCam (always emitted)

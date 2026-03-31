@@ -416,8 +416,44 @@ local function fourd_panel(args, kwargs)
       local sync_grid = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
                         'grid-template-rows:repeat(' .. nrows .. ',1fr);gap:4px;' ..
                         'width:100%;height:' .. height .. ';background:#111;'
+      local lock_toolbar = '<div id="plb-' .. id .. '" style="' ..
+        'display:flex;align-items:center;gap:8px;background:#181614;' ..
+        'border-bottom:1px solid #3d3834;padding:3px 8px;' ..
+        'font-family:system-ui,sans-serif;font-size:11px;">' ..
+        '<button id="plb-btn-' .. id .. '" style="background:none;border:none;' ..
+        'cursor:pointer;font-size:14px;padding:0;line-height:1;">&#x1F513;</button>' ..
+        '<span id="plb-lbl-' .. id .. '" style="color:#b8def5;">Sync active</span>' ..
+        '<script>(function(){' ..
+        'var PID="' .. id .. '";var _pl=false;' ..
+        'function _bc(v){var f=document.querySelectorAll(' ..
+        '"iframe[data-panel=\\""+PID+"\\"]");' ..
+        'for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-lock-all",locked:v},"*");}' ..
+        'function _bh(){var f=document.querySelectorAll(' ..
+        '"iframe[data-panel=\\""+PID+"\\"]");' ..
+        'for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-hide-lock-btn"},"*");}' ..
+        'function _spl(v){_pl=v;' ..
+        'var b=document.getElementById("plb-btn-"+PID);' ..
+        'var l=document.getElementById("plb-lbl-"+PID);' ..
+        'if(b)b.innerHTML=v?"&#x1F512;":"&#x1F513;";' ..
+        'if(l)l.textContent=v?"Camera locked":"Sync active";' ..
+        '_bc(v);}' ..
+        'fetch("/camera-lock/"+PID)' ..
+        '.then(function(r){return r.json();})' ..
+        '.then(function(d){_spl(!!d.locked);})' ..
+        '.catch(function(){});' ..
+        'setTimeout(_bh,300);' ..
+        'var btn=document.getElementById("plb-btn-"+PID);' ..
+        'if(btn)btn.addEventListener("click",function(){' ..
+        'var nv=!_pl;_spl(nv);' ..
+        'fetch("/camera-lock/"+PID,{method:"POST",' ..
+        'headers:{"Content-Type":"application/json"},' ..
+        'body:JSON.stringify({locked:nv})})' ..
+        '.catch(function(){_spl(!nv);});' ..
+        '});' ..
+        '})();</script></div>'
       return pandoc.RawBlock("html",
         '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+        lock_toolbar .. '\n' ..
         '<div style="' .. sync_grid .. '">' .. table.concat(sync_cells) .. '</div>\n' ..
         (caption ~= "" and
           '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
@@ -680,8 +716,44 @@ local function fourd_timeseries(args, kwargs)
     local grid_style = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
                        'grid-template-rows:1fr;gap:4px;' ..
                        'width:100%;height:' .. height .. ';background:#111;'
+    local lock_toolbar_ts = '<div id="plb-' .. id .. '" style="' ..
+      'display:flex;align-items:center;gap:8px;background:#181614;' ..
+      'border-bottom:1px solid #3d3834;padding:3px 8px;' ..
+      'font-family:system-ui,sans-serif;font-size:11px;">' ..
+      '<button id="plb-btn-' .. id .. '" style="background:none;border:none;' ..
+      'cursor:pointer;font-size:14px;padding:0;line-height:1;">&#x1F513;</button>' ..
+      '<span id="plb-lbl-' .. id .. '" style="color:#b8def5;">Sync active</span>' ..
+      '<script>(function(){' ..
+      'var PID="' .. id .. '";var _pl=false;' ..
+      'function _bc(v){var f=document.querySelectorAll(' ..
+      '"iframe[data-panel=\\""+PID+"\\"]");' ..
+      'for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-lock-all",locked:v},"*");}' ..
+      'function _bh(){var f=document.querySelectorAll(' ..
+      '"iframe[data-panel=\\""+PID+"\\"]");' ..
+      'for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-hide-lock-btn"},"*");}' ..
+      'function _spl(v){_pl=v;' ..
+      'var b=document.getElementById("plb-btn-"+PID);' ..
+      'var l=document.getElementById("plb-lbl-"+PID);' ..
+      'if(b)b.innerHTML=v?"&#x1F512;":"&#x1F513;";' ..
+      'if(l)l.textContent=v?"Camera locked":"Sync active";' ..
+      '_bc(v);}' ..
+      'fetch("/camera-lock/"+PID)' ..
+      '.then(function(r){return r.json();})' ..
+      '.then(function(d){_spl(!!d.locked);})' ..
+      '.catch(function(){});' ..
+      'setTimeout(_bh,300);' ..
+      'var btn=document.getElementById("plb-btn-"+PID);' ..
+      'if(btn)btn.addEventListener("click",function(){' ..
+      'var nv=!_pl;_spl(nv);' ..
+      'fetch("/camera-lock/"+PID,{method:"POST",' ..
+      'headers:{"Content-Type":"application/json"},' ..
+      'body:JSON.stringify({locked:nv})})' ..
+      '.catch(function(){_spl(!nv);});' ..
+      '});' ..
+      '})();</script></div>'
     return pandoc.RawBlock("html",
       '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+      lock_toolbar_ts .. '\n' ..
       '<div style="' .. grid_style .. '">' .. table.concat(ts_cells) .. '</div>\n' ..
       (caption ~= "" and
         '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
