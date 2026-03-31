@@ -382,3 +382,80 @@ body {
   min-height: 0 !important;
   overflow: hidden !important;
 }
+
+/* ── Editor tab bar ───────────────────────────────────────────── */
+.editor-tab-bar {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  background: #111 !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  flex: 0 0 28px !important;
+  scrollbar-width: none !important;
+}
+
+.editor-tab-bar::-webkit-scrollbar { display: none; }
+
+.editor-tab.bk-btn,
+.editor-tab.bk-btn-default,
+.editor-tab.bk-btn-primary {
+  border-radius: 0 !important;
+  border: none !important;
+  border-right: 1px solid var(--border-subtle) !important;
+  font-size: 11px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  padding: 0 6px !important;
+  max-width: 160px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  margin: 0 !important;
+}
+
+.editor-tab.editor-tab-active.bk-btn,
+.editor-tab.editor-tab-active.bk-btn-primary {
+  background: var(--bg-panel) !important;
+  color: var(--text-primary) !important;
+  border-bottom: 2px solid var(--accent) !important;
+}
+
+.editor-tab.editor-tab-inactive.bk-btn,
+.editor-tab.editor-tab-inactive.bk-btn-default {
+  background: #1a1a1a !important;
+  color: var(--text-muted) !important;
+}
+
+.editor-tab.editor-tab-inactive.bk-btn:hover {
+  background: var(--btn-secondary-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.editor-tab-close.bk-btn,
+.editor-tab-close.bk-btn-light {
+  background: transparent !important;
+  border: none !important;
+  border-right: 1px solid var(--border-subtle) !important;
+  color: var(--text-muted) !important;
+  padding: 0 !important;
+  min-width: 22px !important;
+  width: 22px !important;
+  max-width: 22px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  font-size: 14px !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
+.editor-tab-close.bk-btn:hover {
+  color: var(--text-primary) !important;
+  background: rgba(255,255,255,0.1) !important;
+}
