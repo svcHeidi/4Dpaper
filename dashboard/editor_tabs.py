@@ -24,15 +24,15 @@ def after_close_tab(
     tab_order: list[str],
     active_path: str,
     closing: str,
-) -> tuple[list[str], str] | None:
+) -> tuple[list[str], str]:
     """
-    Remove *closing* from tabs. Returns ``(new_order, new_active)`` or ``None`` if
-    the last tab cannot be closed.
+    Remove *closing* from tabs. Returns ``(new_order, new_active)``.
+    Returns ``([], "")`` when the last tab is closed.
     """
     order = [resolve_path(p) for p in tab_order]
     r_close = resolve_path(closing)
     if len(order) <= 1:
-        return None
+        return [], ""
     if r_close not in order:
         return order, resolve_path(active_path)
     new_order = [p for p in order if p != r_close]

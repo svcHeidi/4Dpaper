@@ -41,10 +41,12 @@ def test_open_in_tabs_focuses_existing(paths: tuple[str, str, str]) -> None:
     assert target == ra
 
 
-def test_after_close_tab_last_only_returns_none(paths: tuple[str, str, str]) -> None:
+def test_after_close_tab_last_returns_empty(paths: tuple[str, str, str]) -> None:
+    """Closing the last tab returns ([], '') — caller shows placeholder."""
     a, _, _ = paths
     ra = resolve_path(a)
-    assert after_close_tab([ra], ra, ra) is None
+    result = after_close_tab([ra], ra, ra)
+    assert result == ([], "")
 
 
 def test_after_close_tab_inactive(paths: tuple[str, str, str]) -> None:
