@@ -19,12 +19,7 @@ if str(_repo_root) not in sys.path:
 
 import panel as pn
 
-from dashboard.file_tree import (
-    EXPLORER_BUTTON_STYLESHEETS,
-    EXPLORER_INNER_WIDTH,
-    EXPLORER_LIST_BTN_STYLES,
-    build_file_tree_sidebar,
-)
+from dashboard.file_tree import build_file_tree_sidebar
 from dashboard.figure_browser import build_figure_insert_form
 from dashboard.pages.paper_page import build_paper_page
 from dashboard.pages.settings_page import build_settings_page
@@ -68,7 +63,6 @@ pn.extension(
     raw_css=[_RAW_CSS],
     css_files=["/assets/theme.css?v=103"],
     js_files={
-        "insert_figure": "/assets/insert_figure_overlay.js?v=103",
         "split_loader": "/assets/split_loader.js?v=103",
     },
 )
@@ -258,27 +252,9 @@ def create_app():
     pn.state.onload(lambda: setattr(_ace_wrap, "clicks", 1))
 
     # ── Build panel contents ───────────────────────────────────────────────
-    insert_figure_btn = pn.widgets.Button(
-        name="Insert figure",
-        icon="photo",
-        icon_size="11px",
-        button_type="default",
-        button_style="outline",
-        width=EXPLORER_INNER_WIDTH,
-        sizing_mode="fixed",
-        margin=(0, 0, 2, 0),
-        css_classes=["dash-explorer-item", "dash-explorer-refresh"],
-        styles={**EXPLORER_LIST_BTN_STYLES, "color": "#9fd4f5", "font-size": "13px"},
-        stylesheets=[EXPLORER_BUTTON_STYLESHEETS],
-    )
-    insert_figure_btn.js_on_click(
-        code="if (window.showInsertFigureModal) window.showInsertFigureModal();",
-    )
-
     explorer_view = build_file_tree_sidebar(
         project_root=qmd_path.parent,
         on_file_click=_on_file_click,
-        insert_figure_button=insert_figure_btn,
     )
     explorer_view.sizing_mode = "stretch_both"
     explorer_view.styles = {**getattr(explorer_view, "styles", {}), "min-height": "0"}
