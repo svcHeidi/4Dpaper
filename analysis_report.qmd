@@ -20,64 +20,13 @@ format:
   pdf:
     keep-tex: false
 jupyter: python3
+bibliography: references.bib
 ---
 
-# Introduction
+{{< include sections/01_introduction.qmd >}}
 
-Write your introduction here. Use standard Markdown and Quarto syntax.
-You can include equations with LaTeX:
+{{< include sections/02_simulation_setup.qmd >}}
 
-$$
-\frac{\partial V_m}{\partial t} = \nabla \cdot (\mathbf{D} \nabla V_m) - \frac{I_{ion}}{C_m}
-$$
+{{< include sections/03_results.qmd >}}
 
-# Simulation Setup
-
-Describe your simulation setup here.
-
-# Results
-
-## Transmembrane Potential
-
-The figure below shows the transmembrane potential $V_m$ at mid-activation.
-In the HTML version this is a fully interactive 3D viewer — you can rotate,
-zoom, and inspect the mesh. In the PDF version it is a high-resolution static
-render from the camera angle you locked in the dashboard.
-
-{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" fields="Vm,activationTime,activationVelocity" id="fig-vm" style="vm-dark" caption="Transmembrane potential $V_m$ at mid-activation" >}}
-
-## Activation Time
-
-{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="activationTime" fields="Vm,activationTime,activationVelocity" id="fig-at" time="last" caption="Activation time distribution" >}}
-
-## Transmembrane Potential Animation
-
-{{< 4d-video src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" field="Vm" fps="10" id="vid-vm" caption="Transmembrane potential $V_m$ over time" >}}
-
-## Render-spec VTU/VTK Path
-
-The figure below uses the new `4d-vtk` backend path with a render specification.
-For now it points at the same Niederer `.foam` source as the existing figures so
-the contract can be exercised immediately; later this spec can be updated to a
-real PVSM-derived `.vtu` without changing the shortcode usage.
-
-{{< 4d-vtk spec="state/figures/fig-vm-vtk.render.json" id="fig-vm-vtk" caption="Transmembrane potential rendered through the render-spec path" >}}
-
-# Conclusion
-
-Write your conclusions here.
-
-
-## Side-by-Side Comparison
-
-{{< 4d-panel id="panel-compare" layout="2x1" height="500px"
-    caption="$V_m$ (left) vs activation time (right) — same mesh, same camera."
-    src1="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
-    id1="fig-vm" field1="Vm"
-    src2="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
-    id2="fig-at" field2="activationTime" >}}
-
-
-## PVSM Figure Test
-
-{{< 4d-pvsm src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/example_state.pvsm" data="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" id="fig-pvsm-vm" caption="Transmembrane voltage - ParaView pipeline" >}}
+{{< include sections/04_conclusion.qmd >}}
