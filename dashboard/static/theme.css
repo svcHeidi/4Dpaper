@@ -293,3 +293,92 @@ body {
   opacity: 0.65 !important;
   margin: 4px 0 !important;
 }
+
+/* ── Activity bar ─────────────────────────────────────────────── */
+.activity-bar {
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  background: #1a1816 !important;
+  border-right: 1px solid var(--border-subtle) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  padding: 6px 0 !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  z-index: 10;
+}
+
+.activity-bar-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+}
+
+.activity-bar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.activity-bar-btn {
+  width: 34px;
+  height: 34px;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  opacity: 0.4;
+  position: relative;
+  transition: opacity 0.12s;
+  outline: none !important;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.activity-bar-btn:hover {
+  opacity: 0.75;
+}
+
+.activity-bar-btn.active {
+  opacity: 1.0;
+}
+
+/* VSCode-style: 2px colored left-edge bar on the active item */
+.activity-bar-btn.active::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 20px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+
+/* ── Main panel (wraps all switchable panel slots) ────────────── */
+.main-panel {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+/* Individual panel slots — JS sets display:flex on active, display:none on rest */
+.panel-slot {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
