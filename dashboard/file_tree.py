@@ -10,15 +10,12 @@ import html as html_mod
 from pathlib import Path
 from typing import Any
 
-from bokeh.models import InlineStyleSheet
-
 from dashboard.theme import THEME
 
 # Panel 1.8+ ships shadow-DOM css (dist/css/button.css). :host(.solid) uses
 # --surface-color (light fill). Global theme.css cannot pierce :host — use
 # outline + this sheet appended after Panel's button.css.
-EXPLORER_BUTTON_STYLESHEETS: tuple[InlineStyleSheet, ...] = (
-    InlineStyleSheet(css="""
+EXPLORER_BUTTON_STYLESHEETS = """
 :host {
   background: transparent !important;
   display: block !important;
@@ -90,8 +87,7 @@ EXPLORER_BUTTON_STYLESHEETS: tuple[InlineStyleSheet, ...] = (
 :host(.dash-explorer-inline-active) .bk-btn * {
   color: #7efff0 !important;
 }
-"""),
-)
+"""
 
 HIDDEN_DIRS = {
     ".git", ".venv", "__pycache__", "_freeze", ".quarto",
@@ -341,7 +337,7 @@ def build_file_tree_sidebar(
                         "font-weight": "600",
                         "font-size": "13px",
                     },
-                    stylesheets=list(EXPLORER_BUTTON_STYLESHEETS),
+                    stylesheets=[EXPLORER_BUTTON_STYLESHEETS],
                 )
 
                 def _toggle_dir(
@@ -387,7 +383,7 @@ def build_file_tree_sidebar(
                     margin=_row_margin(depth),
                     css_classes=file_classes,
                     styles=file_styles,
-                    stylesheets=list(EXPLORER_BUTTON_STYLESHEETS),
+                    stylesheets=[EXPLORER_BUTTON_STYLESHEETS],
                 )
 
                 def _open_file(event, path=item["path"], name=item["name"]):
@@ -409,7 +405,7 @@ def build_file_tree_sidebar(
         margin=(0, 0, 4, 0),
         css_classes=["dash-explorer-item", "dash-explorer-refresh"],
         styles={**EXPLORER_LIST_BTN_STYLES, "color": "#9fd4f5", "font-size": "13px"},
-        stylesheets=list(EXPLORER_BUTTON_STYLESHEETS),
+        stylesheets=[EXPLORER_BUTTON_STYLESHEETS],
     )
 
     def _on_refresh(event):

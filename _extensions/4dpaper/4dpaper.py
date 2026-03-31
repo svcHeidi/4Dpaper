@@ -3,8 +3,7 @@
 4DPaper pre-render hook — run by Quarto before rendering.
 
 Scans the .qmd for {{< 4d-image >}} shortcodes and generates
-figure files in state/figures/ (HTML for web, PNG for PDF, and optional
-experimental U3D/PRC assets for interactive PDF via media9).
+figure files in state/figures/ (HTML for web, PNG for PDF).
 
 Quarto calls this script before rendering. It reads QUARTO_DOCUMENT_PATH
 and QUARTO_OUTPUT_FORMAT from the environment.
@@ -16,11 +15,7 @@ import base64 as _b64
 import json
 import os
 import re
-import shlex
-import shutil
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 # ── Ensure venv Python is used ────────────────────────────────────────────────
@@ -96,18 +91,6 @@ def parse_shortcodes(text: str) -> list[dict]:
     return results
 
 
-<<<<<<< HEAD
-def parse_vtk_shortcodes(text: str) -> list[dict]:
-    """
-    Parse {{< 4d-vtk key="value" ... >}} shortcodes from QMD text.
-
-    Returns a list of dicts with at minimum 'id' and 'spec' keys.
-    Shortcodes missing 'id' or 'spec' are silently skipped.
-    """
-    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
-
-    pattern = r'\{\{<\s*4d-vtk\s+(.*?)\s*>\}\}'
-=======
 def parse_panel_shortcodes(text: str) -> list[dict]:
     """
     Parse {{< 4d-panel key="value" ... >}} shortcodes from QMD text.
@@ -122,17 +105,12 @@ def parse_panel_shortcodes(text: str) -> list[dict]:
     """
     stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
     pattern = r'\{\{<\s*4d-panel\s+(.*?)\s*>\}\}'
->>>>>>> ui/panel-ide-3pane
     results = []
     for match in re.finditer(pattern, stripped, re.DOTALL):
         raw = match.group(1)
         kwargs: dict[str, str] = {}
         for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
             kwargs[key] = val
-<<<<<<< HEAD
-        if "id" not in kwargs or "spec" not in kwargs:
-            continue
-=======
         if "id" not in kwargs:
             print("[4dpaper] Warning: 4d-panel shortcode missing 'id' — skipping.", file=sys.stderr)
             continue
@@ -255,14 +233,11 @@ def parse_pvsm_shortcodes(text: str) -> list[dict]:
             continue
         kwargs.setdefault("data", "")
         kwargs.setdefault("time", "")
->>>>>>> ui/panel-ide-3pane
         kwargs.setdefault("caption", "")
         results.append(kwargs)
     return results
 
 
-<<<<<<< HEAD
-=======
 def parse_pvsm_color_info(pvsm_path: Path) -> dict:
     """
     Extract color/scalar info from a ParaView state (.pvsm) XML file.
@@ -397,27 +372,18 @@ def parse_pvsm_color_info(pvsm_path: Path) -> dict:
         return _FALLBACK.copy()
 
 
->>>>>>> ui/panel-ide-3pane
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 
 def is_cache_valid(
     fig_path: Path,
     src_path: Path,
     camera_path: Path | None = None,
-<<<<<<< HEAD
-    extra_deps: list[Path] | None = None,
-) -> bool:
-    """
-    Return True if fig_path exists, is newer than src_path, camera_path
-    (if given and present), and all extra_deps that exist.
-=======
     field_path: Path | None = None,
     extra_deps: list[Path] | None = None,
 ) -> bool:
     """
     Return True if fig_path exists, is newer than src_path, camera_path,
     field_path, and all extra_deps (if given and present).
->>>>>>> ui/panel-ide-3pane
 
     Returns True (assume valid) if src_path does not exist.
     """
@@ -429,466 +395,15 @@ def is_cache_valid(
     if camera_path is not None and camera_path.exists():
         if fig_mtime <= camera_path.stat().st_mtime:
             return False
-<<<<<<< HEAD
-    for dep in extra_deps or []:
-=======
     if field_path is not None and field_path.exists():
         if fig_mtime <= field_path.stat().st_mtime:
             return False
     for dep in (extra_deps or []):
->>>>>>> ui/panel-ide-3pane
         if dep.exists() and fig_mtime <= dep.stat().st_mtime:
             return False
     return True
 
 
-<<<<<<< HEAD
-def _truthy_env(name: str, default: bool = False) -> bool:
-    """Return a boolean parsed from environment variable ``name``."""
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _resolve_time_index(time_spec: str, n_steps: int) -> int:
-    """Resolve time selector string ('first'/'last'/index/'mid') into index."""
-    if n_steps <= 0:
-        raise ValueError("n_steps must be positive")
-    if time_spec == "first":
-        return 0
-    if time_spec == "last":
-        return max(0, n_steps - 1)
-    try:
-        return max(0, min(int(time_spec), n_steps - 1))
-    except ValueError:
-        return n_steps // 2
-
-
-def _run_converter_template(template: str, input_path: Path, output_path: Path) -> tuple[bool, str]:
-    """Run a converter command template with {input}/{output} placeholders."""
-    try:
-        cmd = template.format(input=str(input_path), output=str(output_path))
-    except (KeyError, ValueError, IndexError) as exc:
-        return False, f"invalid converter template: {exc}"
-    argv = shlex.split(cmd)
-    if not argv:
-        return False, "empty command"
-    exe = argv[0]
-    if shutil.which(exe) is None:
-        return False, f"missing executable: {exe}"
-    proc = subprocess.run(argv, capture_output=True, text=True)
-    if proc.returncode != 0:
-        err = proc.stderr.strip() or proc.stdout.strip() or f"exit code {proc.returncode}"
-        return False, err
-    if not output_path.exists() or output_path.stat().st_size == 0:
-        return False, "converter succeeded but output file is missing or empty"
-    return True, ""
-
-
-def _candidate_converter_templates(kind: str) -> list[str]:
-    """Return ordered converter command templates for U3D/PRC generation."""
-    templates: list[str] = []
-    if kind == "u3d":
-        custom = os.environ.get("FOURDPAPER_U3D_CONVERTER_CMD", "").strip()
-        if custom:
-            templates.append(custom)
-        # Best-effort built-ins when no custom converter is configured.
-        templates.extend([
-            "assimp export {input} {output}",
-            "meshlabserver -i {input} -o {output}",
-        ])
-    elif kind == "prc":
-        custom = os.environ.get("FOURDPAPER_PRC_CONVERTER_CMD", "").strip()
-        if custom:
-            templates.append(custom)
-    return templates
-
-
-def _write_pdf3d_manifest(
-    manifest_path: Path,
-    *,
-    fig_id: str,
-    field: str,
-    intermediate: str,
-    intermediate_path: Path,
-    field_mapped: bool,
-    converter_targets: list[str],
-    final_asset_path: Path | None,
-    final_format: str | None,
-) -> None:
-    """Write a small manifest describing a PDF3D experiment run."""
-    payload = {
-        "fig_id": fig_id,
-        "field": field,
-        "intermediate": {
-            "kind": intermediate,
-            "path": intermediate_path.name,
-            "size_bytes": intermediate_path.stat().st_size if intermediate_path.exists() else 0,
-            "field_mapped": field_mapped,
-        },
-        "converter_targets": list(converter_targets),
-        "final_asset": (
-            {
-                "format": final_format,
-                "path": final_asset_path.name,
-                "size_bytes": final_asset_path.stat().st_size,
-            }
-            if final_asset_path is not None and final_asset_path.exists() and final_format is not None
-            else None
-        ),
-    }
-    manifest_path.write_text(json.dumps(payload, indent=2))
-
-
-def _load_pdf3d_source_mesh(src_path: Path, time_spec: str):
-    """Load the mesh for a PDF3D export from a simulation source."""
-    from scripts.data_loader import SimulationData
-
-    sim = SimulationData(str(src_path)).load()
-    if sim.n_steps == 0:
-        raise RuntimeError(f"[4dpaper] Simulation at {src_path} has no time steps.")
-
-    idx = _resolve_time_index(time_spec, sim.n_steps)
-    mesh = sim.get_mesh(idx)
-    if mesh is None:
-        raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
-    return mesh
-
-
-def _write_pdf3d_intermediate_asset(
-    mesh,
-    field: str,
-    intermediate: str,
-    output_path: Path,
-) -> tuple[Path, bool]:
-    """Write the requested PDF3D intermediate artifact and return (path, field_mapped)."""
-    surface = mesh.extract_surface()
-    if intermediate == "ply":
-        return _mesh_to_pdf3d_ply(surface, field, output_path, compress=False)
-    if intermediate == "obj":
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        surface.save(str(output_path))
-        return output_path, False
-    raise ValueError(f"Unsupported PDF3D intermediate kind: {intermediate}")
-
-
-def generate_pdf3d_asset(
-    src_path: Path,
-    field: str,
-    time_spec: str,
-    output_dir: Path,
-    fig_id: str,
-) -> Path | None:
-    """Generate experimental U3D/PRC asset for interactive PDF embedding.
-
-    This uses external conversion tools; configure one or both:
-      - FOURDPAPER_U3D_CONVERTER_CMD
-      - FOURDPAPER_PRC_CONVERTER_CMD
-
-    Command templates must include ``{input}`` and ``{output}`` placeholders.
-    Example:
-      FOURDPAPER_U3D_CONVERTER_CMD="assimp export {input} {output}"
-    """
-    mesh = _load_pdf3d_source_mesh(src_path, time_spec)
-
-    preferred = os.environ.get("FOURDPAPER_PDF3D_FORMAT", "auto").strip().lower()
-    order = ["u3d", "prc"] if preferred in ("", "auto") else [preferred]
-    order = [k for k in order if k in {"u3d", "prc"}]
-    if not order:
-        print(
-            f"[4dpaper] Unsupported FOURDPAPER_PDF3D_FORMAT='{preferred}' (expected auto/u3d/prc).",
-            file=sys.stderr,
-        )
-        return None
-
-    intermediate = os.environ.get("FOURDPAPER_PDF3D_INTERMEDIATE", "obj").strip().lower()
-    if intermediate not in {"obj", "ply"}:
-        print(
-            f"[4dpaper] Unsupported FOURDPAPER_PDF3D_INTERMEDIATE='{intermediate}' "
-            "(expected obj/ply).",
-            file=sys.stderr,
-        )
-        return None
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="4dpaper-pdf3d-") as tmpdir:
-        tmp_dir = Path(tmpdir)
-        manifest_path = output_dir / f"{fig_id}-pdf3d-manifest.json"
-        print(
-            f"[4dpaper] PDF3D intermediate for {fig_id}: {intermediate} "
-            f"(converter targets: {', '.join(order)})",
-            file=sys.stderr,
-        )
-        mesh_input = tmp_dir / f"{fig_id}.{intermediate}"
-        mesh_input, field_mapped = _write_pdf3d_intermediate_asset(mesh, field, intermediate, mesh_input)
-        mapping_status = "mapped" if field_mapped else "geometry-only"
-        print(
-            f"[4dpaper] PDF3D converter input: {mesh_input} "
-            f"({mesh_input.stat().st_size} bytes, {mapping_status})",
-            file=sys.stderr,
-        )
-
-        for kind in order:
-            out_path = output_dir / f"{fig_id}.{kind}"
-            for template in _candidate_converter_templates(kind):
-                ok, err = _run_converter_template(template, mesh_input, out_path)
-                if ok:
-                    _write_pdf3d_manifest(
-                        manifest_path,
-                        fig_id=fig_id,
-                        field=field,
-                        intermediate=intermediate,
-                        intermediate_path=mesh_input,
-                        field_mapped=field_mapped,
-                        converter_targets=order,
-                        final_asset_path=out_path,
-                        final_format=kind,
-                    )
-                    print(
-                        f"[4dpaper] Generated PDF 3D asset: {out_path} "
-                        f"({out_path.stat().st_size} bytes); "
-                        f"manifest: {manifest_path.name}",
-                        file=sys.stderr,
-                    )
-                    return out_path
-                print(
-                    f"[4dpaper] {kind.upper()} converter failed ({template}): {err}",
-                    file=sys.stderr,
-                )
-
-        _write_pdf3d_manifest(
-            manifest_path,
-            fig_id=fig_id,
-            field=field,
-            intermediate=intermediate,
-            intermediate_path=mesh_input,
-            field_mapped=field_mapped,
-            converter_targets=order,
-            final_asset_path=None,
-            final_format=None,
-        )
-
-    print(
-        "[4dpaper] Could not generate U3D/PRC asset. "
-        "Set FOURDPAPER_U3D_CONVERTER_CMD or FOURDPAPER_PRC_CONVERTER_CMD.",
-        file=sys.stderr,
-    )
-    return None
-
-
-def _mesh_to_pdf3d_ply(
-    mesh,
-    field: str,
-    output_path: Path,
-    *,
-    compress: bool = True,
-) -> tuple[Path, bool]:
-    """
-    Convert a mesh to a compact, field-colored PLY asset for PDF 3D experiments.
-
-    The output is a surface-only PolyData. When the selected field exists, RGB
-    vertex colors are derived from it using a fixed publication colormap.
-    Otherwise the geometry is still exported without field coloring.
-    """
-    import numpy as np
-    import pyvista as pv
-    from matplotlib import colormaps
-    from scripts.data_loader import SimulationData
-
-    surface = mesh.extract_surface()
-    field_mapped = False
-    scalars = None
-    if field and field in surface.point_data:
-        scalars = np.asarray(surface.point_data[field], dtype=float)
-    elif field and field in surface.cell_data:
-        surface = surface.cell_data_to_point_data()
-        scalars = np.asarray(surface.point_data[field], dtype=float)
-
-    ply_mesh = pv.PolyData(surface.points, surface.faces)
-
-    if scalars is not None and scalars.size > 0:
-        finite = scalars[np.isfinite(scalars)]
-        if finite.size > 0:
-            vmin = float(finite.min())
-            vmax = float(finite.max())
-            span = vmax - vmin
-            if span <= 1e-12:
-                norm = np.zeros_like(scalars, dtype=float)
-            else:
-                norm = np.clip((scalars - vmin) / span, 0.0, 1.0)
-            norm = np.nan_to_num(norm, nan=0.0, posinf=1.0, neginf=0.0)
-            colors = (colormaps["coolwarm"](norm)[:, :3] * 255.0).astype(np.uint8)
-            # PLY color export goes through the texture argument in PyVista's writer.
-            ply_mesh.point_data["RGB"] = colors
-            field_mapped = True
-        else:
-            print(
-                f"[4dpaper] PDF3D PLY export: field '{field}' has no finite values; "
-                "writing geometry-only PLY.",
-                file=sys.stderr,
-            )
-    elif field:
-        print(
-            f"[4dpaper] PDF3D PLY export: field '{field}' not found on surface; "
-            "writing geometry-only PLY.",
-            file=sys.stderr,
-        )
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    if field_mapped:
-        ply_mesh.save(str(output_path), texture="RGB")
-    else:
-        ply_mesh.save(str(output_path))
-
-    if compress:
-        gz_path = SimulationData.compress_ply(str(output_path))
-        print(f"[4dpaper] Generated compressed PDF3D PLY asset: {gz_path}", file=sys.stderr)
-        return gz_path, field_mapped
-
-    print(f"[4dpaper] Generated PDF3D PLY asset: {output_path}", file=sys.stderr)
-    return output_path, field_mapped
-
-
-def export_pdf3d_ply_asset(
-    src_path: Path,
-    field: str,
-    time_spec: str,
-    output_dir: Path,
-    fig_id: str,
-    *,
-    compress: bool = True,
-) -> Path:
-    """
-    Export a compact, field-colored PLY surface asset for future PDF 3D pipelines.
-
-    This is a test implementation that prepares a surface-only artifact with
-    RGB vertex colors derived from the selected scalar field. It does not yet
-    replace the OBJ -> U3D/PRC converter flow, but provides a dedicated export
-    artifact for evaluating PLY-based PDF3D conversion.
-    """
-    mesh = _load_pdf3d_source_mesh(src_path, time_spec)
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    ply_path = output_dir / f"{fig_id}.pdf3d.ply"
-    ply_path, _field_mapped = _mesh_to_pdf3d_ply(mesh, field, ply_path, compress=compress)
-    return ply_path
-
-
-def _project_relative_posix(path: Path) -> str:
-    """Return ``path`` as a project-relative POSIX string when possible."""
-    try:
-        return path.resolve().relative_to(_project_root.resolve()).as_posix()
-    except ValueError:
-        return path.as_posix()
-
-
-def _write_pdf3d_tex_snippet(
-    tex_path: Path,
-    poster_path: Path,
-    asset_path: Path,
-    width: str = "0.90\\linewidth",
-    height: str = "0.56\\linewidth",
-) -> None:
-    """Write LaTeX snippet that uses media9 when available, else poster fallback."""
-    poster_rel = _latex_path_escape(_project_relative_posix(poster_path))
-    asset_rel = _latex_path_escape(_project_relative_posix(asset_path))
-    # Use \ifdefined\includemedia rather than checking for media9.sty because
-    # shortcodes are rendered in document body (cannot safely call \usepackage there).
-    snippet = (
-        f"% Auto-generated by 4DPaper for interactive PDF (experimental)\n"
-        f"\\ifdefined\\includemedia\n"
-        f"\\includemedia[\n"
-        f"  width={width},\n"
-        f"  height={height},\n"
-        f"  activate=pageopen,\n"
-        f"  deactivate=pageclose,\n"
-        f"  3Dtoolbar,\n"
-        f"  3Dmenu,\n"
-        f"  addresource={{{asset_rel}}}\n"
-        f"]{{\\includegraphics[width={width}]{{{poster_rel}}}}}{{{asset_rel}}}\n"
-        f"\\else\n"
-        f"\\includegraphics[width={width}]{{{poster_rel}}}\n"
-        f"\\fi\n"
-    )
-    tex_path.write_text(snippet)
-
-
-def _latex_escape(text: str) -> str:
-    """Escape text for safe use inside a LaTeX caption."""
-    replacements = {
-        "\\": r"\textbackslash{}",
-        "&": r"\&",
-        "%": r"\%",
-        "$": r"\$",
-        "#": r"\#",
-        "_": r"\_",
-        "{": r"\{",
-        "}": r"\}",
-        "~": r"\textasciitilde{}",
-        "^": r"\textasciicircum{}",
-    }
-    return "".join(replacements.get(ch, ch) for ch in text)
-
-
-def _latex_path_escape(path: str) -> str:
-    """Escape filesystem path for safe use inside LaTeX file arguments."""
-    return (
-        path.replace("\\", "/")
-        .replace("&", r"\&")
-        .replace("%", r"\%")
-        .replace("#", r"\#")
-        .replace("_", r"\_")
-        .replace("{", r"\{")
-        .replace("}", r"\}")
-        .replace(" ", r"\ ")
-    )
-
-
-def generate_pdf3d_tex_figure(
-    fig_id: str,
-    caption: str,
-    png_path: Path,
-    asset_path: Path | None,
-    output_tex_path: Path,
-) -> bool:
-    """Write a LaTeX figure include for experimental interactive PDF.
-
-    If ``asset_path`` is provided, write a media9-enabled snippet.
-    Otherwise write a PNG-only fallback snippet, so PDF build remains valid.
-    """
-    output_tex_path.parent.mkdir(parents=True, exist_ok=True)
-    png_rel = _latex_path_escape(_project_relative_posix(png_path))
-    cap = _latex_escape(caption) if caption else ""
-    label = _latex_escape(fig_id)
-
-    if asset_path is not None and asset_path.exists():
-        _write_pdf3d_tex_snippet(output_tex_path, poster_path=png_path, asset_path=asset_path)
-        base = output_tex_path.read_text()
-        figure_tex = [
-            r"\begin{figure}[htbp]",
-            r"\centering",
-            base.strip(),
-        ]
-        if cap:
-            figure_tex.append(rf"\caption{{{cap}}}")
-        figure_tex.append(rf"\label{{fig:{label}}}")
-        figure_tex.append(r"\end{figure}")
-        output_tex_path.write_text("\n".join(figure_tex) + "\n")
-        return True
-
-    fallback = [
-        r"\begin{figure}[htbp]",
-        r"\centering",
-        rf"\includegraphics[width=0.90\linewidth]{{{png_rel}}}",
-    ]
-    if cap:
-        fallback.append(rf"\caption{{{cap}}}")
-    fallback.append(rf"\label{{fig:{label}}}")
-    fallback.append(r"\end{figure}")
-    output_tex_path.write_text("\n".join(fallback) + "\n")
-    return True
-=======
 # -- Style template loading and resolution ------------------------------------
 
 def load_styles(path: Path) -> dict:
@@ -977,7 +492,6 @@ def _apply_camera_from_dict(pl, fig_id: str, camera_data: dict | None) -> None:
         pl.camera.parallel_projection = is_parallel
     except (KeyError, ValueError):
         pl.isometric_view()
->>>>>>> ui/panel-ide-3pane
 
 
 def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None:
@@ -1090,10 +604,6 @@ def _controls_strip_snippet(
             f' style="background:rgba(10,10,20,0.55);border:1px solid rgba(255,255,255,0.12);'
             f'border-radius:4px;display:block;cursor:pointer;"'
             f' title="Click axis tip: ortho view \u00b7 Click axis tail: opposite view"></svg>\n'
-            f'  <button id="cs-btn-iso-{fig_id_safe}"'
-            f' style="background:rgba(200,168,0,0.2);border:1px solid #c8a800;border-radius:4px;'
-            f'color:#ffe033;font-size:10px;padding:2px 8px;font-family:monospace;cursor:pointer;"'
-            f' title="Cycle iso views">iso \u21bb</button>\n'
             f'  <span id="cs-iso-flash-{fig_id_safe}"'
             f' style="font-size:9px;color:#ffe033;font-family:monospace;min-width:60px;"></span>\n'
             f'</div>\n'
@@ -1214,6 +724,19 @@ def _controls_strip_snippet(
             f'    _locked=v;\n'
             f'    var w=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
             f'    if(w)w.textContent=v?"\U0001F512":"\U0001F513";\n'
+            f'    var rw=window.renderWindow;\n'
+            f'    if(rw&&rw.getInteractor){{\n'
+            f'      var i=rw.getInteractor();\n'
+            f'      if(v){{\n'
+            f'        if(window.vtk&&vtk.Interaction&&vtk.Interaction.Style&&vtk.Interaction.Style.vtkInteractorStyleTrackballActor){{\n'
+            f'          i.setInteractorStyle(vtk.Interaction.Style.vtkInteractorStyleTrackballActor.newInstance());\n'
+            f'        }}\n'
+            f'      }}else{{\n'
+            f'        if(window.vtk&&vtk.Interaction&&vtk.Interaction.Style&&vtk.Interaction.Style.vtkInteractorStyleTrackballCamera){{\n'
+            f'          i.setInteractorStyle(vtk.Interaction.Style.vtkInteractorStyleTrackballCamera.newInstance());\n'
+            f'        }}\n'
+            f'      }}\n'
+            f'    }}\n'
             f'  }}\n'
             f'  if(window.parent!==window){{\n'
             f'    parent.postMessage({{type:"4dpaper-lock-query",fig_id:FIG_ID}},"*");\n'
@@ -1316,13 +839,12 @@ def _controls_strip_snippet(
             f'      html+=\'<line x1="\'+cx+\'" y1="\'+cy+\'" x2="\'+tx+\'" y2="\'+ty+\'"\'\n'
             f'           +\' stroke="\'+ax.col+\'" stroke-width="2.5"/>\';\n'
             f'      html+=\'<polygon points="\'+tx+","+ty+" "+bx1+","+by1+" "+bx2+","+by2+\'"\'\n'
-            f'           +\' fill="\'+ax.col+\'" \'+ax.hpd+\' style="cursor:pointer;"/>\';\n'
+            f'           +\' fill="\'+ax.col+\'"/>\';\n'
             f'      html+=\'<text x="\'+( tip[0]+dx/len*5).toFixed(1)+\'" y="\'+( tip[1]+dy/len*5+3).toFixed(1)+\'"\'\n'
-            f'           +\' font-size="9" fill="\'+ax.lcol+\'" font-family="monospace"\'\n'
-            f'           +\' \'+ax.hpd+\' style="cursor:pointer;">\'+ax.lbl+\'</text>\';\n'
+            f'           +\' font-size="9" fill="\'+ax.lcol+\'" font-family="monospace">\'\n'
+            f'           +ax.lbl+\'</text>\';\n'
             f'      html+=\'<circle cx="\'+tail[0].toFixed(1)+\'" cy="\'+tail[1].toFixed(1)+\'" r="3.5"\'\n'
-            f'           +\' fill="none" stroke="\'+ax.col+\'" stroke-width="1.5"\'\n'
-            f'           +\' \'+ax.hnd+\' style="cursor:pointer;"/>\';\n'
+            f'           +\' fill="none" stroke="\'+ax.col+\'" stroke-width="1.5"/>\';\n'
             f'    }});\n'
             f'    _svg.innerHTML=html;\n'
             f'  }}\n'
@@ -1331,29 +853,34 @@ def _controls_strip_snippet(
             f'  var _ISO_NAMES=["+X+Y+Z","-X+Y+Z","-X-Y+Z","+X-Y+Z"];\n'
             f'  var _isoIdx=0;\n'
             f'  var _isoT;\n'
-            f'  (function(){{\n'
-            f'    var _ib=document.getElementById("cs-btn-iso-{fig_id_safe}");\n'
-            f'    if(_ib)_ib.addEventListener("click",function(){{\n'
+            f'  window.csToggleIso_{fig_id_safe}=function(){{\n'
             + _iso_lock_gate
             + f'      csSetView_{fig_id_safe}(_ISO_VIEWS[_isoIdx]);\n'
             f'      var fl=document.getElementById("cs-iso-flash-{fig_id_safe}");\n'
             f'      if(fl){{fl.textContent=_ISO_NAMES[_isoIdx];clearTimeout(_isoT);\n'
             f'_isoT=setTimeout(function(){{fl.textContent="";}},1400);}}\n'
             f'      _isoIdx=(_isoIdx+1)%4;\n'
-            f'    }});\n'
-            f'  }})();\n'
-            f'  window.csSetView_{fig_id_safe}=function(dir){{\n'
+            f'  }};\n'
+            f'  window.csRotate_{fig_id_safe}=function(angles){{\n'
+            + _iso_lock_gate
+            + f'      var cam=_renderer.getActiveCamera();\n'
+            f'      cam.rotate(angles[0],angles[1]);\n'
+            f'      if(window.renderWindow)window.renderWindow.render();\n'
+            f'      _sendCam(_renderer);\n'
+            f'  }};\n'
+            f'  window.csSetView_{fig_id_safe}=function(dir,vup){{\n'
             f'    if(!_renderer)return;\n'
             f'    var cam=_renderer.getActiveCamera();\n'
             f'    var fp=cam.getFocalPoint(),dist=cam.getDistance();\n'
             f'    var pn=_n3(dir);\n'
-            f'    var up=(Math.abs(pn[2])>0.9)?[0,1,0]:[0,0,1];\n'
+            f'    var up=vup?_n3(vup):((Math.abs(pn[2])>0.9)?[0,1,0]:[0,0,1]);\n'
             f'    cam.setPosition(fp[0]+pn[0]*dist,fp[1]+pn[1]*dist,fp[2]+pn[2]*dist);\n'
             f'    cam.setViewUp(up[0],up[1],up[2]);\n'
             f'    cam.setFocalPoint(fp[0],fp[1],fp[2]);\n'
             f'    _renderer.resetCameraClippingRange();\n'
             f'    if(_iact)_iact.setEnabled(1);\n'
             f'    if(window.renderWindow)window.renderWindow.render();\n'
+            f'    _sendCam(_renderer);\n'
             f'  }};\n'
         )
     else:
@@ -1376,6 +903,7 @@ def _controls_strip_snippet(
         f'          if(_iact)_iact.setEnabled(0);\n'
     ) if show_orientation else ''
     _js.append(
+        f'  var _renderer=null, _isHovered=false;\n'
         f'  (function _wR(){{\n'
         f'    var rw=window.renderWindow;\n'
         f'    if(rw&&rw.getRenderers){{\n'
@@ -1384,6 +912,12 @@ def _controls_strip_snippet(
         f'        var _r=rs[_ri];\n'
         f'        if(_r&&_r.getActors&&_r.getActors().length>0){{\n'
         f'          _renderer=_r;\n'
+        f'          var _cont=window.renderWindow.getInteractor().getContainer();\n'
+        f'          if(_cont){{\n'
+        f'            _cont.addEventListener("mouseenter",function(){{_isHovered=true;window.focus();}});\n'
+        f'            _cont.addEventListener("mouseleave",function(){{_isHovered=false;}});\n'
+        f'            _cont.addEventListener("wheel",function(e){{e.preventDefault();}},{{passive:false}});\n'
+        f'          }}\n'
         + _svg_assign
         + _svg_click_listener
         + _axLoop_call
@@ -1392,7 +926,7 @@ def _controls_strip_snippet(
         f'          document.addEventListener("mouseup",function(){{_sendCam(_renderer);}});\n'
         f'          document.addEventListener("touchend",function(){{_sendCam(_renderer);}});\n'
         f'          window.addEventListener("message",function(e){{\n'
-        f'            if(!e.data||e.data.type!=="4dpaper-camera-apply")return;\n'
+        f'            if(!_renderer || _locked || !e.data || e.data.type!=="4dpaper-camera-apply")return;\n'
         f'            var cam=e.data.camera;if(!cam)return;\n'
         f'            var c=_renderer.getActiveCamera();\n'
         f'            if(cam.position)c.setPosition(cam.position[0],cam.position[1],cam.position[2]);\n'
@@ -1517,251 +1051,24 @@ def _controls_strip_snippet(
             f'    setTimeout(_wT,200);\n'
             f'  }})();\n'
         )
+    _js.append(
+        f'  window.addEventListener("keydown",function(e){{\n'
+        f'    if(!_renderer || !_isHovered)return;\n'
+        f'    var k=e.key.toLowerCase();\n'
+        f'    if(k==="i"){{csToggleIso_{fig_id_safe}();}}\n'
+        f'    else if(k==="x"){{csSetView_{fig_id_safe}([1,0,0],[0,0,1]);}}\n'
+        f'    else if(k==="y"){{csSetView_{fig_id_safe}([0,1,0],[0,0,1]);}}\n'
+        f'    else if(k==="z"){{csSetView_{fig_id_safe}([0,0,1],[0,1,0]);}}\n'
+        f'    else if(e.key==="ArrowUp"){{csRotate_{fig_id_safe}([0,-5]);}}\n'
+        f'    else if(e.key==="ArrowDown"){{csRotate_{fig_id_safe}([0,5]);}}\n'
+        f'    else if(e.key==="ArrowLeft"){{csRotate_{fig_id_safe}([-5,0]);}}\n'
+        f'    else if(e.key==="ArrowRight"){{csRotate_{fig_id_safe}([5,0]);}}\n'
+        f'    if(e.key.startsWith("Arrow")){{e.preventDefault();}}\n'
+        f'  }});\n'
+    )
 
     js_block = f'<script>\n(function(){{\n' + "".join(_js) + f'}})();\n</script>\n'
     return html_block + js_block
-
-
-def _camera_path(fig_id: str | None) -> Path | None:
-    """Return the saved camera JSON path for a figure id, if provided."""
-    if not fig_id:
-        return None
-    return _project_root / "state" / f"camera_{fig_id}.json"
-
-
-def _apply_saved_camera(pl, fig_id: str | None, *, context: str = "figure") -> None:
-    """
-    Apply a saved camera JSON if present, else use isometric view.
-
-    The camera JSON comes from the vtk.js renderer that has actors, which
-    operates in the same world coordinate space as PyVista — so we can
-    apply position / focal_point / view_up directly.
-    """
-    camera_path = _camera_path(fig_id)
-    if camera_path is not None and camera_path.exists():
-        try:
-            cam = json.loads(camera_path.read_text())
-            pl.camera.position = cam["position"]
-            pl.camera.focal_point = cam["focal_point"]
-            pl.camera.up = cam["view_up"]
-            print(f"[4dpaper] {context} {fig_id}: using saved camera", file=sys.stderr)
-            return
-        except (json.JSONDecodeError, KeyError) as exc:
-            print(
-                f"[4dpaper] Warning: could not apply saved camera for {fig_id} ({exc})"
-                " — using isometric view.",
-                file=sys.stderr,
-            )
-    pl.isometric_view()
-
-
-def _postprocess_exported_html(output_path: Path, fig_id: str | None = None) -> None:
-    """Normalize exported HTML sizing and inject camera sync when applicable."""
-    html = output_path.read_text()
-    html = html.replace("100vw", "900px").replace("100vh", "600px")
-
-    if fig_id:
-        if "</body>" not in html:
-            print(
-                f"[4dpaper] Warning: no </body> in {output_path.name} "
-                "— camera sync badge not injected.",
-                file=sys.stderr,
-            )
-        else:
-            html = html.replace("</body>", _camera_sync_snippet(fig_id) + "\n</body>", 1)
-    output_path.write_text(html)
-
-
-def load_render_spec(spec_path: Path) -> dict:
-    """
-    Load and validate a VTK render specification JSON file.
-
-    Relative mesh paths are resolved relative to the spec file location.
-    """
-    if not spec_path.exists():
-        raise RuntimeError(f"[4dpaper] Render spec not found: {spec_path}")
-
-    try:
-        raw = json.loads(spec_path.read_text())
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"[4dpaper] Invalid render spec JSON at {spec_path}: {exc}") from exc
-
-    if not isinstance(raw, dict):
-        raise RuntimeError(f"[4dpaper] Render spec must be a JSON object: {spec_path}")
-
-    mesh_value = str(raw.get("mesh", "")).strip()
-    if not mesh_value:
-        raise RuntimeError(f"[4dpaper] Render spec missing required 'mesh': {spec_path}")
-
-    field_raw = raw.get("field")
-    if not isinstance(field_raw, dict):
-        raise RuntimeError(f"[4dpaper] Render spec missing required 'field' object: {spec_path}")
-
-    field_name = str(field_raw.get("name", "")).strip()
-    if not field_name:
-        raise RuntimeError(f"[4dpaper] Render spec missing required 'field.name': {spec_path}")
-
-    association = str(field_raw.get("association", "point")).strip().lower() or "point"
-    if association not in {"point", "cell"}:
-        raise RuntimeError(
-            f"[4dpaper] Render spec field.association must be 'point' or 'cell': {spec_path}"
-        )
-
-    field_range = field_raw.get("range")
-    if field_range is not None:
-        if not isinstance(field_range, list) or len(field_range) != 2:
-            raise RuntimeError(
-                f"[4dpaper] Render spec field.range must be a two-item list: {spec_path}"
-            )
-        try:
-            field_range = [float(field_range[0]), float(field_range[1])]
-        except (TypeError, ValueError) as exc:
-            raise RuntimeError(
-                f"[4dpaper] Render spec field.range must contain numbers: {spec_path}"
-            ) from exc
-
-    filter_raw = raw.get("filter", {})
-    if filter_raw is None:
-        filter_raw = {}
-    if not isinstance(filter_raw, dict):
-        raise RuntimeError(f"[4dpaper] Render spec 'filter' must be an object: {spec_path}")
-    filter_kind = str(filter_raw.get("kind", "none")).strip().lower() or "none"
-    if filter_kind not in {"none", "surface"}:
-        raise RuntimeError(
-            f"[4dpaper] Render spec filter.kind must be 'none' or 'surface': {spec_path}"
-        )
-
-    display_raw = raw.get("display", {})
-    if display_raw is None:
-        display_raw = {}
-    if not isinstance(display_raw, dict):
-        raise RuntimeError(f"[4dpaper] Render spec 'display' must be an object: {spec_path}")
-
-    source_raw = raw.get("source", {})
-    if source_raw is None:
-        source_raw = {}
-    if not isinstance(source_raw, dict):
-        raise RuntimeError(f"[4dpaper] Render spec 'source' must be an object: {spec_path}")
-
-    source_mode = str(source_raw.get("mode", "file")).strip().lower() or "file"
-    if source_mode not in {"file", "simulation"}:
-        raise RuntimeError(
-            f"[4dpaper] Render spec source.mode must be 'file' or 'simulation': {spec_path}"
-        )
-
-    mesh_path = Path(mesh_value)
-    if not mesh_path.is_absolute():
-        mesh_path = (spec_path.parent / mesh_path).resolve()
-
-    time_spec = str(raw.get("time", "mid")).strip() or "mid"
-    part_name = str(raw.get("part", "internalMesh")).strip() or "internalMesh"
-
-    return {
-        "version": int(raw.get("version", 1)),
-        "spec_path": spec_path,
-        "mesh": mesh_value,
-        "mesh_path": mesh_path,
-        "source": {"mode": source_mode, "time": time_spec, "part": part_name},
-        "time": time_spec,
-        "part": part_name,
-        "field": {
-            "name": field_name,
-            "association": association,
-            "range": field_range,
-            "colormap": str(field_raw.get("colormap", "coolwarm")).strip() or "coolwarm",
-        },
-        "filter": {"kind": filter_kind},
-        "display": {
-            "background": str(display_raw.get("background", "#1a1a2e")).strip() or "#1a1a2e",
-            "show_scalar_bar": bool(display_raw.get("show_scalar_bar", True)),
-        },
-    }
-
-
-def prepare_render_mesh(mesh, filter_kind: str):
-    """Apply a geometry filter policy before rendering."""
-    if filter_kind == "none":
-        return mesh
-    if filter_kind == "surface":
-        return mesh.extract_surface()
-    raise ValueError(f"Unsupported filter kind: {filter_kind}")
-
-
-def _load_render_spec_mesh(spec: dict):
-    """
-    Load the dataset referenced by a render spec.
-
-    The primary path is direct VTK-family loading via ``pyvista.read``. For
-    time-dependent simulation sources such as OpenFOAM, fall back to the
-    existing ``SimulationData`` loader so render specs can temporarily point to
-    the same source files used by ``4d-image``.
-    """
-    import pyvista as pv
-
-    mesh_path = spec["mesh_path"]
-    if mesh_path.suffix.lower() in {".foam", ".pvd", ".case"}:
-        from scripts.data_loader import SimulationData
-
-        sim = SimulationData(str(mesh_path)).load()
-        if sim.n_steps == 0:
-            raise RuntimeError(
-                f"[4dpaper] Simulation at {mesh_path} has no time steps. "
-                "Ensure the case has been solved and time directories exist."
-            )
-        idx = _resolve_time_index(spec["time"], sim.n_steps)
-        mesh = sim.get_mesh(idx, part=spec["part"])
-        if mesh is None:
-            raise RuntimeError(
-                f"[4dpaper] Could not load mesh at step {idx} from {mesh_path}"
-            )
-        return mesh
-
-    return pv.read(str(mesh_path))
-
-
-def _compute_field_range(mesh, field_name: str, association: str) -> list[float] | None:
-    """Return [min, max] for the requested field on the requested association."""
-    import numpy as np
-
-    data = mesh.point_data if association == "point" else mesh.cell_data
-    if field_name not in data:
-        return None
-    arr = np.asarray(data[field_name])
-    if arr.size == 0:
-        return None
-    return [float(np.nanmin(arr)), float(np.nanmax(arr))]
-
-
-def _add_render_spec_mesh(pl, mesh, spec: dict) -> None:
-    """Add a render-spec-configured mesh to a PyVista plotter."""
-    field = spec["field"]["name"]
-    association = spec["field"]["association"]
-    field_range = spec["field"]["range"]
-    cmap = spec["field"]["colormap"]
-    show_scalar_bar = spec["display"]["show_scalar_bar"]
-
-    data = mesh.point_data if association == "point" else mesh.cell_data
-    if field and field in data:
-        add_kwargs = {
-            "scalars": field,
-            "preference": association,
-            "cmap": cmap,
-            "smooth_shading": True,
-            "show_scalar_bar": show_scalar_bar,
-        }
-        effective_range = field_range or _compute_field_range(mesh, field, association)
-        if effective_range is not None:
-            add_kwargs["clim"] = effective_range
-        if show_scalar_bar:
-            add_kwargs["scalar_bar_args"] = {"title": field}
-        pl.add_mesh(mesh, **add_kwargs)
-    else:
-        pl.add_mesh(mesh, color="#aaaaaa", opacity=0.9)
-        print(
-            f"[4dpaper] Warning: field '{field}' not found for {association} data"
-            " — rendering geometry only.",
-            file=sys.stderr,
-        )
 
 
 # ── Figure generation (Task 3) ────────────────────────────────────────────────
@@ -1831,16 +1138,13 @@ def generate_png_figure(
             file=sys.stderr,
         )
 
-<<<<<<< HEAD
-    _apply_saved_camera(pl, fig_id, context="PNG figure")
-=======
     # Apply saved camera if available, else fall back to isometric view.
     _cam_id = camera_fig_id or fig_id
     camera_path = (_project_root / "state" / f"camera_{_cam_id}.json" if _cam_id else None)
     apply_camera_state(pl, _cam_id or "unnamed", camera_path)
     pl.add_axes(interactive=False, line_width=3)
->>>>>>> ui/panel-ide-3pane
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    pl.save_graphic(str(output_path.with_suffix(".pdf")))
     pl.screenshot(str(output_path))
     pl.close()
     print(f"[4dpaper] Generated (PNG): {output_path}")
@@ -1915,21 +1219,14 @@ def generate_html_figure(
             file=sys.stderr,
         )
 
-<<<<<<< HEAD
-    _apply_saved_camera(pl, fig_id, context="HTML figure")
-=======
     # Apply camera — same logic as generate_png_figure so HTML and PDF start from
     # the same viewpoint.
     camera_path = (_project_root / "state" / f"camera_{fig_id}.json" if fig_id else None)
     apply_camera_state(pl, fig_id or "unnamed", camera_path)
->>>>>>> ui/panel-ide-3pane
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pl.export_html(str(output_path))
     pl.close()
-<<<<<<< HEAD
-    _postprocess_exported_html(output_path, fig_id=fig_id)
-=======
 
     # ── Prepare field data blobs for live switching ───────────────────────────
     # For each switchable field (other than the one already rendered), extract
@@ -2046,58 +1343,10 @@ def generate_html_figure(
                 ) + "\n</body>"
             html = html.replace("</body>", inj_html, 1)
     output_path.write_text(html)
->>>>>>> ui/panel-ide-3pane
 
     print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
 
 
-<<<<<<< HEAD
-def generate_png_from_render_spec(
-    spec_path: Path,
-    output_path: Path,
-    fig_id: str | None = None,
-) -> None:
-    """Generate a static PNG figure from a VTK render specification."""
-    import pyvista as pv
-
-    spec = load_render_spec(spec_path)
-    mesh = pv.read(str(spec["mesh_path"]))
-    render_mesh = prepare_render_mesh(mesh, spec["filter"]["kind"])
-
-    pl = pv.Plotter(off_screen=True, window_size=(1920, 1080))
-    pl.background_color = spec["display"]["background"]
-    _add_render_spec_mesh(pl, render_mesh, spec)
-    _apply_saved_camera(pl, fig_id, context="VTK PNG figure")
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    pl.screenshot(str(output_path))
-    pl.close()
-    print(f"[4dpaper] Generated (VTK PNG): {output_path}", file=sys.stderr)
-
-
-def generate_html_from_render_spec(
-    spec_path: Path,
-    output_path: Path,
-    fig_id: str | None = None,
-) -> None:
-    """Generate a self-contained vtk.js HTML figure from a VTK render specification."""
-    import pyvista as pv
-
-    spec = load_render_spec(spec_path)
-    mesh = pv.read(str(spec["mesh_path"]))
-    render_mesh = prepare_render_mesh(mesh, spec["filter"]["kind"])
-
-    pl = pv.Plotter(off_screen=True, window_size=(900, 600))
-    pl.background_color = spec["display"]["background"]
-    _add_render_spec_mesh(pl, render_mesh, spec)
-    _apply_saved_camera(pl, fig_id, context="VTK HTML figure")
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    pl.export_html(str(output_path))
-    pl.close()
-    _postprocess_exported_html(output_path, fig_id=fig_id)
-    print(f"[4dpaper] Generated (VTK HTML): {output_path}", file=sys.stderr)
-=======
 def generate_html_from_vtu(
     vtu_path: Path,
     out_html: Path,
@@ -2695,7 +1944,6 @@ def generate_video_figure(
     video_html_path.parent.mkdir(parents=True, exist_ok=True)
     video_html_path.write_text(video_html)
     print(f"[4dpaper] Generated (video HTML): {video_html_path}", file=sys.stderr)
->>>>>>> ui/panel-ide-3pane
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
@@ -2723,16 +1971,6 @@ def main() -> None:
         print(f"[4dpaper] Scanning {len(qmd_files)} QMD file(s) in {project_dir}", file=sys.stderr)
 
     figures = []
-<<<<<<< HEAD
-    vtk_figs = []
-    for qmd in qmd_files:
-        text = qmd.read_text()
-        figures.extend(parse_shortcodes(text))
-        vtk_figs.extend(parse_vtk_shortcodes(text))
-
-    if not figures and not vtk_figs:
-        print("[4dpaper] No 4d-image or 4d-vtk shortcodes found.", file=sys.stderr)
-=======
     videos = []
     panels = []
     pvsm_figs = []
@@ -2747,11 +1985,7 @@ def main() -> None:
 
     if not any([figures, videos, panels, pvsm_figs, ts_raw]):
         print("[4dpaper] No 4d-image, 4d-video, 4d-panel, 4d-pvsm, or 4d-timeseries shortcodes found.", file=sys.stderr)
->>>>>>> ui/panel-ide-3pane
         return
-
-    pdf3d_enabled = _truthy_env("FOURDPAPER_PDF3D_EXPERIMENTAL", default=False)
-    pdf3d_target_id = os.environ.get("FOURDPAPER_PDF3D_TARGET_ID", "fig-vm").strip() or "fig-vm"
 
     figures_dir = _project_root / "state" / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
@@ -2957,89 +2191,6 @@ def main() -> None:
                 print(f"[4dpaper] ERROR generating panel {panel_id}.html: {exc}", file=sys.stderr)
                 sys.exit(1)
 
-<<<<<<< HEAD
-        if pdf3d_enabled and fig_id == pdf3d_target_id:
-            print(
-                f"[4dpaper] Experimental PDF 3D mode enabled for '{fig_id}'. "
-                "Attempting U3D/PRC asset generation.",
-                file=sys.stderr,
-            )
-            pdf3d_asset = generate_pdf3d_asset(
-                src_path=src,
-                field=field,
-                time_spec=time_spec,
-                output_dir=figures_dir,
-                fig_id=fig_id,
-            )
-            tex_out = figures_dir / f"{fig_id}.pdf3d.tex"
-            tex_ok = generate_pdf3d_tex_figure(
-                fig_id=fig_id,
-                caption=fig.get("caption", ""),
-                png_path=out_png,
-                asset_path=pdf3d_asset,
-                output_tex_path=tex_out,
-            )
-            if tex_ok:
-                print(
-                    f"[4dpaper] Wrote experimental media9 TeX include: {tex_out}",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    f"[4dpaper] media9 TeX include fallback failed for {fig_id}; keeping PNG-only PDF.",
-                    file=sys.stderr,
-                )
-
-    for vtk_fig in vtk_figs:
-        fig_id = vtk_fig["id"]
-        spec_path = (
-            Path(vtk_fig["spec"])
-            if Path(vtk_fig["spec"]).is_absolute()
-            else _project_root / vtk_fig["spec"]
-        )
-        try:
-            render_spec = load_render_spec(spec_path)
-        except Exception as exc:
-            print(f"[4dpaper] ERROR loading render spec for {fig_id}: {exc}", file=sys.stderr)
-            sys.exit(1)
-
-        mesh_path = render_spec["mesh_path"]
-        out_html = figures_dir / f"{fig_id}.html"
-        script_newer = (
-            out_html.exists()
-            and _here.stat().st_mtime > out_html.stat().st_mtime
-        )
-        camera_path = _camera_path(fig_id)
-        if not script_newer and is_cache_valid(
-            out_html,
-            spec_path,
-            camera_path=camera_path,
-            extra_deps=[mesh_path],
-        ):
-            print(f"[4dpaper] {fig_id}.html is up to date — skipping.", file=sys.stderr)
-        else:
-            print(f"[4dpaper] Generating {fig_id}.html from render spec …", file=sys.stderr)
-            try:
-                generate_html_from_render_spec(spec_path, out_html, fig_id=fig_id)
-            except Exception as exc:
-                print(f"[4dpaper] ERROR generating {fig_id}.html: {exc}", file=sys.stderr)
-                sys.exit(1)
-
-        out_png = figures_dir / f"{fig_id}.png"
-        png_fresh = (
-            not camera_path.exists()
-            and is_cache_valid(out_png, spec_path, extra_deps=[mesh_path])
-        )
-        if png_fresh:
-            print(f"[4dpaper] {fig_id}.png is up to date — skipping.")
-        else:
-            print(f"[4dpaper] Generating {fig_id}.png from render spec …")
-            try:
-                generate_png_from_render_spec(spec_path, out_png, fig_id=fig_id)
-            except Exception as exc:
-                print(f"[4dpaper] ERROR generating {fig_id}.png: {exc}")
-                sys.exit(1)
-=======
         if out_png.exists() and out_png.stat().st_mtime >= max_dep_mtime:
             print(f"[4dpaper] {panel_id}.png is up to date — skipping.")
         else:
@@ -3114,7 +2265,6 @@ def main() -> None:
             print(f"[4dpaper] ERROR generating PVSM figure {fig_id}: {exc}", file=sys.stderr)
             sys.exit(1)
 
->>>>>>> ui/panel-ide-3pane
 
 if __name__ == "__main__":
     main()
