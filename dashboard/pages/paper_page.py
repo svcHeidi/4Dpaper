@@ -70,7 +70,6 @@ class PaperPage(param.Parameterized):
             f'background:{THEME["bg_panel"]};font-size:13px;line-height:1.5;">'
             f'<strong style="color:{THEME["text_primary"]};">HTML preview</strong><br><br>'
             f'Run <strong>HTML</strong> to render the paper here.</div>',
-            min_height=520,
             sizing_mode="stretch_both",
         )
 
@@ -208,8 +207,8 @@ class PaperPage(param.Parameterized):
             self._iframe.object = (
                 f'<iframe src="/output/analysis_report.html?t={ts}" '
                 f'width="100%" frameborder="0" '
-                f'style="border:none;border-radius:4px;min-height:520px;'
-                f'height:min(78vh,920px);display:block;background:{THEME["bg_app"]};"></iframe>'
+                f'style="border:none;border-radius:4px;width:100%;height:100%;'
+                f'display:block;background:{THEME["bg_app"]};"></iframe>'
             )
         else:
             self._build_start = None
