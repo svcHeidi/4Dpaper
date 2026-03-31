@@ -601,11 +601,9 @@ def _controls_strip_snippet(
             f' style="position:fixed;bottom:4px;left:4px;z-index:9999;'
             f'display:flex;align-items:center;gap:6px;">\n'
             f'  <svg id="cs-svg-axes-{fig_id_safe}" width="56" height="56"'
-            f' style="background:rgba(10,10,20,0.55);border:1px solid rgba(255,255,255,0.12);'
-            f'border-radius:4px;display:block;cursor:pointer;"'
+            f' style="background:transparent;border:none;border-radius:0;'
+            f'display:block;cursor:pointer;overflow:visible;"'
             f' title="Click axis tip: ortho view \u00b7 Click axis tail: opposite view"></svg>\n'
-            f'  <button id="cs-btn-iso-{fig_id_safe}" style="{BTN}width:38px;'
-            f'font-size:11px;font-family:monospace;" title="Cycle isometric views">iso</button>\n'
             f'  <span id="cs-iso-flash-{fig_id_safe}"'
             f' style="font-size:9px;color:#ffe033;font-family:monospace;min-width:60px;"></span>\n'
             f'</div>\n'
@@ -613,6 +611,7 @@ def _controls_strip_snippet(
 
     lock_widget = ""
     lock_badge = ""
+    lock_shield = ""
     if show_lock_btn:
         lock_widget = (
             f'<div id="cs-lock-widget-{fig_id_safe}"'
@@ -630,6 +629,11 @@ def _controls_strip_snippet(
             f'border:1px solid rgba(255,255,255,0.12);'
             f'border-radius:4px;padding:2px 6px;'
             f'font-family:monospace;font-size:10px;color:#f88;">locked</div>\n'
+        )
+        lock_shield = (
+            f'<div id="cs-lock-shield-{fig_id_safe}"'
+            f' style="display:none;position:fixed;inset:0;z-index:9998;'
+            f'background:transparent;cursor:not-allowed;"></div>\n'
         )
 
     field_pop = ""
@@ -678,7 +682,7 @@ def _controls_strip_snippet(
             + strip_btns
             + f'</div>\n'
         )
-    html_block += lock_widget + lock_badge + field_pop + time_pop + corner_widget
+    html_block += lock_shield + lock_widget + lock_badge + field_pop + time_pop + corner_widget
 
     active_field_js = json.dumps(active_field).replace("</", "<\\/")
     field_data_js = json.dumps(field_data_b64 or {}).replace("</", "<\\/")
@@ -712,6 +716,7 @@ def _controls_strip_snippet(
 
     # _locked ALWAYS declared (used by _sendCam regardless of show_lock_btn)
     _js.append(f'  var _locked=false;\n')
+    _js.append(f'  var _cont=null;\n')
     if show_lock_btn:
         _js.append(
             f'  var _lockBadgeTimer=null;\n'
@@ -726,9 +731,14 @@ def _controls_strip_snippet(
             f'    _locked=v;\n'
             f'    var w=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
             f'    if(w)w.textContent=v?"\U0001F512":"\U0001F513";\n'
+            f'    var s=document.getElementById("cs-lock-shield-{fig_id_safe}");\n'
+            f'    if(s)s.style.display=v?"block":"none";\n'
             f'    var rw=window.renderWindow;\n'
             f'    var i=_iact||(rw&&rw.getInteractor?rw.getInteractor():null);\n'
             f'    if(i&&i.setEnabled)i.setEnabled(v?0:1);\n'
+            f'    var c=_cont||(i&&i.getContainer?i.getContainer():null);\n'
+            f'    if(c&&c.style){{c.style.pointerEvents=v?"none":"";c.style.touchAction=v?"none":"";}}\n'
+            f'    if(v&&i&&i.stopAnimating)i.stopAnimating();\n'
             f'  }}\n'
             f'  if(window.parent!==window){{\n'
             f'    parent.postMessage({{type:"4dpaper-lock-query",fig_id:FIG_ID}},"*");\n'
@@ -806,10 +816,19 @@ def _controls_strip_snippet(
             f'return l<1e-10?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}}\n'
             f'  function _cr(a,b){{return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}}\n'
             f'  function _dt(a,b){{return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}}\n'
+            f'  function _rot(v,axis,deg){{\n'
+            f'    var a=_n3(axis),x=v[0],y=v[1],z=v[2];\n'
+            f'    var c=Math.cos(deg*Math.PI/180),s=Math.sin(deg*Math.PI/180);\n'
+            f'    var d=a[0]*x+a[1]*y+a[2]*z;\n'
+            f'    return [\n'
+            f'      x*c+(a[1]*z-a[2]*y)*s+a[0]*d*(1-c),\n'
+            f'      y*c+(a[2]*x-a[0]*z)*s+a[1]*d*(1-c),\n'
+            f'      z*c+(a[0]*y-a[1]*x)*s+a[2]*d*(1-c)\n'
+            f'    ];\n'
+            f'  }}\n'
             f'  var _svg=null;\n'
             f'  function _drawAxes(){{\n'
             f'    if(!_renderer||!_svg)return;\n'
-            f'    if(_locked)return;\n'
             f'    var cam=_renderer.getActiveCamera();\n'
             f'    var pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp();\n'
             f'    var vd=_n3([fp[0]-pos[0],fp[1]-pos[1],fp[2]-pos[2]]);\n'
@@ -851,34 +870,6 @@ def _controls_strip_snippet(
             f'  var _ISO_NAMES=["+X+Y+Z","-X+Y+Z","-X-Y+Z","+X-Y+Z"];\n'
             f'  var _isoIdx=0;\n'
             f'  var _isoT;\n'
-            f'  window.csToggleIso_{fig_id_safe}=function(){{\n'
-            f'      var _isoBtn=document.getElementById("cs-btn-iso-{fig_id_safe}");\n'
-            f'      if(_isoBtn){{_isoBtn.click();return;}}\n'
-            + _iso_lock_gate
-            + f'      csSetView_{fig_id_safe}(_ISO_VIEWS[_isoIdx]);\n'
-            f'      var fl=document.getElementById("cs-iso-flash-{fig_id_safe}");\n'
-            f'      if(fl){{fl.textContent=_ISO_NAMES[_isoIdx];clearTimeout(_isoT);\n'
-f'_isoT=setTimeout(function(){{fl.textContent="";}},1400);}}\n'
-            f'      _isoIdx=(_isoIdx+1)%4;\n'
-            f'  }};\n'
-            f'  (function(){{\n'
-            f'    var _isoBtn=document.getElementById("cs-btn-iso-{fig_id_safe}");\n'
-            f'    if(_isoBtn)_isoBtn.addEventListener("click",function(){{\n'
-            + _iso_lock_gate
-            + f'      csSetView_{fig_id_safe}(_ISO_VIEWS[_isoIdx]);\n'
-            f'      var fl=document.getElementById("cs-iso-flash-{fig_id_safe}");\n'
-            f'      if(fl){{fl.textContent=_ISO_NAMES[_isoIdx];clearTimeout(_isoT);\n'
-            f'_isoT=setTimeout(function(){{fl.textContent="";}},1400);}}\n'
-            f'      _isoIdx=(_isoIdx+1)%4;\n'
-            f'    }});\n'
-            f'  }})();\n'
-            f'  window.csRotate_{fig_id_safe}=function(angles){{\n'
-            + _iso_lock_gate
-            + f'      var cam=_renderer.getActiveCamera();\n'
-            f'      cam.rotate(angles[0],angles[1]);\n'
-            f'      if(window.renderWindow)window.renderWindow.render();\n'
-            f'      _sendCam(_renderer);\n'
-            f'  }};\n'
             f'  window.csSetView_{fig_id_safe}=function(dir,vup){{\n'
             f'    if(!_renderer)return;\n'
             f'    var cam=_renderer.getActiveCamera();\n'
@@ -890,6 +881,21 @@ f'_isoT=setTimeout(function(){{fl.textContent="";}},1400);}}\n'
             f'    cam.setFocalPoint(fp[0],fp[1],fp[2]);\n'
             f'    _renderer.resetCameraClippingRange();\n'
             f'    if(_iact)_iact.setEnabled(1);\n'
+            f'    if(window.renderWindow)window.renderWindow.render();\n'
+            f'    _sendCam(_renderer);\n'
+            f'  }};\n'
+            f'  window.csRotate_{fig_id_safe}=function(dx,dy){{\n'
+            f'    if(!_renderer)return;\n'
+            f'    var cam=_renderer.getActiveCamera();\n'
+            f'    var pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp();\n'
+            f'    var rel=[pos[0]-fp[0],pos[1]-fp[1],pos[2]-fp[2]];\n'
+            f'    var right=_n3(_cr(rel,vup));\n'
+            f'    var pitch=_rot(rel,right,dy);\n'
+            f'    var yawAxis=_n3(vup);\n'
+            f'    var yaw=_rot(pitch,yawAxis,dx);\n'
+            f'    cam.setPosition(fp[0]+yaw[0],fp[1]+yaw[1],fp[2]+yaw[2]);\n'
+            f'    cam.setViewUp(vup[0],vup[1],vup[2]);\n'
+            f'    _renderer.resetCameraClippingRange();\n'
             f'    if(window.renderWindow)window.renderWindow.render();\n'
             f'    _sendCam(_renderer);\n'
             f'  }};\n'
@@ -911,8 +917,11 @@ f'_isoT=setTimeout(function(){{fl.textContent="";}},1400);}}\n'
     _axLoop_call = f'          _axLoop();\n' if show_orientation else ''
     _iact_lock = (
         f'          _iact=window.renderWindow.getInteractor();\n'
-        f'          if(_iact)_iact.setEnabled(0);\n'
+        f'          if(_iact)_iact.setEnabled(_locked?0:1);\n'
     ) if show_orientation else ''
+    _lock_refresh = (
+        f'          _setLocked(_locked);\n'
+    ) if show_lock_btn else ''
     _js.append(
         f'  var _renderer=null, _isHovered=false;\n'
         f'  (function _wR(){{\n'
@@ -923,12 +932,13 @@ f'_isoT=setTimeout(function(){{fl.textContent="";}},1400);}}\n'
         f'        var _r=rs[_ri];\n'
         f'        if(_r&&_r.getActors&&_r.getActors().length>0){{\n'
         f'          _renderer=_r;\n'
-        f'          var _cont=window.renderWindow.getInteractor().getContainer();\n'
+        f'          _cont=window.renderWindow.getInteractor().getContainer();\n'
         f'          if(_cont){{\n'
         f'            _cont.addEventListener("mouseenter",function(){{_isHovered=true;window.focus();}});\n'
         f'            _cont.addEventListener("mouseleave",function(){{_isHovered=false;}});\n'
         f'            _cont.addEventListener("wheel",function(e){{e.preventDefault();}},{{passive:false}});\n'
         f'          }}\n'
+        + _lock_refresh
         + _svg_assign
         + _svg_click_listener
         + _axLoop_call
@@ -1066,14 +1076,13 @@ f'_isoT=setTimeout(function(){{fl.textContent="";}},1400);}}\n'
         f'  window.addEventListener("keydown",function(e){{\n'
         f'    if(!_renderer || !_isHovered)return;\n'
         f'    var k=e.key.toLowerCase();\n'
-        f'    if(k==="i"){{csToggleIso_{fig_id_safe}();}}\n'
-        f'    else if(k==="x"){{csSetView_{fig_id_safe}([1,0,0],[0,0,1]);}}\n'
+        f'    if(k==="x"){{csSetView_{fig_id_safe}([1,0,0],[0,0,1]);}}\n'
         f'    else if(k==="y"){{csSetView_{fig_id_safe}([0,1,0],[0,0,1]);}}\n'
         f'    else if(k==="z"){{csSetView_{fig_id_safe}([0,0,1],[0,1,0]);}}\n'
-        f'    else if(e.key==="ArrowUp"){{csRotate_{fig_id_safe}([0,-5]);}}\n'
-        f'    else if(e.key==="ArrowDown"){{csRotate_{fig_id_safe}([0,5]);}}\n'
-        f'    else if(e.key==="ArrowLeft"){{csRotate_{fig_id_safe}([-5,0]);}}\n'
-        f'    else if(e.key==="ArrowRight"){{csRotate_{fig_id_safe}([5,0]);}}\n'
+        f'    else if(e.key==="ArrowUp"){{csRotate_{fig_id_safe}(0,-5);}}\n'
+        f'    else if(e.key==="ArrowDown"){{csRotate_{fig_id_safe}(0,5);}}\n'
+        f'    else if(e.key==="ArrowLeft"){{csRotate_{fig_id_safe}(-5,0);}}\n'
+        f'    else if(e.key==="ArrowRight"){{csRotate_{fig_id_safe}(5,0);}}\n'
         f'    if(e.key.startsWith("Arrow")){{e.preventDefault();}}\n'
         f'  }});\n'
     )
@@ -1975,7 +1984,9 @@ def main() -> None:
         qmd_files = [Path(qmd_path)]
     else:
         project_dir = Path(os.environ.get("QUARTO_PROJECT_DIR", str(_project_root)))
+        # Scan root *.qmd files and all *.qmd files in sections/ and subdirectories
         qmd_files = sorted(project_dir.glob("*.qmd"))
+        qmd_files.extend(sorted(project_dir.glob("sections/**/*.qmd")))
         if not qmd_files:
             print("[4dpaper] No .qmd files found — skipping.", file=sys.stderr)
             return
