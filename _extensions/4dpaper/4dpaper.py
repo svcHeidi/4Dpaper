@@ -1616,21 +1616,23 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
 
     # Generate each sub-figure HTML (reuses caching inside generate_html_figure)
     is_timeseries = panel.get("timeseries", False)
+    camera_mode = panel.get("camera_mode", "independent")
+
     for sub_idx, sub in enumerate(panel["subfigures"]):
         src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
         out = figures_dir / f"{sub['id']}.html"
         af = [f.strip() for f in sub.get("fields", "").split(",") if f.strip()] or None
         # For timeseries: only show colorbar and lock button on the first panel
+        # For sync-mode panels: never show lock button (panel-level toolbar handles it)
         is_first = sub_idx == 0
         generate_html_figure(
             src, sub["field"], sub["time"], out, fig_id=sub["id"], available_fields=af,
             show_colorbar=is_first if is_timeseries else True,
-            show_lock_btn=is_first if is_timeseries else True,
+            show_lock_btn=(is_first if is_timeseries else True) and camera_mode != "sync",
             show_orientation=is_first if is_timeseries else True,
         )
 
     # Bidirectional re-relay: forwards camera/field UP to top, acks DOWN to children
-    camera_mode = panel.get("camera_mode", "independent")
     panel_id = panel["id"]
 
     if camera_mode == "sync":
