@@ -1,13 +1,14 @@
 /**
- * Loads split_pane.js only after the Panel app shell exists in the DOM.
- * pn.extension js_files run from <head> before Bokeh paints the toolbar, so
- * split_pane used to run too early and never update #split-status.
+ * Loads split_pane.js and activity_bar.js only after the Panel app shell
+ * exists in the DOM. pn.extension js_files run from <head> before Bokeh
+ * paints the toolbar, so scripts used to run too early.
  */
 (function () {
   if (window.__4dpapersSplitLoaderDone) return;
   window.__4dpapersSplitLoaderDone = true;
 
-  var SRC = "/assets/split_pane.js?v=102";
+  var SPLIT_SRC = "/assets/split_pane.js?v=103";
+  var ACTIVITY_SRC = "/assets/activity_bar.js?v=103";
 
   function markFailed(msg) {
     var el =
@@ -16,16 +17,19 @@
     if (el) el.textContent = msg;
   }
 
-  function inject() {
-    if (document.querySelector("script[data-4dpapers-split-pane]")) return;
+  function injectScript(src, attr) {
+    if (document.querySelector('script[' + attr + ']')) return;
     var script = document.createElement("script");
-    script.src = SRC;
+    script.src = src;
     script.async = true;
-    script.setAttribute("data-4dpapers-split-pane", "1");
-    script.onerror = function () {
-      markFailed("split: failed to load " + SRC);
-    };
+    script.setAttribute(attr, "1");
+    script.onerror = function () { markFailed("failed to load " + src); };
     document.head.appendChild(script);
+  }
+
+  function inject() {
+    injectScript(SPLIT_SRC, "data-4dpapers-split-pane");
+    injectScript(ACTIVITY_SRC, "data-4dpapers-activity-bar");
   }
 
   function readyEnough() {
@@ -35,15 +39,12 @@
     );
   }
 
-  function tryInject() {
-    if (!readyEnough()) return false;
-    inject();
-    return true;
-  }
-
   var tries = 0;
   var timer = setInterval(function () {
     tries++;
-    if (tryInject() || tries > 200) clearInterval(timer);
+    if (readyEnough() || tries > 200) {
+      clearInterval(timer);
+      inject();
+    }
   }, 50);
 })();
