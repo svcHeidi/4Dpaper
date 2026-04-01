@@ -14,6 +14,9 @@ local _relay_injected = false
 -- Figures are served as static files (/state/figures/<id>.html) instead of
 -- being inlined as srcdoc — pandoc processes ~50KB instead of ~15MB, ~10x faster.
 local _app_mode = os.getenv("FOURD_APP_MODE") == "1"
+-- Paper-view mode: embed static PNG <img> instead of interactive iframes.
+-- Set by dashboard when building the paperview profile.
+local _paper_view = os.getenv("FOURD_PAPER_VIEW") == "1"
 
 -- ── Shared relay script (injected once per page) ──────────────────────────
 -- Handles two concerns:
@@ -191,6 +194,27 @@ local function fourd_image(args, kwargs)
 
   -- ── HTML output ───────────────────────────────────────────────────────────
   if quarto.doc.isFormat("html") then
+    -- Paper-view: embed static PNG instead of interactive iframe
+    if _paper_view then
+      local png_path = "state/figures/" .. id .. ".png"
+      local pf = io.open(png_path, "r")
+      if pf then pf:close() end
+      local cap_html = caption ~= "" and
+        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
+        caption .. '</figcaption>\n' or ""
+      if not pf then
+        return pandoc.RawBlock("html",
+          '<figure class="fourd-figure" style="margin:1.5rem 0;">' ..
+          '<div style="border:2px dashed #888;padding:1rem;text-align:center;">' ..
+          '⚠ Figure <code>' .. id .. '</code> not rendered — click Rebuild HTML</div>' ..
+          cap_html .. '</figure>')
+      end
+      return pandoc.RawBlock("html",
+        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+        '<img src="/state/figures/' .. id .. '.png" style="width:100%;display:block;">\n' ..
+        cap_html .. '</figure>')
+    end
+
     local fig_path = "state/figures/" .. id .. ".html"
     local exists = io.open(fig_path, "r")
     if exists then exists:close() end
@@ -264,6 +288,27 @@ local function fourd_video(args, kwargs)
 
   -- ── HTML output ───────────────────────────────────────────────────────────
   if quarto.doc.isFormat("html") then
+    -- Paper-view: embed static video frame PNG instead of interactive video
+    if _paper_view then
+      local frame_path = "state/figures/" .. id .. "-frame.png"
+      local pf = io.open(frame_path, "r")
+      if pf then pf:close() end
+      local cap_html = caption ~= "" and
+        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
+        caption .. '</figcaption>\n' or ""
+      if not pf then
+        return pandoc.RawBlock("html",
+          '<figure class="fourd-figure" style="margin:1.5rem 0;">' ..
+          '<div style="border:2px dashed #888;padding:1rem;text-align:center;">' ..
+          '⚠ Video frame <code>' .. id .. '</code> not rendered — click Rebuild HTML</div>' ..
+          cap_html .. '</figure>')
+      end
+      return pandoc.RawBlock("html",
+        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+        '<img src="/state/figures/' .. id .. '-frame.png" style="width:100%;display:block;">\n' ..
+        cap_html .. '</figure>')
+    end
+
     local html_path = "state/figures/" .. id .. "-video.html"
     local exists = io.open(html_path, "r")
     if exists then exists:close() end
@@ -362,6 +407,27 @@ local function fourd_panel(args, kwargs)
   -- Each sub-figure is a direct srcdoc iframe (same depth as fourd_image).
   -- This avoids triple-nesting (page → composite srcdoc → data: iframe).
   if quarto.doc.isFormat("html") then
+    -- Paper-view: embed composite PNG instead of interactive grid
+    if _paper_view then
+      local png_path = "state/figures/" .. id .. ".png"
+      local pf = io.open(png_path, "r")
+      if pf then pf:close() end
+      local cap_html = caption ~= "" and
+        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
+        caption .. '</figcaption>\n' or ""
+      if not pf then
+        return pandoc.RawBlock("html",
+          '<figure class="fourd-figure" style="margin:1.5rem 0;">' ..
+          '<div style="border:2px dashed #888;padding:1rem;text-align:center;">' ..
+          '⚠ Panel <code>' .. id .. '</code> not rendered — click Rebuild HTML</div>' ..
+          cap_html .. '</figure>')
+      end
+      return pandoc.RawBlock("html",
+        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+        '<img src="/state/figures/' .. id .. '.png" style="width:100%;display:block;">\n' ..
+        cap_html .. '</figure>')
+    end
+
     -- Inject relay script once per page
     local relay_script = ""
     if not _relay_injected then
@@ -556,6 +622,27 @@ local function fourd_pvsm(args, kwargs)
 
   -- HTML output
   if quarto.doc.isFormat("html") then
+    -- Paper-view: embed static PNG instead of interactive iframe
+    if _paper_view then
+      local png_path = "state/figures/" .. id .. ".png"
+      local pf = io.open(png_path, "r")
+      if pf then pf:close() end
+      local cap_html = caption ~= "" and
+        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
+        caption .. '</figcaption>\n' or ""
+      if not pf then
+        return pandoc.RawBlock("html",
+          '<figure class="fourd-figure" style="margin:1.5rem 0;">' ..
+          '<div style="border:2px dashed #888;padding:1rem;text-align:center;">' ..
+          '⚠ PVSM figure <code>' .. id .. '</code> not rendered — click Rebuild HTML</div>' ..
+          cap_html .. '</figure>')
+      end
+      return pandoc.RawBlock("html",
+        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+        '<img src="/state/figures/' .. id .. '.png" style="width:100%;display:block;">\n' ..
+        cap_html .. '</figure>')
+    end
+
     local html_path = "state/figures/" .. id .. ".html"
     local exists = io.open(html_path, "r")
     if exists then exists:close() end
@@ -652,6 +739,27 @@ local function fourd_timeseries(args, kwargs)
   end
 
   if quarto.doc.isFormat("html") then
+    -- Paper-view: embed composite PNG instead of interactive timeseries grid
+    if _paper_view then
+      local png_path = "state/figures/" .. id .. ".png"
+      local pf = io.open(png_path, "r")
+      if pf then pf:close() end
+      local cap_html = caption ~= "" and
+        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
+        caption .. '</figcaption>\n' or ""
+      if not pf then
+        return pandoc.RawBlock("html",
+          '<figure class="fourd-figure" style="margin:1.5rem 0;">' ..
+          '<div style="border:2px dashed #888;padding:1rem;text-align:center;">' ..
+          '⚠ Timeseries <code>' .. id .. '</code> not rendered — click Rebuild HTML</div>' ..
+          cap_html .. '</figure>')
+      end
+      return pandoc.RawBlock("html",
+        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+        '<img src="/state/figures/' .. id .. '.png" style="width:100%;display:block;">\n' ..
+        cap_html .. '</figure>')
+    end
+
     -- Timeseries is always sync — read manifest to get subfigure IDs, then embed
     -- each as a direct srcdoc iframe with data-panel attribute.
     -- Avoids data:text/html;base64 iframes which break vtk.js WebGL rendering.
