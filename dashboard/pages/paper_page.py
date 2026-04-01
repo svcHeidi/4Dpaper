@@ -111,9 +111,11 @@ class PaperPage(param.Parameterized):
         if self._paper_view_building or self.is_building:
             return
         self._paper_view_building = True
-        threading.Thread(target=self._run_paper_view_build, daemon=True).start()
+        # Capture doc here (Panel callback context) — it's None in background threads
+        doc = pn.state.curdoc
+        threading.Thread(target=self._run_paper_view_build, args=(doc,), daemon=True).start()
 
-    def _run_paper_view_build(self) -> None:
+    def _run_paper_view_build(self, doc) -> None:
         log: list[str] = []
         try:
             exit_code = run_quarto_render(self._qmd_path, log, output_format="paperview")
@@ -125,7 +127,6 @@ class PaperPage(param.Parameterized):
 
         if exit_code == 0:
             ts = int(time.time())
-            doc = pn.state.curdoc
             if doc is not None:
                 doc.add_next_tick_callback(lambda: self._refresh_paper_view(ts))
 
