@@ -428,10 +428,8 @@ def create_app():
     explorer_view.css_classes = [*getattr(explorer_view, "css_classes", []), "explorer-sidebar-inner"]
     explorer_view.styles = {
         **getattr(explorer_view, "styles", {}),
-        "flex": "0 0 228px",
-        "width": "228px",
-        "min-width": "228px",
-        "transition": "width 0.15s",
+        "flex": "1 1 auto",
+        "min-width": "0",
         "overflow": "hidden",
     }
 
@@ -439,20 +437,19 @@ def create_app():
         '<div id="explorer-collapse-btn"'
         ' style="width:20px;flex:0 0 20px;background:#1e1b18;border-left:1px solid #3d3834;'
         'cursor:pointer;display:flex;align-items:center;justify-content:center;'
-        'font-size:14px;color:#666;user-select:none;"'
+        'font-size:16px;color:#aaa;user-select:none;"'
         ' title="Toggle explorer"'
         ' onclick="(function(){'
         'var wrap=document.querySelector(\'.explorer-sidebar-wrap\');'
-        'var inner=document.querySelector(\'.explorer-sidebar-inner\');'
         'var btn=document.getElementById(\'explorer-collapse-btn\');'
-        'if(!inner||!wrap)return;'
+        'if(!wrap)return;'
         'var collapsed=wrap.getAttribute(\'data-collapsed\')==\'1\';'
         'if(collapsed){'
-        'inner.style.flex=\'0 0 228px\';inner.style.width=\'228px\';inner.style.minWidth=\'228px\';inner.style.overflow=\'\';'
-        'wrap.style.flex=\'0 0 248px\';wrap.style.width=\'248px\';'
+        'var w=parseInt(wrap.getAttribute(\'data-prev-width\')||\'248\',10);'
+        'wrap.style.flex=\'0 0 \'+w+\'px\';wrap.style.width=w+\'px\';'
         'wrap.setAttribute(\'data-collapsed\',\'0\');btn.textContent=\'\\u2039\';'
         '}else{'
-        'inner.style.flex=\'0 0 0px\';inner.style.width=\'0\';inner.style.minWidth=\'0\';inner.style.overflow=\'hidden\';'
+        'wrap.setAttribute(\'data-prev-width\',wrap.getBoundingClientRect().width|0);'
         'wrap.style.flex=\'0 0 20px\';wrap.style.width=\'20px\';'
         'wrap.setAttribute(\'data-collapsed\',\'1\');btn.textContent=\'\\u203a\';'
         '}})()">'
@@ -469,7 +466,7 @@ def create_app():
         explorer_collapse_btn,
         sizing_mode="stretch_height",
         width=248,
-        styles={"flex": "0 0 248px", "min-width": "0", "min-height": "0", "overflow": "hidden"},
+        styles={"flex": "0 0 248px", "min-width": "20px", "min-height": "0", "overflow": "hidden"},
         css_classes=["explorer-sidebar-wrap"],
     )
 
@@ -553,6 +550,7 @@ def create_app():
     body = pn.Row(
         split_config_pane,
         explorer_sidebar,
+        _split_gutter("explorer-editor"),
         main_panel,
         _split_gutter("main-preview"),
         preview_container,

@@ -1,6 +1,6 @@
-// split_pane.js - v20: 2-pane layout, reads config from window.SPLIT_CONFIG
+// split_pane.js - v21: 2-pane layout + explorer gutter, reads config from window.SPLIT_CONFIG
 (function boot() {
-  window.SPLIT_VERSION = 20;
+  window.SPLIT_VERSION = 21;
 
   if (window.__splitDone) return;
 
@@ -113,6 +113,66 @@
     setFixedWidth(els.main, w);
   }
 
+  var LS_EXPLORER = "4dpapers.pane.explorerWidth";
+  var MIN_EXPLORER = 120;
+
+  function getExplorerEl() {
+    return deepQuerySelector(".explorer-sidebar-wrap");
+  }
+
+  function layoutExplorerFromStorage() {
+    var saved = parseInt(localStorage.getItem(LS_EXPLORER) || "", 10);
+    if (!Number.isFinite(saved)) return;
+    var w = Math.max(MIN_EXPLORER, saved);
+    var el = getExplorerEl();
+    if (!el) return;
+    el.style.setProperty("flex", "0 0 " + w + "px", "important");
+    el.style.setProperty("width", w + "px", "important");
+  }
+
+  function attachExplorerGutter() {
+    var explorerGutter = deepQuerySelector("[class*='split-gutter--between-explorer-editor']");
+    if (!explorerGutter) return;
+
+    var startX = 0;
+    var startW = 0;
+
+    explorerGutter.addEventListener("mousedown", function (e) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var el = getExplorerEl();
+      if (!el) return;
+      startX = e.clientX;
+      startW = el.getBoundingClientRect().width;
+      explorerGutter.classList.add("__split-dragging");
+      document.body.style.cursor = "ew-resize";
+      document.body.style.userSelect = "none";
+
+      function onMove(ev) {
+        var el2 = getExplorerEl();
+        if (!el2) return;
+        var dx = ev.clientX - startX;
+        var w = Math.max(MIN_EXPLORER, startW + dx);
+        el2.style.setProperty("flex", "0 0 " + w + "px", "important");
+        el2.style.setProperty("width", w + "px", "important");
+        el2.setAttribute("data-prev-width", w | 0);
+      }
+      function onUp() {
+        window.removeEventListener("mousemove", onMove, true);
+        window.removeEventListener("mouseup", onUp, true);
+        explorerGutter.classList.remove("__split-dragging");
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        var el3 = getExplorerEl();
+        if (el3) localStorage.setItem(LS_EXPLORER, String(el3.getBoundingClientRect().width | 0));
+        reflow();
+      }
+      window.addEventListener("mousemove", onMove, true);
+      window.addEventListener("mouseup", onUp, true);
+    }, true);
+  }
+
   function init() {
     if (window.__splitDone) return true;
 
@@ -124,7 +184,9 @@
 
     window.__splitDone = true;
     layoutFromStorage(els);
-    setStatus("split: ready v20");
+    layoutExplorerFromStorage();
+    attachExplorerGutter();
+    setStatus("split: ready v21");
 
     var startX = 0;
     var startMainW = 0;
