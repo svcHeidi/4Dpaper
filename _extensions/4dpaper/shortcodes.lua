@@ -259,12 +259,20 @@ local function fourd_image(args, kwargs)
       '</figure>\n' ..
       relay_script)
 
-    -- ── PDF / LaTeX output: embed pre-rendered PNG ────────────────────────────
+    -- ── PDF / LaTeX output: embed vector .pdf if available, else .png ──────────
   else
-    local fig_path = "state/figures/" .. id .. ".png"
-    local f = io.open(fig_path, "r")
-    if f then
-      f:close()
+    local pdf_path = "state/figures/" .. id .. ".pdf"
+    local png_path = "state/figures/" .. id .. ".png"
+    local pf = io.open(pdf_path, "r")
+    local fig_path
+    if pf then
+      pf:close()
+      fig_path = pdf_path
+    else
+      local f2 = io.open(png_path, "r")
+      if f2 then f2:close(); fig_path = png_path end
+    end
+    if fig_path then
       local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, { width = "90%" }))
       return pandoc.Para({ img })
     else
@@ -710,12 +718,20 @@ local function fourd_pvsm(args, kwargs)
       '</figure>\n' ..
       relay_script)
 
-  -- PDF / LaTeX output
+  -- PDF / LaTeX output: embed vector .pdf if available, else .png
   else
-    local fig_path = "state/figures/" .. id .. ".png"
-    local f = io.open(fig_path, "r")
-    if f then
-      f:close()
+    local pdf_path = "state/figures/" .. id .. ".pdf"
+    local png_path = "state/figures/" .. id .. ".png"
+    local pf = io.open(pdf_path, "r")
+    local fig_path
+    if pf then
+      pf:close()
+      fig_path = pdf_path
+    else
+      local f2 = io.open(png_path, "r")
+      if f2 then f2:close(); fig_path = png_path end
+    end
+    if fig_path then
       local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, { width = "90%" }))
       return pandoc.Para({ img })
     else
