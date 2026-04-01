@@ -601,21 +601,71 @@ local function fourd_panel(args, kwargs)
       '</figure>\n' ..
       relay_script)
 
-  -- ── PDF / LaTeX output: embed composite PNG ───────────────────────────────
+  -- ── PDF / LaTeX output: LaTeX minipage grid from manifest ─────────────────
   else
-    local fig_path = "state/figures/" .. id .. ".png"
-    local f = io.open(fig_path, "r")
-    if f then
-      f:close()
-      local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, { width = "90%" }))
-      return pandoc.Para({ img })
-    else
+    local manifest_path = "state/figures/" .. id .. ".manifest.json"
+    local mf = io.open(manifest_path, "r")
+    if not mf then
+      -- Fallback to composite PNG if manifest missing
+      local fig_path = "state/figures/" .. id .. ".png"
+      local f2 = io.open(fig_path, "r")
+      if f2 then
+        f2:close()
+        return pandoc.Para({ pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, { width = "90%" })) })
+      end
       return pandoc.Para({
-        pandoc.Str("[Panel "),
-        pandoc.Code(id),
+        pandoc.Str("[Panel "), pandoc.Code(id),
         pandoc.Str(" — run 'Export PDF' from the dashboard to generate this figure]"),
       })
     end
+    local manifest_str = mf:read("*all"); mf:close()
+
+    -- Parse subfigure IDs: ["id1","id2",...]
+    local subfig_ids = {}
+    for s in manifest_str:gmatch('"subfigures"%s*:%s*%[([^%]]*)%]') do
+      for sub_id in s:gmatch('"([^"]+)"') do
+        table.insert(subfig_ids, sub_id)
+      end
+    end
+    -- Parse column count from layout: "2x1" → ncols=2
+    local ncols_str = manifest_str:match('"layout"%s*:%s*"(%d+)x%d+"') or "1"
+    local ncols = math.max(1, tonumber(ncols_str) or 1)
+    local mp_width = string.format("%.3f", 0.98 / ncols)
+
+    if #subfig_ids == 0 then
+      return pandoc.Para({
+        pandoc.Str("[Panel "), pandoc.Code(id),
+        pandoc.Str(" — manifest empty, run 'Export PDF']"),
+      })
+    end
+
+    local lines = { "\\begin{figure}[h]\n\\centering\n" }
+    for i, sub_id in ipairs(subfig_ids) do
+      local pdf_path = "state/figures/" .. sub_id .. ".pdf"
+      local png_path = "state/figures/" .. sub_id .. ".png"
+      local pf = io.open(pdf_path, "r")
+      local fig_src
+      if pf then pf:close(); fig_src = pdf_path else fig_src = png_path end
+      table.insert(lines, "\\begin{minipage}{" .. mp_width .. "\\textwidth}\n")
+      table.insert(lines, "  \\centering\n")
+      table.insert(lines, "  \\includegraphics[width=\\linewidth]{" .. fig_src .. "}\n")
+      table.insert(lines, "\\end{minipage}")
+      local col_pos = (i - 1) % ncols + 1
+      local is_last_in_row = col_pos == ncols
+      local is_last = i == #subfig_ids
+      if not is_last then
+        if is_last_in_row then
+          table.insert(lines, "\\\\\n")
+        else
+          table.insert(lines, "\\hfill\n")
+        end
+      end
+    end
+    if caption ~= "" then
+      table.insert(lines, "\n\\caption{" .. caption .. "}\n")
+    end
+    table.insert(lines, "\\end{figure}\n")
+    return pandoc.RawBlock("latex", table.concat(lines))
   end
 end
 
@@ -885,19 +935,60 @@ local function fourd_timeseries(args, kwargs)
       '</figure>\n' .. relay_script)
 
   else
-    -- PDF: single composite PNG at state/figures/<id>.png
-    local fig_path = "state/figures/" .. id .. ".png"
-    local f = io.open(fig_path, "r")
-    if f then
-      f:close()
-      local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, {width = "90%"}))
-      return pandoc.Para({img})
-    else
+    -- PDF: LaTeX minipage grid — timeseries is always Nx1, read manifest for IDs
+    local manifest_path = "state/figures/" .. id .. ".manifest.json"
+    local mf = io.open(manifest_path, "r")
+    if not mf then
+      -- Fallback to composite PNG
+      local fig_path = "state/figures/" .. id .. ".png"
+      local f2 = io.open(fig_path, "r")
+      if f2 then
+        f2:close()
+        return pandoc.Para({ pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, { width = "90%" })) })
+      end
       return pandoc.Para({
         pandoc.Str("[Timeseries "), pandoc.Code(id),
         pandoc.Str(" — run 'Export PDF' from the dashboard to generate this figure]"),
       })
     end
+    local manifest_str = mf:read("*all"); mf:close()
+
+    local subfig_ids = {}
+    for s in manifest_str:gmatch('"subfigures"%s*:%s*%[([^%]]*)%]') do
+      for sub_id in s:gmatch('"([^"]+)"') do
+        table.insert(subfig_ids, sub_id)
+      end
+    end
+    local ncols = math.max(1, #subfig_ids)
+    local mp_width = string.format("%.3f", 0.98 / ncols)
+
+    if #subfig_ids == 0 then
+      return pandoc.Para({
+        pandoc.Str("[Timeseries "), pandoc.Code(id),
+        pandoc.Str(" — manifest empty, run 'Export PDF']"),
+      })
+    end
+
+    local lines = { "\\begin{figure}[h]\n\\centering\n" }
+    for i, sub_id in ipairs(subfig_ids) do
+      local pdf_path = "state/figures/" .. sub_id .. ".pdf"
+      local png_path = "state/figures/" .. sub_id .. ".png"
+      local pf = io.open(pdf_path, "r")
+      local fig_src
+      if pf then pf:close(); fig_src = pdf_path else fig_src = png_path end
+      table.insert(lines, "\\begin{minipage}{" .. mp_width .. "\\textwidth}\n")
+      table.insert(lines, "  \\centering\n")
+      table.insert(lines, "  \\includegraphics[width=\\linewidth]{" .. fig_src .. "}\n")
+      table.insert(lines, "\\end{minipage}")
+      if i < #subfig_ids then
+        table.insert(lines, "\\hfill\n")
+      end
+    end
+    if caption ~= "" then
+      table.insert(lines, "\n\\caption{" .. caption .. "}\n")
+    end
+    table.insert(lines, "\\end{figure}\n")
+    return pandoc.RawBlock("latex", table.concat(lines))
   end
 end
 
