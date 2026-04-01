@@ -1,6 +1,6 @@
-// split_pane.js - v21: 2-pane layout + explorer gutter, reads config from window.SPLIT_CONFIG
+// split_pane.js - v22: fix explorer gutter (all 4 flex props) + collapse btn setProperty
 (function boot() {
-  window.SPLIT_VERSION = 21;
+  window.SPLIT_VERSION = 22;
 
   if (window.__splitDone) return;
 
@@ -128,6 +128,41 @@
     if (!el) return;
     el.style.setProperty("flex", "0 0 " + w + "px", "important");
     el.style.setProperty("width", w + "px", "important");
+    el.style.setProperty("min-width", w + "px", "important");
+    el.style.setProperty("max-width", w + "px", "important");
+  }
+
+  function setupCollapseButton() {
+    var btn = deepQuerySelector("#explorer-collapse-btn");
+    if (!btn) return;
+
+    window.__explorerCollapseToggle = function () {
+      var wrap = getExplorerEl();
+      if (!wrap) return;
+      var collapsed = wrap.getAttribute("data-collapsed") === "1";
+      if (collapsed) {
+        var w = parseInt(wrap.getAttribute("data-prev-width") || "248", 10);
+        wrap.style.setProperty("flex", "0 0 " + w + "px", "important");
+        wrap.style.setProperty("width", w + "px", "important");
+        wrap.style.setProperty("min-width", w + "px", "important");
+        wrap.style.setProperty("max-width", w + "px", "important");
+        wrap.setAttribute("data-collapsed", "0");
+        btn.textContent = "\u2039";
+        btn.style.setProperty("width", "24px", "important");
+        btn.style.setProperty("flex", "0 0 24px", "important");
+      } else {
+        wrap.setAttribute("data-prev-width", wrap.getBoundingClientRect().width | 0);
+        wrap.style.setProperty("flex", "0 0 20px", "important");
+        wrap.style.setProperty("width", "20px", "important");
+        wrap.style.setProperty("min-width", "20px", "important");
+        wrap.style.setProperty("max-width", "20px", "important");
+        wrap.setAttribute("data-collapsed", "1");
+        btn.textContent = "\u203a";
+        btn.style.setProperty("width", "20px", "important");
+        btn.style.setProperty("flex", "0 0 20px", "important");
+      }
+      reflow();
+    };
   }
 
   function attachExplorerGutter() {
@@ -156,6 +191,8 @@
         var w = Math.max(MIN_EXPLORER, startW + dx);
         el2.style.setProperty("flex", "0 0 " + w + "px", "important");
         el2.style.setProperty("width", w + "px", "important");
+        el2.style.setProperty("min-width", w + "px", "important");
+        el2.style.setProperty("max-width", w + "px", "important");
         el2.setAttribute("data-prev-width", w | 0);
       }
       function onUp() {
@@ -185,8 +222,9 @@
     window.__splitDone = true;
     layoutFromStorage(els);
     layoutExplorerFromStorage();
+    setupCollapseButton();
     attachExplorerGutter();
-    setStatus("split: ready v21");
+    setStatus("split: ready v22");
 
     var startX = 0;
     var startMainW = 0;

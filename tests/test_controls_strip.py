@@ -215,10 +215,10 @@ class TestControlsStripJs:
         assert "var _iact=null" in html or "var _iact = null" in html
 
     def test_interactor_disabled_on_load(self):
-        """setEnabled(0) injected into _wR callback when show_orientation=True."""
+        """Interactor init now honors the current lock state."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "setEnabled(0)" in html
+        assert "setEnabled(_locked?0:1)" in html or "setEnabled(_locked ? 0 : 1)" in html
 
     def test_interactor_not_disabled_when_orientation_hidden(self):
         """No setEnabled(0) emitted when show_orientation=False (stays free)."""
@@ -419,19 +419,16 @@ class TestControlsStripOrientationLogic:
         assert 'data-dir="0,-1,0"' in draw_body
         assert 'data-dir="0,0,-1"' in draw_body
 
-    def test_iso_button_present(self):
-        """Iso button, id, and flash span present when show_orientation=True."""
+    def test_axis_flash_present(self):
+        """Axis helper flash span remains present with the orientation widget."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "iso" in html
-        assert 'id="cs-btn-iso-fig_vm"' in html
         assert 'id="cs-iso-flash-fig_vm"' in html
 
-    def test_iso_button_absent_when_orientation_hidden(self):
-        """Iso button absent when show_orientation=False."""
+    def test_axis_flash_absent_when_orientation_hidden(self):
+        """Axis flash span is omitted when orientation is hidden."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
-        assert 'cs-btn-iso-' not in html
         assert 'cs-iso-flash-' not in html
 
     def test_iso_cycle_views(self):
@@ -443,31 +440,25 @@ class TestControlsStripOrientationLogic:
         assert "_ISO_NAMES" in html
         assert "_isoIdx" in html
 
-    def test_iso_lock_gate(self):
-        """Iso button listener has lock check before csSetView_ and before _isoIdx= when show_lock_btn=True."""
+    def test_axis_click_lock_gate(self):
+        """Axis click listener keeps the lock gate when show_lock_btn=True."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=True)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
-        btn_pos = js.find('cs-btn-iso-fig_vm')
-        assert btn_pos != -1, "iso button listener not found in JS"
-        btn_section = js[btn_pos:btn_pos + 400]
-        locked_pos = btn_section.find("if(_locked)")
-        setview_pos = btn_section.find("csSetView_fig_vm")
-        idx_pos = btn_section.find("_isoIdx=")
-        assert locked_pos != -1, "if(_locked) not in iso button handler"
-        assert locked_pos < setview_pos, "if(_locked) must come before csSetView_"
-        assert locked_pos < idx_pos, "if(_locked) must come before _isoIdx="
+        click_pos = js.find('_svg.addEventListener("click"')
+        assert click_pos != -1, "axis click listener not found in JS"
+        click_section = js[click_pos:click_pos + 400]
+        assert "if(_locked)" in click_section
 
-    def test_iso_no_lock_gate_when_lock_hidden(self):
-        """Iso button listener has NO lock check when show_lock_btn=False."""
+    def test_axis_click_no_lock_gate_when_lock_hidden(self):
+        """Axis click listener has no lock gate when show_lock_btn=False."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=False)
         js = html.split("<script>", 1)[1] if "<script>" in html else html
-        btn_pos = js.find('cs-btn-iso-fig_vm')
-        assert btn_pos != -1, "iso button listener not found in JS"
-        btn_section = js[btn_pos:btn_pos + 400]
-        assert "if(_locked)" not in btn_section, \
-            "if(_locked) must NOT be in iso button handler when show_lock_btn=False"
+        click_pos = js.find('_svg.addEventListener("click"')
+        assert click_pos != -1, "axis click listener not found in JS"
+        click_section = js[click_pos:click_pos + 400]
+        assert "if(_locked)" not in click_section
 
 
 class TestControlsStripFieldLogic:

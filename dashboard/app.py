@@ -66,10 +66,10 @@ pn.extension(
     sizing_mode="stretch_width",
     template="bootstrap",
     raw_css=[_RAW_CSS],
-    css_files=["/assets/theme.css?v=103"],
+    css_files=["/assets/theme.css?v=106"],
     js_files={
-        "insert_figure": "/assets/insert_figure_overlay.js?v=103",
-        "split_loader": "/assets/split_loader.js?v=103",
+        "insert_figure": "/assets/insert_figure_overlay.js?v=106",
+        "split_loader": "/assets/split_loader.js?v=106",
     },
 )
 
@@ -435,35 +435,23 @@ def create_app():
 
     _EXPLORER_COLLAPSE_BTN_HTML = (
         '<div id="explorer-collapse-btn"'
-        ' style="width:20px;flex:0 0 20px;background:#1e1b18;border-left:1px solid #3d3834;'
+        ' style="width:24px;flex:0 0 24px;background:transparent;'
         'cursor:pointer;display:flex;align-items:center;justify-content:center;'
-        'font-size:16px;color:#aaa;user-select:none;"'
+        'font-size:16px;color:#aaa;user-select:none;transition:color 0.15s ease;"'
         ' title="Toggle explorer"'
-        ' onclick="(function(){'
-        'var wrap=document.querySelector(\'.explorer-sidebar-wrap\');'
-        'var btn=document.getElementById(\'explorer-collapse-btn\');'
-        'if(!wrap)return;'
-        'var collapsed=wrap.getAttribute(\'data-collapsed\')==\'1\';'
-        'if(collapsed){'
-        'var w=parseInt(wrap.getAttribute(\'data-prev-width\')||\'248\',10);'
-        'wrap.style.flex=\'0 0 \'+w+\'px\';wrap.style.width=w+\'px\';'
-        'wrap.setAttribute(\'data-collapsed\',\'0\');btn.textContent=\'\\u2039\';'
-        '}else{'
-        'wrap.setAttribute(\'data-prev-width\',wrap.getBoundingClientRect().width|0);'
-        'wrap.style.flex=\'0 0 20px\';wrap.style.width=\'20px\';'
-        'wrap.setAttribute(\'data-collapsed\',\'1\');btn.textContent=\'\\u203a\';'
-        '}})()">'
+        ' onmouseover="this.style.color=\'#fff\';"'
+        ' onmouseout="this.style.color=\'#aaa\';"'
+        ' onclick="if(window.__explorerCollapseToggle)window.__explorerCollapseToggle();">'
         '\u2039</div>'
     )
     explorer_collapse_btn = pn.pane.HTML(
         _EXPLORER_COLLAPSE_BTN_HTML,
         sizing_mode="stretch_height",
-        width=20,
-        styles={"flex": "0 0 20px", "min-height": "0"},
+        width=24,
+        styles={"flex": "0 0 24px", "min-height": "0"},
     )
     explorer_sidebar = pn.Row(
         explorer_view,
-        explorer_collapse_btn,
         sizing_mode="stretch_height",
         width=248,
         styles={"flex": "0 0 248px", "min-width": "20px", "min-height": "0", "overflow": "hidden"},
@@ -530,6 +518,7 @@ def create_app():
 
     # ── Toolbar ───────────────────────────────────────────────────────────
     toolbar = pn.Row(
+        explorer_collapse_btn,
         pn.pane.HTML(
             '<span class="dash-toolbar-title" '
             'style="font-size:12px;font-weight:600;color:#fff;">4Dpaper</span>',
