@@ -120,7 +120,11 @@ def _build_split_config_script(panels: list[dict], default_panel: str) -> str:
         "previewPanelSelector": ".pane-right",
         "gutterSelector": "[class*='split-gutter--between-main-preview']",
     }
-    return f"<script>window.SPLIT_CONFIG = {json.dumps(config)};</script>"
+    return (
+        f"<script>window.SPLIT_CONFIG = {json.dumps(config)};"
+        "localStorage.removeItem('4dpapers.pane.mainWidth');"
+        "</script>"
+    )
 
 
 def _build_activity_bar_html(panels: list[dict]) -> str:
@@ -417,7 +421,7 @@ def create_app():
         on_file_click=_on_file_click,
         insert_figure_button=insert_figure_btn,
     )
-    explorer_view.sizing_mode = "stretch_both"
+    explorer_view.sizing_mode = "stretch_height"
     explorer_view.styles = {**getattr(explorer_view, "styles", {}), "min-height": "0"}
 
     # ── Explorer as permanent collapsible left sidebar ────────────────────
@@ -426,6 +430,7 @@ def create_app():
         **getattr(explorer_view, "styles", {}),
         "flex": "0 0 228px",
         "width": "228px",
+        "min-width": "228px",
         "transition": "width 0.15s",
         "overflow": "hidden",
     }
@@ -460,7 +465,8 @@ def create_app():
         explorer_view,
         explorer_collapse_btn,
         sizing_mode="stretch_height",
-        styles={"flex": "0 0 auto", "min-height": "0"},
+        width=240,
+        styles={"flex": "0 0 240px", "min-width": "0", "min-height": "0", "overflow": "hidden"},
         css_classes=["explorer-sidebar-wrap"],
     )
 
