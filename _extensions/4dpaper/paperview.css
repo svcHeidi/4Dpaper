@@ -1,0 +1,25 @@
+body {
+  max-width: 700px;
+  margin: 2rem auto;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 11pt;
+  line-height: 1.6;
+  color: #111;
+}
+h1, h2, h3, h4 {
+  font-family: system-ui, Arial, sans-serif;
+}
+figure {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+figure img {
+  width: 100%;
+  display: block;
+}
+figcaption {
+  font-style: italic;
+  font-size: 0.9em;
+  margin-top: 0.4rem;
+  color: #444;
+}

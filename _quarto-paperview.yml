@@ -1,0 +1,7 @@
+format:
+  html:
+    theme: default
+    toc: false
+    embed-resources: false
+    css: _extensions/4dpaper/paperview.css
+    output-file: analysis_report-paperview.html
