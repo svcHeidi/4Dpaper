@@ -880,8 +880,6 @@ def _controls_strip_snippet(
             f'      html+=\'<text x="\'+( tip[0]+dx/len*5).toFixed(1)+\'" y="\'+( tip[1]+dy/len*5+3).toFixed(1)+\'"\'\n'
             f'           +\' \'+ax.hpd+\' font-size="9" fill="\'+ax.lcol+\'" font-family="monospace">\'\n'
             f'           +ax.lbl+\'</text>\';\n'
-            f'      html+=\'<circle cx="\'+tail[0].toFixed(1)+\'" cy="\'+tail[1].toFixed(1)+\'" r="3.5"\'\n'
-            f'           +\' \'+ax.hnd+\' fill="none" stroke="\'+ax.col+\'" stroke-width="1.5"/>\';\n'
             f'    }});\n'
             f'    _svg.innerHTML=html;\n'
             f'  }}\n'
