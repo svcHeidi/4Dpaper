@@ -437,36 +437,39 @@ def create_app():
 
     _EXPLORER_COLLAPSE_BTN_HTML = (
         '<div id="explorer-collapse-btn"'
-        ' style="width:12px;background:#1e1b18;border-left:1px solid #3d3834;'
+        ' style="width:20px;flex:0 0 20px;background:#1e1b18;border-left:1px solid #3d3834;'
         'cursor:pointer;display:flex;align-items:center;justify-content:center;'
-        'font-size:14px;color:#888;user-select:none;flex:0 0 12px;"'
+        'font-size:14px;color:#666;user-select:none;"'
         ' title="Toggle explorer"'
         ' onclick="(function(){'
+        'var wrap=document.querySelector(\'.explorer-sidebar-wrap\');'
         'var inner=document.querySelector(\'.explorer-sidebar-inner\');'
         'var btn=document.getElementById(\'explorer-collapse-btn\');'
-        'if(!inner)return;'
-        'var collapsed=inner.getAttribute(\'data-collapsed\')==\'1\';'
+        'if(!inner||!wrap)return;'
+        'var collapsed=wrap.getAttribute(\'data-collapsed\')==\'1\';'
         'if(collapsed){'
-        'inner.style.flex=\'0 0 228px\';inner.style.width=\'228px\';inner.style.overflow=\'\';'
-        'inner.setAttribute(\'data-collapsed\',\'0\');btn.textContent=\'\\u2039\';'
+        'inner.style.flex=\'0 0 228px\';inner.style.width=\'228px\';inner.style.minWidth=\'228px\';inner.style.overflow=\'\';'
+        'wrap.style.flex=\'0 0 248px\';wrap.style.width=\'248px\';'
+        'wrap.setAttribute(\'data-collapsed\',\'0\');btn.textContent=\'\\u2039\';'
         '}else{'
-        'inner.style.flex=\'0 0 0px\';inner.style.width=\'0\';inner.style.overflow=\'hidden\';'
-        'inner.setAttribute(\'data-collapsed\',\'1\');btn.textContent=\'\\u203a\';'
+        'inner.style.flex=\'0 0 0px\';inner.style.width=\'0\';inner.style.minWidth=\'0\';inner.style.overflow=\'hidden\';'
+        'wrap.style.flex=\'0 0 20px\';wrap.style.width=\'20px\';'
+        'wrap.setAttribute(\'data-collapsed\',\'1\');btn.textContent=\'\\u203a\';'
         '}})()">'
         '\u2039</div>'
     )
     explorer_collapse_btn = pn.pane.HTML(
         _EXPLORER_COLLAPSE_BTN_HTML,
         sizing_mode="stretch_height",
-        width=12,
-        styles={"flex": "0 0 12px", "min-height": "0"},
+        width=20,
+        styles={"flex": "0 0 20px", "min-height": "0"},
     )
     explorer_sidebar = pn.Row(
         explorer_view,
         explorer_collapse_btn,
         sizing_mode="stretch_height",
-        width=240,
-        styles={"flex": "0 0 240px", "min-width": "0", "min-height": "0", "overflow": "hidden"},
+        width=248,
+        styles={"flex": "0 0 248px", "min-width": "0", "min-height": "0", "overflow": "hidden"},
         css_classes=["explorer-sidebar-wrap"],
     )
 
@@ -485,27 +488,8 @@ def create_app():
 
     paper_content, paper_page = build_paper_page(config)
 
-    # ── PANELS config (single source of truth for layout) ─────────────────
-    DEFAULT_PANEL = "editor"
-    PANELS = [
-        {"id": "editor",   "icon": "📝", "label": "Editor",   "content": editor_view},
-        {"id": "settings", "icon": "⚙️", "label": "Settings", "content": settings_view, "bottom": True},
-    ]
-
-    # ── Build panel slots (all rendered, JS shows/hides them) ─────────────
-    panel_slots = []
-    for p in PANELS:
-        initial_display = "flex" if p["id"] == DEFAULT_PANEL else "none"
-        slot = pn.Column(
-            p["content"],
-            sizing_mode="stretch_both",
-            styles={"min-height": "0", "display": initial_display},
-            css_classes=["panel-slot", f"panel-slot--{p['id']}"],
-        )
-        panel_slots.append(slot)
-
     main_panel = pn.Column(
-        *panel_slots,
+        editor_view,
         sizing_mode="stretch_both",
         min_width=200,
         styles={"min-height": "0", "flex": "1 1 auto"},
@@ -536,22 +520,15 @@ def create_app():
         css_classes=["pane-right", "preview-pane"],
     )
 
-    # ── Emit SPLIT_CONFIG before JS runs ──────────────────────────────────
+    # ── Emit SPLIT_CONFIG (selectors only, no panel switching) ───────────
     split_config_pane = pn.pane.HTML(
-        _build_split_config_script(PANELS, DEFAULT_PANEL),
-        width=0,
-        height=0,
-        margin=0,
+        "<script>window.SPLIT_CONFIG={"
+        '"mainPanelSelector":".main-panel",'
+        '"previewPanelSelector":".pane-right",'
+        '"gutterSelector":"[class*=\'split-gutter--between-main-preview\']",'
+        '"panels":[],"defaultPanel":"editor"};</script>',
+        width=0, height=0, margin=0,
         styles={"display": "none"},
-    )
-
-    # ── Activity bar ──────────────────────────────────────────────────────
-    activity_bar_pane = pn.pane.HTML(
-        _build_activity_bar_html(PANELS),
-        sizing_mode="stretch_height",
-        width=42,
-        margin=0,
-        styles={"flex": "0 0 42px", "min-height": "0"},
     )
 
     # ── Toolbar ───────────────────────────────────────────────────────────
@@ -575,7 +552,6 @@ def create_app():
 
     body = pn.Row(
         split_config_pane,
-        activity_bar_pane,
         explorer_sidebar,
         main_panel,
         _split_gutter("main-preview"),
