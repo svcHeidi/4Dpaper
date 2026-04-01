@@ -41,10 +41,16 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
     # embed-resources makes pandoc inline every iframe src (reads & base64s each
     # figure file), which causes 9GB RAM usage and 3-min builds.
     # In the app the HTML is always served locally so standalone is not needed.
-    cmd = ["quarto", "render", str(qmd_path), "--to", output_format]
+    cmd = ["quarto", "render", str(qmd_path), "--to", "html"]
     if output_format == "html":
         env["FOURD_APP_MODE"] = "1"
         cmd += ["--profile", "apphtml"]
+    elif output_format == "paperview":
+        env["FOURD_APP_MODE"] = "1"
+        env["FOURD_PAPER_VIEW"] = "1"
+        cmd += ["--profile", "paperview"]
+    else:
+        cmd = ["quarto", "render", str(qmd_path), "--to", output_format]
 
     proc = subprocess.Popen(
         cmd,

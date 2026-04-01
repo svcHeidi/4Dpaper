@@ -90,3 +90,31 @@ class TestLoadCameraState:
         from dashboard.utils import load_camera_state
         result = load_camera_state(tmp_path / "no_such_file.json")
         assert result is None
+
+
+class TestRunQuartoRenderPaperview:
+    def test_paperview_sets_env_vars_and_profile(self, tmp_path):
+        from unittest.mock import patch, MagicMock
+        from dashboard.utils import run_quarto_render
+
+        qmd = tmp_path / "paper.qmd"
+        qmd.write_text("# Test\n")
+        captured = {}
+
+        def fake_popen(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["env"] = kwargs.get("env", {})
+            proc = MagicMock()
+            proc.stdout.__iter__ = lambda s: iter([])
+            proc.wait.return_value = None
+            proc.returncode = 0
+            return proc
+
+        with patch("subprocess.Popen", fake_popen):
+            run_quarto_render(qmd, [], output_format="paperview")
+
+        assert "--profile" in captured["cmd"]
+        profile_idx = captured["cmd"].index("--profile")
+        assert captured["cmd"][profile_idx + 1] == "paperview"
+        assert captured["env"].get("FOURD_PAPER_VIEW") == "1"
+        assert captured["env"].get("FOURD_APP_MODE") == "1"
