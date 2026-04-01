@@ -420,6 +420,50 @@ def create_app():
     explorer_view.sizing_mode = "stretch_both"
     explorer_view.styles = {**getattr(explorer_view, "styles", {}), "min-height": "0"}
 
+    # ── Explorer as permanent collapsible left sidebar ────────────────────
+    explorer_view.css_classes = [*getattr(explorer_view, "css_classes", []), "explorer-sidebar-inner"]
+    explorer_view.styles = {
+        **getattr(explorer_view, "styles", {}),
+        "flex": "0 0 228px",
+        "width": "228px",
+        "transition": "width 0.15s",
+        "overflow": "hidden",
+    }
+
+    _EXPLORER_COLLAPSE_BTN_HTML = (
+        '<div id="explorer-collapse-btn"'
+        ' style="width:12px;background:#1e1b18;border-left:1px solid #3d3834;'
+        'cursor:pointer;display:flex;align-items:center;justify-content:center;'
+        'font-size:14px;color:#888;user-select:none;flex:0 0 12px;"'
+        ' title="Toggle explorer"'
+        ' onclick="(function(){'
+        'var inner=document.querySelector(\'.explorer-sidebar-inner\');'
+        'var btn=document.getElementById(\'explorer-collapse-btn\');'
+        'if(!inner)return;'
+        'var collapsed=inner.getAttribute(\'data-collapsed\')==\'1\';'
+        'if(collapsed){'
+        'inner.style.flex=\'0 0 228px\';inner.style.width=\'228px\';inner.style.overflow=\'\';'
+        'inner.setAttribute(\'data-collapsed\',\'0\');btn.textContent=\'\\u2039\';'
+        '}else{'
+        'inner.style.flex=\'0 0 0px\';inner.style.width=\'0\';inner.style.overflow=\'hidden\';'
+        'inner.setAttribute(\'data-collapsed\',\'1\');btn.textContent=\'\\u203a\';'
+        '}})()">'
+        '\u2039</div>'
+    )
+    explorer_collapse_btn = pn.pane.HTML(
+        _EXPLORER_COLLAPSE_BTN_HTML,
+        sizing_mode="stretch_height",
+        width=12,
+        styles={"flex": "0 0 12px", "min-height": "0"},
+    )
+    explorer_sidebar = pn.Row(
+        explorer_view,
+        explorer_collapse_btn,
+        sizing_mode="stretch_height",
+        styles={"flex": "0 0 auto", "min-height": "0"},
+        css_classes=["explorer-sidebar-wrap"],
+    )
+
     editor_view = pn.Column(
         tab_bar,
         editor,
@@ -436,9 +480,8 @@ def create_app():
     paper_content, paper_page = build_paper_page(config)
 
     # ── PANELS config (single source of truth for layout) ─────────────────
-    DEFAULT_PANEL = "explorer"
+    DEFAULT_PANEL = "editor"
     PANELS = [
-        {"id": "explorer", "icon": "📁", "label": "Files",    "content": explorer_view},
         {"id": "editor",   "icon": "📝", "label": "Editor",   "content": editor_view},
         {"id": "settings", "icon": "⚙️", "label": "Settings", "content": settings_view, "bottom": True},
     ]
@@ -527,6 +570,7 @@ def create_app():
     body = pn.Row(
         split_config_pane,
         activity_bar_pane,
+        explorer_sidebar,
         main_panel,
         _split_gutter("main-preview"),
         preview_container,
