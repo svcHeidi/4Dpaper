@@ -1158,7 +1158,7 @@ def generate_png_figure(
 
     surface = mesh.extract_surface(algorithm='dataset_surface')
 
-    pl = pv.Plotter(off_screen=True, window_size=(1920, 1080))
+    pl = pv.Plotter(off_screen=True, window_size=(900, 600))
     pl.background_color = background if background != "transparent" else "white"
 
     if field and (field in surface.point_data or field in surface.cell_data):
@@ -1942,7 +1942,7 @@ def generate_video_figure(
     mesh = sim.get_mesh(frame_idx)
     if mesh is not None:
         surface = mesh.extract_surface(algorithm="dataset_surface")
-        pl = pv.Plotter(off_screen=True, window_size=(1920, 1080))
+        pl = pv.Plotter(off_screen=True, window_size=(900, 600))
         pl.background_color = "#1a1a2e"
         if field and (field in surface.point_data or field in surface.cell_data):
             pl.add_mesh(

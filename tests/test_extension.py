@@ -976,3 +976,61 @@ class TestPanelEndToEnd:
         assert img.size == (sub_img.size[0] * 2, sub_img.size[1] * 1), (
             f"Expected {(sub_img.size[0]*2, sub_img.size[1])}, got {img.size}"
         )
+
+
+class TestGeneratePngWindowSize:
+    """Verify generate_png_figure uses 900x600 (matching HTML aspect ratio)."""
+
+    def test_png_figure_uses_900x600(self, tmp_path, monkeypatch):
+        import importlib.util
+        import sys
+        from pathlib import Path
+        from unittest.mock import MagicMock
+
+        # Stub pyvista BEFORE loading the module
+        fake_pv = MagicMock()
+        fake_pl = MagicMock()
+        fake_pl.screenshot.return_value = None
+        fake_pv.Plotter.return_value = fake_pl
+        monkeypatch.setitem(sys.modules, "pyvista", fake_pv)
+
+        # Stub SimulationData
+        fake_sim = MagicMock()
+        fake_sim.n_steps = 3
+        fake_mesh = MagicMock()
+        fake_surface = MagicMock()
+        fake_surface.point_data.__contains__ = lambda self, k: True
+        fake_surface.point_data.__getitem__ = lambda self, k: MagicMock()
+        fake_surface.cell_data.__contains__ = lambda self, k: False
+        fake_mesh.extract_surface.return_value = fake_surface
+        fake_sim.get_mesh.return_value = fake_mesh
+        fake_loader_mod = MagicMock()
+        fake_loader_mod.SimulationData = MagicMock(
+            return_value=MagicMock(load=MagicMock(return_value=fake_sim))
+        )
+        monkeypatch.setitem(sys.modules, "scripts.data_loader", fake_loader_mod)
+
+        spec = importlib.util.spec_from_file_location(
+            "fourDpaper_ws",
+            Path(__file__).parent.parent / "_extensions" / "4dpaper" / "4dpaper.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        out_png = tmp_path / "fig.png"
+
+        try:
+            mod.generate_png_figure(
+                src_path=Path("/fake/case.foam"),
+                field="Vm",
+                time_spec="mid",
+                output_path=out_png,
+                fig_id="fig-test",
+            )
+        except Exception:
+            pass  # Only care about the Plotter call args
+
+        fake_pv.Plotter.assert_called_once()
+        _, kwargs = fake_pv.Plotter.call_args
+        assert kwargs.get("window_size") == (900, 600), (
+            f"Expected (900, 600) but got {kwargs.get('window_size')}"
+        )
