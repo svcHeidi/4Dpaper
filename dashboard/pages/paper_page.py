@@ -1,4 +1,4 @@
-"""Paper tab: iframe preview + Rebuild HTML + Export PDF."""
+"""Paper tab: iframe preview + Rebuild HTML + Export PDF + Paper View auto-rebuild."""
 from __future__ import annotations
 
 import html as html_mod
@@ -27,6 +27,11 @@ class PaperPage(param.Parameterized):
         self._status_text = ""
         self._status_type = "info"
         self._build_start: float | None = None
+
+        # Paper-view state
+        self._paper_view_enabled = False
+        self._paper_view_building = False
+        self._paper_view_cb = None
 
         self._rebuild_html_btn = pn.widgets.Button(
             name="HTML",
@@ -73,11 +78,66 @@ class PaperPage(param.Parameterized):
             sizing_mode="stretch_both",
         )
 
+        self._paper_view_iframe = pn.pane.HTML(
+            f'<div style="border:1px dashed {THEME["border_subtle"]};padding:2.5rem 1.5rem;'
+            f'text-align:center;color:{THEME["text_muted"]};border-radius:6px;'
+            f'background:{THEME["bg_panel"]};font-size:13px;line-height:1.5;">'
+            f'<strong style="color:{THEME["text_primary"]};">Paper View</strong><br><br>'
+            f'Open this tab to start auto-rebuilding every 30 s.</div>',
+            sizing_mode="stretch_both",
+        )
+
         self._pdf_link = pn.pane.HTML("", sizing_mode="stretch_width", margin=(2, 4))
         self._set_pdf_link_if_exists()
 
         self._rebuild_html_btn.on_click(self._on_rebuild_html)
         self._export_pdf_btn.on_click(self._on_export_pdf)
+
+    # ── Paper-view auto-rebuild ───────────────────────────────────────────────
+
+    def _enable_paper_view(self) -> None:
+        """Called once when the user first opens the Paper View tab."""
+        if self._paper_view_enabled:
+            return
+        self._paper_view_enabled = True
+        self._paper_view_cb = pn.state.add_periodic_callback(
+            self._tick_paper_view,
+            period=30_000,
+        )
+        # Trigger an immediate first build
+        self._tick_paper_view()
+
+    def _tick_paper_view(self) -> None:
+        if self._paper_view_building or self.is_building:
+            return
+        self._paper_view_building = True
+        threading.Thread(target=self._run_paper_view_build, daemon=True).start()
+
+    def _run_paper_view_build(self) -> None:
+        log: list[str] = []
+        try:
+            exit_code = run_quarto_render(self._qmd_path, log, output_format="paperview")
+        except Exception as exc:
+            exit_code = 1
+            log.append(f"[ERROR] {exc}")
+        finally:
+            self._paper_view_building = False
+
+        if exit_code == 0:
+            ts = int(time.time())
+            doc = pn.state.curdoc
+            if doc is not None:
+                doc.add_next_tick_callback(lambda: self._refresh_paper_view(ts))
+
+    def _refresh_paper_view(self, ts: int) -> None:
+        self._paper_view_iframe.object = (
+            f'<iframe src="/output/analysis_report-paperview.html?t={ts}" '
+            f'width="100%" frameborder="0" '
+            f'style="border:none;border-radius:4px;width:100%;height:100%;'
+            f'display:block;background:{THEME["bg_app"]};"></iframe>'
+        )
+
+    # ── Existing HTML / PDF build logic ──────────────────────────────────────
 
     def _set_pdf_link_if_exists(self) -> None:
         pdf_path = self._qmd_path.parent / "_output" / "analysis_report.pdf"
@@ -301,6 +361,8 @@ class PaperPage(param.Parameterized):
         if self.is_building:
             self._update_overlay(self._status_text, self._status_type)
 
+    # ── Public API ────────────────────────────────────────────────────────────
+
     @property
     def rebuild_btn(self) -> pn.widgets.Button:
         return self._rebuild_html_btn
@@ -314,7 +376,8 @@ class PaperPage(param.Parameterized):
         return self._pdf_link
 
     def layout(self) -> pn.Column:
-        return pn.Column(
+        # Interactive HTML tab
+        html_tab = pn.Column(
             pn.Column(
                 self._overlay,
                 self._iframe,
@@ -325,6 +388,29 @@ class PaperPage(param.Parameterized):
             sizing_mode="stretch_both",
             min_height=0,
         )
+
+        # Paper View tab
+        paper_tab = pn.Column(
+            self._paper_view_iframe,
+            sizing_mode="stretch_both",
+            min_height=0,
+        )
+
+        tabs = pn.Tabs(
+            ("Interactive HTML", html_tab),
+            ("Paper View", paper_tab),
+            sizing_mode="stretch_both",
+            min_height=0,
+        )
+
+        # Trigger paper-view rebuild when user switches to that tab (index 1)
+        def _on_tab_change(event):
+            if event.new == 1:
+                self._enable_paper_view()
+
+        tabs.param.watch(_on_tab_change, "active")
+
+        return pn.Column(tabs, sizing_mode="stretch_both", min_height=0)
 
 
 def build_paper_page(config: dict[str, Any]) -> tuple[pn.Column, PaperPage]:
