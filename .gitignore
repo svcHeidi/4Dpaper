@@ -22,6 +22,7 @@ state/figures/*.bin
 state/figures/*.vtu
 state/figures/*.u3d
 state/figures/*.prc
+state/figures/*.pdf
 state/figures/*.pdf3d.tex
 state/figures/*-times.json
 state/figures/*manifest.json
@@ -31,6 +32,7 @@ state/fourd_lua_debug.txt
 _freeze/**/libs/
 _output/*.pdf
 _output/*_files/
+_output/_extensions/
 _output/state/
 _output/test_*.html
 _output/test_*_files/
@@ -38,7 +40,8 @@ build_log*.txt
 render_output.log
 server_pid.txt
 
-# Local tool/editor folders
+# Local tool/editor folders and planning docs
+docs/superpowers/plans/
 .claude/
 .cursor/
 .superpowers/

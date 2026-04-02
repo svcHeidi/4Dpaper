@@ -281,14 +281,26 @@ EXPLORER_LIST_BTN_STYLES: dict[str, str] = {
     "font-weight": "400",
 }
 
-_SIDEBAR_STYLES = {
+_SIDEBAR_CONTENT_STYLES = {
     "background": THEME["bg_sidebar"],
-    "border-right": f"1px solid {THEME['border_subtle']}",
     "padding": f"4px {_EXPLORER_PAD_X}px 6px",
     "overflow-x": "hidden",
     "overflow-y": "auto",
     "box-sizing": "border-box",
+    "flex": "1 1 auto",
+    "min-height": "0",
 }
+_SIDEBAR_FRAME_STYLES = {
+    "background": THEME["bg_sidebar"],
+    "border-right": f"1px solid {THEME['border_subtle']}",
+    "overflow": "hidden",
+    "box-sizing": "border-box",
+    "min-height": "0",
+}
+_EXPLORER_LABEL_SPAN = (
+    'style="font-size:11px;font-weight:600;letter-spacing:0.07em;'
+    'text-transform:uppercase;color:#c8dff0;user-select:none;white-space:nowrap;"'
+)
 
 
 def _row_margin(depth: int) -> tuple[int, int, int, int]:
@@ -309,7 +321,6 @@ def build_file_tree_sidebar(
     If *insert_figure_button* is given, it is placed directly under **Refresh**
     (same row styling as Refresh: outline + explorer shadow stylesheet).
     """
-    root_label = project_root.resolve().name.upper()
     tree_container = pn.Column(sizing_mode="stretch_width")
 
     def _render_tree(directory: Path, depth: int = 0):
@@ -322,7 +333,7 @@ def build_file_tree_sidebar(
 
                 toggle = pn.widgets.Button(
                     name=nm,
-                    icon="chevron-right",
+                    icon="folder",
                     icon_size=_EXPLORER_ICON_SIZE,
                     button_type="default",
                     button_style="outline",
@@ -351,10 +362,10 @@ def build_file_tree_sidebar(
                         if len(col) == 0:
                             col.extend(_render_tree(d, dep + 1))
                         col.visible = True
-                        btn.param.update(icon="chevron-down")
+                        btn.param.update(icon="folder-open")
                     else:
                         col.visible = False
-                        btn.param.update(icon="chevron-right")
+                        btn.param.update(icon="folder")
 
                 toggle.on_click(_toggle_dir)
                 widgets.append(toggle)
@@ -415,25 +426,37 @@ def build_file_tree_sidebar(
     refresh_btn.on_click(_on_refresh)
     tree_container.extend(_render_tree(project_root))
 
-    title_esc = html_mod.escape(root_label)
-    explorer_top: list[Any] = [
-        pn.pane.HTML(
-            f'<div class="dash-explorer-section-title">'
-            f'<i class="bi bi-chevron-down dash-explorer-title-chevron"></i>'
-            f"<span>{title_esc}</span></div>",
-            sizing_mode="stretch_width",
-        ),
-        refresh_btn,
-    ]
+    # Fixed header (sits outside the scrollable area)
+    explorer_header = pn.Row(
+        pn.pane.HTML(f'<span {_EXPLORER_LABEL_SPAN}>EXPLORER</span>', margin=0),
+        sizing_mode="stretch_width",
+        height=28,
+        margin=0,
+        styles={
+            "padding": "0 10px",
+            "background": THEME["toolbar_bg"],
+            "border-bottom": f"1px solid {THEME['border_subtle']}",
+            "align-items": "center",
+        },
+    )
+
+    # Scrollable content area
+    content_items: list[Any] = [refresh_btn]
     if insert_figure_button is not None:
-        explorer_top.append(insert_figure_button)
-    explorer_top.extend([
-        pn.layout.Divider(margin=(2, 0, 4, 0)),
-        tree_container,
-    ])
+        content_items.append(insert_figure_button)
+    content_items.extend([pn.layout.Divider(margin=(2, 0, 4, 0)), tree_container])
+
+    content_col = pn.Column(
+        *content_items,
+        width=EXPLORER_WIDTH,
+        sizing_mode="stretch_both",
+        styles=_SIDEBAR_CONTENT_STYLES,
+    )
+
     return pn.Column(
-        *explorer_top,
+        explorer_header,
+        content_col,
         width=EXPLORER_WIDTH,
         sizing_mode="stretch_height",
-        styles=_SIDEBAR_STYLES,
+        styles=_SIDEBAR_FRAME_STYLES,
     )

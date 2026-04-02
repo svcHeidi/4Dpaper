@@ -66,10 +66,10 @@ pn.extension(
     sizing_mode="stretch_width",
     template="bootstrap",
     raw_css=[_RAW_CSS],
-    css_files=["/assets/theme.css?v=106"],
+    css_files=["/assets/theme.css?v=117"],
     js_files={
-        "insert_figure": "/assets/insert_figure_overlay.js?v=106",
-        "split_loader": "/assets/split_loader.js?v=106",
+        "insert_figure": "/assets/insert_figure_overlay.js?v=113",
+        "split_loader": "/assets/split_loader.js?v=113",
     },
 )
 
@@ -458,7 +458,26 @@ def create_app():
         css_classes=["explorer-sidebar-wrap"],
     )
 
+    _HDR_STYLES = {
+        "background": THEME["toolbar_bg"],
+        "border-bottom": f"1px solid {THEME['border_subtle']}",
+        "padding": "0 10px",
+        "align-items": "center",
+        "gap": "0",
+    }
+    _LABEL_SPAN = (
+        'style="font-size:11px;font-weight:600;letter-spacing:0.07em;'
+        'text-transform:uppercase;color:#c8dff0;user-select:none;white-space:nowrap;"'
+    )
+    editor_section_header = pn.Row(
+        pn.pane.HTML(f'<span {_LABEL_SPAN}>EDITOR</span>', margin=0),
+        sizing_mode="stretch_width",
+        height=28,
+        margin=0,
+        styles=_HDR_STYLES,
+    )
     editor_view = pn.Column(
+        editor_section_header,
         tab_bar,
         editor,
         editor_placeholder,
@@ -481,19 +500,45 @@ def create_app():
         css_classes=["main-panel"],
     )
 
-    preview_toolbar = pn.Row(
+    # Group build buttons in a pill-like container
+    build_group = pn.Row(
         paper_page.rebuild_btn,
         paper_page.export_btn,
-        paper_page.pdf_link,
-        sizing_mode="stretch_width",
-        height=32,
+        sizing_mode="fixed",
+        width=260,
+        height=26,
         margin=0,
         styles={
-            "padding": "2px 6px",
+            "background": f"rgba(255,255,255,0.05)",
+            "border": f"1px solid rgba(255,255,255,0.1)",
+            "border-radius": "5px",
+            "padding": "2px",
+            "gap": "2px",
+            "display": "flex",
+            "flex-direction": "row",
+            "align-items": "center",
+            "justify-content": "flex-start",
+            "flex": "0 0 260px",
+            "min-height": "26px",
+        },
+    )
+
+    preview_toolbar = pn.Row(
+        pn.pane.HTML(f'<span {_LABEL_SPAN}>PREVIEW</span>', margin=(0, 8, 0, 0)),
+        build_group,
+        pn.Spacer(sizing_mode="stretch_width"),
+        paper_page.view_toggle,
+        paper_page.pdf_link,
+        sizing_mode="stretch_width",
+        height=36,
+        margin=0,
+        styles={
+            "padding": "4px 10px",
             "background": THEME["toolbar_bg"],
             "border-bottom": f"1px solid {THEME['border_subtle']}",
             "align-items": "center",
-            "flex": "0 0 32px",
+            "flex": "0 0 36px",
+            "gap": "6px",
         },
     )
     preview_container = pn.Column(

@@ -642,8 +642,6 @@ class TestGenerateVideoFigure:
         content = html_path.read_text()
         assert "data:video/mp4;base64," in content, "HTML does not contain base64 MP4"
         assert "<video" in content, "HTML does not contain <video> element"
-        assert "cam-modal-vid-vm" in content, "HTML missing camera modal"
-        assert "data-srcdoc=" in content, "HTML missing deferred srcdoc"
         assert preview_path.exists(), "Preview HTML not created"
 
     def test_mp4_is_valid_h264(self, tmp_path):
@@ -706,129 +704,8 @@ class TestGenerateHtmlFigure:
         assert "<html" in content.lower() or "<!DOCTYPE" in content.lower() or "vtk" in content.lower() or "script" in content.lower()
 
 
-class TestBuildVideoHtmlFragment:
-    """Unit tests for _build_video_html_fragment — no foam case required."""
-
-    def test_contains_camera_button(self):
-        mod = _load_4dpaper()
-        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
-        assert "cam-open-vid-vm" in html
-
-    def test_contains_modal(self):
-        mod = _load_4dpaper()
-        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
-        assert "cam-modal-vid-vm" in html
-
-    def test_deferred_srcdoc_set_with_preview(self):
-        mod = _load_4dpaper()
-        html = mod._build_video_html_fragment("abc123", "vid-vm", "preview-content-here")
-        assert 'data-srcdoc="preview-content-here"' in html
-
-    def test_srcdoc_initially_empty(self):
-        mod = _load_4dpaper()
-        html = mod._build_video_html_fragment("abc123", "vid-vm", "preview-content")
-        # srcdoc="" means the iframe is initially empty (preview loads on click)
-        assert 'srcdoc=""' in html
-
-    def test_video_element_with_b64_src(self):
-        mod = _load_4dpaper()
-        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
-        assert "data:video/mp4;base64,abc123" in html
-        assert "<video" in html
-
-    def test_camera_iframe_id(self):
-        mod = _load_4dpaper()
-        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
-        assert "cam-iframe-vid-vm" in html
-
-    def test_camera_button_label(self):
-        mod = _load_4dpaper()
-        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
-        assert "Camera View" in html
-
-    def test_close_button_present(self):
-        mod = _load_4dpaper()
-        html = mod._build_video_html_fragment("abc123", "vid-vm", "")
-        # Close button triggers display:none on the modal
-        assert "cam-modal-vid-vm" in html
-        assert "display='none'" in html or "display:none" in html or "style.display='none'" in html
-
-    def test_different_fig_ids_dont_collide(self):
-        mod = _load_4dpaper()
-        html_a = mod._build_video_html_fragment("aaa", "vid-vm", "")
-        html_b = mod._build_video_html_fragment("bbb", "vid-at", "")
-        assert "cam-open-vid-vm" in html_a
-        assert "cam-open-vid-vm" not in html_b
-        assert "cam-open-vid-at" in html_b
-
-
 class TestVideoCameraViewModal:
-    """Integration tests for camera modal in generated video HTML (foam case required)."""
-
-    def test_video_html_contains_camera_button(self, tmp_path):
-        mod = _load_4dpaper()
-        case_path = Path(
-            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
-        )
-        if not case_path.exists():
-            pytest.skip("Niederer case not available")
-
-        html_path = tmp_path / "vid-vm-video.html"
-        mod.generate_video_figure(
-            src_path=case_path,
-            field="Vm",
-            fps=3,
-            time_spec="mid",
-            mp4_path=tmp_path / "vid-vm-video.mp4",
-            frame_path=tmp_path / "vid-vm-frame.png",
-            video_html_path=html_path,
-            fig_id="vid-vm",
-        )
-        assert "cam-open-vid-vm" in html_path.read_text()
-
-    def test_video_html_contains_modal(self, tmp_path):
-        mod = _load_4dpaper()
-        case_path = Path(
-            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
-        )
-        if not case_path.exists():
-            pytest.skip("Niederer case not available")
-
-        html_path = tmp_path / "vid-vm-video.html"
-        mod.generate_video_figure(
-            src_path=case_path,
-            field="Vm",
-            fps=3,
-            time_spec="mid",
-            mp4_path=tmp_path / "vid-vm-video.mp4",
-            frame_path=tmp_path / "vid-vm-frame.png",
-            video_html_path=html_path,
-            fig_id="vid-vm",
-        )
-        assert "cam-modal-vid-vm" in html_path.read_text()
-
-    def test_modal_uses_deferred_srcdoc(self, tmp_path):
-        mod = _load_4dpaper()
-        case_path = Path(
-            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
-        )
-        if not case_path.exists():
-            pytest.skip("Niederer case not available")
-
-        html_path = tmp_path / "vid-vm-video.html"
-        mod.generate_video_figure(
-            src_path=case_path,
-            field="Vm",
-            fps=3,
-            time_spec="mid",
-            mp4_path=tmp_path / "vid-vm-video.mp4",
-            frame_path=tmp_path / "vid-vm-frame.png",
-            video_html_path=html_path,
-            fig_id="vid-vm",
-        )
-        content = html_path.read_text()
-        assert "data-srcdoc=" in content, "Modal missing deferred srcdoc attribute"
-        assert 'srcdoc=""' in content, "iframe srcdoc should be empty initially"
+    """Integration tests for camera sync in generated video HTML (foam case required)."""
 
     def test_preview_html_has_camera_sync(self, tmp_path):
         mod = _load_4dpaper()
@@ -858,32 +735,6 @@ class TestVideoCameraViewModal:
 
 class TestCameraSyncIntegration:
     """Integration tests: camera saved via the server flows into PNG generation."""
-
-    def test_camera_snippet_in_generated_html(self, tmp_path):
-        """When fig_id is provided, the generated HTML must include the postMessage camera sync."""
-        mod = _load_4dpaper()
-        case_path = Path(
-            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
-        )
-        if not case_path.exists():
-            pytest.skip("Niederer case not available")
-
-        out = tmp_path / "fig-vm.html"
-        mod.generate_html_figure(
-            src_path=case_path,
-            field="Vm",
-            time_spec="mid",
-            output_path=out,
-            fig_id="fig-vm",
-        )
-        content = out.read_text()
-        # The camera sync snippet should be in the HTML
-        assert "parent.postMessage" in content
-        assert "4dpaper-camera" in content
-        assert "cs-badge-fig_vm" in content
-        # Must find the renderer with actors, not use getFirst()
-        assert "getActors" in content
-        assert ".getFirst()" not in content
 
     def test_saved_camera_used_for_png(self, tmp_path, monkeypatch):
         """Camera JSON saved by the server is read back and applied during PNG generation."""

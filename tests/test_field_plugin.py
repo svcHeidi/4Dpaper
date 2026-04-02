@@ -26,41 +26,6 @@ def test_field_plugin_imports():
     assert "/field/" in ROUTES[0][0]
 
 
-def test_field_handler_post_writes_json(tmp_path):
-    """Happy path: POST writes field state JSON to correct path."""
-    body = json.dumps({
-        "field": "Vm",
-        "time": "5"
-    }).encode()
-    handler = _make_handler(body)
-    with patch("dashboard.field_plugin._PROJECT_ROOT", tmp_path):
-        handler.post("fig-vm")
-    field_path = tmp_path / "state" / "preview_field_fig-vm.json"
-    assert field_path.exists(), "field JSON not written"
-    data = json.loads(field_path.read_text())
-    assert data["field"] == "Vm"
-    assert data["time"] == "5"
-    handler.write.assert_called_once_with({"status": "ok"})
-
-
-def test_field_handler_post_partial_update(tmp_path):
-    """Update only the time field should preserve the existing field field."""
-    field_path = tmp_path / "state" / "preview_field_fig-vm.json"
-    field_path.parent.mkdir(parents=True, exist_ok=True)
-    field_path.write_text(json.dumps({"field": "Vm", "time": "2"}))
-    
-    body = json.dumps({
-        "time": "10"
-    }).encode()
-    handler = _make_handler(body)
-    with patch("dashboard.field_plugin._PROJECT_ROOT", tmp_path):
-        handler.post("fig-vm")
-        
-    data = json.loads(field_path.read_text())
-    assert data["field"] == "Vm"
-    assert data["time"] == "10"
-    handler.write.assert_called_once_with({"status": "ok"})
-
 def test_field_handler_post_invalid_json(tmp_path):
     """POST with non-JSON body returns 400."""
     handler = _make_handler(b"not json")

@@ -805,24 +805,56 @@ local function fourd_timeseries(args, kwargs)
   end
 
   if quarto.doc.isFormat("html") then
-    -- Paper-view: embed composite PNG instead of interactive timeseries grid
+    -- Paper-view: embed individual subfigure PNGs in a scrollable row so each
+    -- cell is readable (the composite PNG would be tiny at 700 px page width).
     if _paper_view then
-      local png_path = "state/figures/" .. id .. ".png"
-      local pf = io.open(png_path, "r")
-      if pf then pf:close() end
       local cap_html = caption ~= "" and
         '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
         caption .. '</figcaption>\n' or ""
-      if not pf then
+
+      -- Try to read the manifest for subfigure IDs
+      local manifest_path = "state/figures/" .. id .. ".manifest.json"
+      local mf = io.open(manifest_path, "r")
+      local subfig_ids = {}
+      if mf then
+        local ms = mf:read("*all"); mf:close()
+        for s in ms:gmatch('"subfigures"%s*:%s*%[([^%]]*)%]') do
+          for sub_id in s:gmatch('"([^"]+)"') do
+            table.insert(subfig_ids, sub_id)
+          end
+        end
+      end
+
+      if #subfig_ids == 0 then
+        -- Fallback: composite PNG (may look small but better than nothing)
+        local pf = io.open("state/figures/" .. id .. ".png", "r")
+        if pf then pf:close()
+          return pandoc.RawBlock("html",
+            '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+            '<img src="/state/figures/' .. id .. '.png" style="width:100%;display:block;">\n' ..
+            cap_html .. '</figure>')
+        end
         return pandoc.RawBlock("html",
           '<figure class="fourd-figure" style="margin:1.5rem 0;">' ..
           '<div style="border:2px dashed #888;padding:1rem;text-align:center;">' ..
           '⚠ Timeseries <code>' .. id .. '</code> not rendered — click Rebuild HTML</div>' ..
           cap_html .. '</figure>')
       end
+
+      -- Build a flex row: each cell has a minimum width of 240 px so images are
+      -- readable; the row scrolls horizontally when the page is too narrow.
+      local cell_min = 240
+      local imgs = ""
+      for _, sub_id in ipairs(subfig_ids) do
+        imgs = imgs ..
+          '<img src="/state/figures/' .. sub_id .. '.png" ' ..
+          'style="flex:1 1 ' .. cell_min .. 'px;min-width:' .. cell_min .. 'px;' ..
+          'height:auto;display:block;">\n'
+      end
       return pandoc.RawBlock("html",
         '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-        '<img src="/state/figures/' .. id .. '.png" style="width:100%;display:block;">\n' ..
+        '<div style="display:flex;flex-wrap:nowrap;gap:4px;overflow-x:auto;">\n' ..
+        imgs .. '</div>\n' ..
         cap_html .. '</figure>')
     end
 
