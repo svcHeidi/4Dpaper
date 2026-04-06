@@ -30,12 +30,12 @@ EXPLORER_BUTTON_STYLESHEETS = """
   box-shadow: none !important;
   padding: 0 4px 0 2px !important;
   margin: 0 !important;
-  min-height: 22px !important;
+  min-height: 28px !important;
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
-  line-height: 20px !important;
-  font-size: 11px !important;
+  line-height: 26px !important;
+  font-size: 13px !important;
   font-weight: 400 !important;
   text-align: left !important;
   justify-content: flex-start !important;

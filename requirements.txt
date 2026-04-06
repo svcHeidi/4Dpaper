@@ -18,3 +18,5 @@ matplotlib
 pyvista   # includes VTK bindings for .foam / .vtk / .vtu / .pvd
 
 pyyaml>=6.0
+plotly>=5.24.0
+kaleido>=0.2.1

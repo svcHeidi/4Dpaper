@@ -62,3 +62,19 @@ interactive vtk.js viewer. This lets you embed any ParaView filter chain — cli
 streamlines, isovolumes — directly in the paper.
 
 {{< 4d-pvsm src="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/example_state.pvsm" data="/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam" id="fig-pvsm-vm" caption="Transmembrane voltage rendered via ParaView pipeline" >}}
+
+## Interactive 2D/3D Data Graphs (Plotly JSON)
+
+You can now easily embed high-quality declarative data visualization charts using Plotly's standard `.json` export feature (`fig.write_json()`).
+
+These interactive JavaScript-powered graphs handle their own zooming, panning, and toggling tools, taking the computational load off your HTML bundle. More importantly, when building a static PDF, these are automatically rasterized via the Kaleido engine into ultra-high-resolution images keeping the compilation process robust and decoupled.
+
+{{< 4d-graph src="media/example_graph.json" id="fig-plotly-surface" caption="Example mathematical 3D surface seamlessly exported as a Plotly JSON graph." >}}
+
+## Traditional Static Figures (PNG/JPG)
+
+You absolutely don't need a `4d-` shortcode for normal static screenshots or diagram files like PNGs or JPGs. Because 4Dpaper is essentially a customized Quarto framework under the hood, you can just use standard Markdown image syntax!
+
+It will reliably scale appropriately in both the dashboard HTML preview and the compiled exported PDF.
+
+![A classic Matplotlib graph embedded as a standard PNG image.](media/static_example.png){#fig-static-example width="80%"}

@@ -499,3 +499,19 @@ body {
   background: rgba(255,255,255,0.1) !important;
 }
 
+/* Unified Primary Action Button (Blue Pill) */
+.btn-primary .bk-btn {
+    border-radius: 999px !important;
+    background-color: #007BFF !important;
+    color: #ffffff !important;
+    border: none !important;
+}
+
+/* Unified Secondary Action Button (Outline Pill) */
+.btn-secondary .bk-btn {
+    border-radius: 999px !important;
+    background-color: transparent !important;
+    color: #c8dff0 !important;
+    border: 1px solid #3d3834 !important;
+    padding: 0 12px !important;
+}

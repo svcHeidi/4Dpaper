@@ -54,7 +54,7 @@ div.ace_editor div.ace_content{overflow-x:hidden!important}
   background:rgba(55,65,80,0.55)!important;
   border-left:1px solid rgba(255,255,255,0.2)!important;border-right:1px solid rgba(0,0,0,0.35)!important;
 }
-.split-gutter:hover,.split-gutter.__split-dragging{background:rgba(13,110,253,0.45)!important}
+.split-gutter:hover,.split-gutter.__split-dragging{background:rgba(255,255,255,0.1)!important}
 .split-gutter .__split_handle{
   min-height:100%!important;height:100%!important;width:100%!important;
   pointer-events:auto!important;cursor:ew-resize!important;
@@ -466,11 +466,34 @@ def create_app():
         "gap": "0",
     }
     _LABEL_SPAN = (
-        'style="font-size:11px;font-weight:600;letter-spacing:0.07em;'
+        'style="font-size:13px;font-weight:600;letter-spacing:0.07em;'
         'text-transform:uppercase;color:#c8dff0;user-select:none;white-space:nowrap;"'
     )
+    paper_content, paper_page = build_paper_page(config)
+
+    # Group build buttons in a pill-like container
+    build_group = pn.Row(
+        paper_page.rebuild_btn,
+        paper_page.export_btn,
+        height=26,
+        margin=0,
+        styles={
+            "background": f"rgba(255,255,255,0.05)",
+            "border": f"1px solid rgba(255,255,255,0.1)",
+            "border-radius": "5px",
+            "padding": "2px",
+            "gap": "4px",
+            "display": "flex",
+            "flex-direction": "row",
+            "align-items": "center",
+            "min-height": "26px",
+        },
+    )
+
     editor_section_header = pn.Row(
         pn.pane.HTML(f'<span {_LABEL_SPAN}>EDITOR</span>', margin=0),
+        pn.Spacer(sizing_mode="stretch_width"),
+        build_group,
         sizing_mode="stretch_width",
         height=28,
         margin=0,
@@ -490,8 +513,6 @@ def create_app():
 
     _rebuild_tab_bar()
 
-    paper_content, paper_page = build_paper_page(config)
-
     main_panel = pn.Column(
         editor_view,
         sizing_mode="stretch_both",
@@ -500,35 +521,11 @@ def create_app():
         css_classes=["main-panel"],
     )
 
-    # Group build buttons in a pill-like container
-    build_group = pn.Row(
-        paper_page.rebuild_btn,
-        paper_page.export_btn,
-        sizing_mode="fixed",
-        width=260,
-        height=26,
-        margin=0,
-        styles={
-            "background": f"rgba(255,255,255,0.05)",
-            "border": f"1px solid rgba(255,255,255,0.1)",
-            "border-radius": "5px",
-            "padding": "2px",
-            "gap": "2px",
-            "display": "flex",
-            "flex-direction": "row",
-            "align-items": "center",
-            "justify-content": "flex-start",
-            "flex": "0 0 260px",
-            "min-height": "26px",
-        },
-    )
-
     preview_toolbar = pn.Row(
         pn.pane.HTML(f'<span {_LABEL_SPAN}>PREVIEW</span>', margin=(0, 8, 0, 0)),
-        build_group,
-        pn.Spacer(sizing_mode="stretch_width"),
         paper_page.view_toggle,
-        paper_page.pdf_link,
+        pn.Spacer(sizing_mode="stretch_width"),
+        paper_page.header_status_indicator,
         sizing_mode="stretch_width",
         height=36,
         margin=0,

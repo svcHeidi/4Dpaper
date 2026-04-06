@@ -124,8 +124,8 @@ class PaperPage(param.Parameterized):
         self._paper_view_hide_timer: threading.Timer | None = None
 
         self._rebuild_html_btn = pn.widgets.Button(
-            name="Build HTML",
-            icon="file-type-html",
+            name="Compile",
+            icon="reload",
             icon_size="1em",
             button_type="primary",
             height=26,
@@ -136,11 +136,11 @@ class PaperPage(param.Parameterized):
                 "font-family": "system-ui, -apple-system, sans-serif",
                 "font-weight": "500",
             },
-            css_classes=["dash-btn-build-primary"],
+            css_classes=["btn-primary"],
         )
         self._export_pdf_btn = pn.widgets.Button(
-            name="Export PDF",
-            icon="file-type-pdf",
+            name="Export",
+            icon="download",
             icon_size="1em",
             button_type="default",
             height=26,
@@ -151,25 +151,22 @@ class PaperPage(param.Parameterized):
                 "font-family": "system-ui, -apple-system, sans-serif",
                 "font-weight": "500",
             },
-            css_classes=["dash-btn-build-secondary"],
+            css_classes=["btn-secondary"],
         )
 
         # Segmented pill toggle — lives in the toolbar (returned via .view_toggle)
         self._view_toggle = pn.widgets.RadioButtonGroup(
-            options=["⟨/⟩ Interactive", "📄 Paper"],
-            value="⟨/⟩ Interactive",
-            button_type="default",
-            height=26,
-            width=190,
-            margin=0,
-            stylesheets=[_PILL_SS],
-            styles={
-                "display": "flex",
-                "align-items": "center",
-                "justify-content": "center",
-                "height": "26px",
-                "line-height": "26px",
-            },
+            name='View Mode',
+            options=['Interactive', 'Paper'],
+            value='Interactive',
+            button_type='default',
+            margin=(0, 4, 0, 0)
+        )
+
+        self._header_status_indicator = pn.pane.HTML(
+            '<span style="font-size:11px;color:#c8dff0;opacity:0.8;">(Status: Up to date)</span>',
+            margin=(0, 10, 0, 0),
+            align='center'
         )
 
         self._overlay = pn.pane.HTML(
@@ -218,8 +215,7 @@ class PaperPage(param.Parameterized):
         self._paper_view_start: float | None = None
         self._paper_view_log_cb = None
 
-        self._pdf_link = pn.pane.HTML("", sizing_mode="stretch_width", margin=(2, 4))
-        self._set_pdf_link_if_exists()
+        self._download_trigger = pn.pane.HTML("", width=0, height=0, margin=0, styles={"display": "none"})
 
         self._rebuild_html_btn.on_click(self._on_rebuild_html)
         self._export_pdf_btn.on_click(self._on_export_pdf)
@@ -255,6 +251,7 @@ class PaperPage(param.Parameterized):
             return
         self._paper_view_building = True
         self._paper_view_start = time.time()
+        self._set_status_label("Building...")
         self._update_paper_view_status("Building paper view…", "warning")
         if self._paper_view_log_cb is not None:
             self._paper_view_log_cb.stop()
@@ -319,9 +316,11 @@ class PaperPage(param.Parameterized):
                 doc.add_next_tick_callback(
                     lambda: self._update_paper_view_status("Build failed. Check logs.", "danger")
                 )
+                self._set_status_label("Build failed")
 
     def _finish_paper_view(self, ts: int, elapsed: int) -> None:
         self._update_paper_view_status(f"Built successfully ({elapsed}s)", "success")
+        self._set_status_label("Up to date")
         if self._paper_view_hide_timer is not None:
             self._paper_view_hide_timer.cancel()
 
@@ -344,19 +343,6 @@ class PaperPage(param.Parameterized):
         )
 
     # ── HTML / PDF build logic ────────────────────────────────────────────────
-
-    def _set_pdf_link_if_exists(self) -> None:
-        pdf_path = self._qmd_path.parent / "_output" / "analysis_report.pdf"
-        if pdf_path.exists():
-            ts = int(time.time())
-            self._pdf_link.object = (
-                f'<a href="/output/analysis_report.pdf?t={ts}" target="_blank" '
-                f'style="background:{THEME["accent"]};color:#fff;padding:5px 10px;'
-                f'border-radius:4px;text-decoration:none;font-size:11px;'
-                f'font-weight:600;font-family:system-ui,sans-serif;display:inline-flex;'
-                f'align-items:center;gap:5px;margin:0 4px;'
-                f'box-shadow:0 1px 3px rgba(0,0,0,0.25);">PDF</a>'
-            )
 
     def _update_overlay(
         self,
@@ -423,8 +409,8 @@ class PaperPage(param.Parameterized):
         self._rebuild_html_btn.disabled = True
         self._export_pdf_btn.disabled = True
         self._log_lines.clear()
-        self._pdf_link.object = ""
         self._build_start = time.time()
+        self._set_status_label("Building HTML...")
         self._update_overlay("Building HTML paper...", "warning")
 
         doc = pn.state.curdoc
@@ -468,6 +454,7 @@ class PaperPage(param.Parameterized):
                 "success",
                 show_log=False,
             )
+            self._set_status_label("Up to date")
             self._schedule_hide_overlay(doc, delay_s=4.0)
             ts = int(time.time())
             self._iframe.object = self._make_iframe_html(
@@ -475,6 +462,7 @@ class PaperPage(param.Parameterized):
             )
         else:
             self._build_start = None
+            self._set_status_label("Build failed")
             self._update_overlay(
                 f"Build failed (exit code {exit_code}). See log.",
                 "danger",
@@ -487,8 +475,8 @@ class PaperPage(param.Parameterized):
         self._rebuild_html_btn.disabled = True
         self._export_pdf_btn.disabled = True
         self._log_lines.clear()
-        self._pdf_link.object = ""
         self._build_start = time.time()
+        self._set_status_label("Exporting PDF...")
         self._update_overlay("Exporting PDF...", "warning")
 
         doc = pn.state.curdoc
@@ -543,18 +531,23 @@ class PaperPage(param.Parameterized):
                 "success",
                 show_log=False,
             )
+            self._set_status_label("Up to date")
             self._schedule_hide_overlay(doc, delay_s=4.0)
-            cache_bust = int(time.time())
-            self._pdf_link.object = (
-                f'<a href="/output/analysis_report.pdf?t={cache_bust}" target="_blank" '
-                f'style="background:{THEME["accent"]};color:#fff;padding:5px 10px;'
-                f'border-radius:4px;text-decoration:none;font-size:11px;'
-                f'font-weight:600;font-family:system-ui,sans-serif;display:inline-flex;'
-                f'align-items:center;gap:5px;margin:0 4px;'
-                f'box-shadow:0 1px 3px rgba(0,0,0,0.25);">PDF</a>'
-            )
+            
+            ts = int(time.time())
+            self._download_trigger.object = f"""
+            <img src onerror="
+                var a = document.createElement('a');
+                a.href = '/output/analysis_report.pdf?t={ts}';
+                a.download = 'analysis_report.pdf';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            " style="display:none;">
+            """
         else:
             self._build_start = None
+            self._set_status_label("Export failed")
             self._update_overlay(
                 f"PDF export failed (exit code {exit_code}). See log.",
                 "danger",
@@ -575,12 +568,15 @@ class PaperPage(param.Parameterized):
         return self._export_pdf_btn
 
     @property
-    def pdf_link(self) -> pn.pane.HTML:
-        return self._pdf_link
+    def header_status_indicator(self) -> pn.pane.HTML:
+        return self._header_status_indicator
 
     @property
     def view_toggle(self) -> pn.widgets.RadioButtonGroup:
         return self._view_toggle
+
+    def _set_status_label(self, text: str) -> None:
+        self._header_status_indicator.object = f'<span style="font-size:11px;color:#c8dff0;opacity:0.8;">(Status: {text})</span>'
 
     def layout(self) -> pn.Column:
         html_slot = pn.Column(
@@ -600,7 +596,7 @@ class PaperPage(param.Parameterized):
         )
 
         def _on_toggle(event):
-            is_paper = event.new == "📄 Paper"
+            is_paper = event.new == "Paper"
             html_slot.visible = not is_paper
             paper_slot.visible = is_paper
             if is_paper:
@@ -618,6 +614,7 @@ class PaperPage(param.Parameterized):
             html_slot,
             paper_slot,
             zoom_js,
+            self._download_trigger,
             sizing_mode="stretch_both",
             min_height=0,
         )

@@ -238,6 +238,28 @@ def parse_pvsm_shortcodes(text: str) -> list[dict]:
     return results
 
 
+def parse_graph_shortcodes(text: str) -> list[dict]:
+    """
+    Parse {{< 4d-graph key="value" ... >}} shortcodes from QMD text.
+
+    Required: id, src. Optional: caption.
+    Shortcodes missing 'id' or 'src' are silently skipped.
+    """
+    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    pattern = r'\{\{<\s*4d-graph\s+(.*?)\s*>\}\}'
+    results = []
+    for match in re.finditer(pattern, stripped, re.DOTALL):
+        raw = match.group(1)
+        kwargs: dict[str, str] = {}
+        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+            kwargs[key] = val
+        if "id" not in kwargs or "src" not in kwargs:
+            continue
+        kwargs.setdefault("caption", "")
+        results.append(kwargs)
+    return results
+
+
 def parse_pvsm_color_info(pvsm_path: Path) -> dict:
     """
     Extract color/scalar info from a ParaView state (.pvsm) XML file.
@@ -2018,6 +2040,7 @@ def main() -> None:
     panels = []
     pvsm_figs = []
     ts_raw = []
+    graphs = []
     for qmd in qmd_files:
         text = qmd.read_text()
         figures.extend(parse_shortcodes(text))
@@ -2025,9 +2048,10 @@ def main() -> None:
         panels.extend(parse_panel_shortcodes(text))
         pvsm_figs.extend(parse_pvsm_shortcodes(text))
         ts_raw.extend(parse_timeseries_shortcodes(text))
+        graphs.extend(parse_graph_shortcodes(text))
 
-    if not any([figures, videos, panels, pvsm_figs, ts_raw]):
-        print("[4dpaper] No 4d-image, 4d-video, 4d-panel, 4d-pvsm, or 4d-timeseries shortcodes found.", file=sys.stderr)
+    if not any([figures, videos, panels, pvsm_figs, ts_raw, graphs]):
+        print("[4dpaper] No 4d-image, 4d-video, 4d-panel, 4d-pvsm, 4d-timeseries, or 4d-graph shortcodes found.", file=sys.stderr)
         return
 
     figures_dir = _project_root / "state" / "figures"
@@ -2306,6 +2330,55 @@ def main() -> None:
             )
         except Exception as exc:
             print(f"[4dpaper] ERROR generating PVSM figure {fig_id}: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+    for graph in graphs:
+        fig_id = graph["id"]
+        src = Path(graph["src"]) if Path(graph["src"]).is_absolute() else _project_root / graph["src"]
+        
+        out_html = figures_dir / f"{fig_id}.html"
+        out_png = figures_dir / f"{fig_id}.png"
+        
+        script_newer = out_html.exists() and _here.stat().st_mtime > out_html.stat().st_mtime
+        cache_ok = (
+            not script_newer
+            and is_cache_valid(out_html, src)
+            and is_cache_valid(out_png, src)
+        )
+        
+        if cache_ok:
+            print(f"[4dpaper] {fig_id} Graph outputs are up to date -- skipping.", file=sys.stderr)
+            continue
+            
+        print(f"[4dpaper] Generating Graph figure for {fig_id} ({src}) ...", file=sys.stderr)
+        try:
+            import plotly.io as pio
+            import plotly.graph_objects as go
+            
+            with open(src, "r") as f:
+                fig_dict = json.load(f)
+            
+            fig = go.Figure(fig_dict)
+            
+            # Export PNG for static PDF builds
+            pio.write_image(fig, out_png, format="png", engine="kaleido", scale=2)
+            
+            # Re-theme the figure background so it matches the surrounding page neatly
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+
+            # Export standalone HTML for interactive web
+            html_content = pio.to_html(fig, full_html=True, include_plotlyjs="cdn", config={'displayModeBar': False})
+            
+            # Inject 4dpaper HUD controls (Lock button, etc) so it acts like natively generated viewer
+            inj_html = _controls_strip_snippet(fig_id, show_orientation=False)
+            if '</body>' in html_content:
+                html_content = html_content.replace('</body>', inj_html + '\n</body>', 1)
+            else:
+                html_content += inj_html
+                
+            out_html.write_text(html_content, encoding="utf-8")
+        except Exception as exc:
+            print(f"[4dpaper] ERROR generating Graph figure {fig_id}: {exc}", file=sys.stderr)
             sys.exit(1)
 
 

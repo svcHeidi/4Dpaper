@@ -1024,10 +1024,111 @@ local function fourd_timeseries(args, kwargs)
   end
 end
 
+local function fourd_graph(args, kwargs)
+  local id      = pandoc.utils.stringify(kwargs["id"]      or pandoc.Str(""))
+  local caption = pandoc.utils.stringify(kwargs["caption"] or pandoc.Str(""))
+
+  if id == "" then
+    return pandoc.RawBlock("html",
+      '<div style="color:red">⚠ 4d-graph: missing required attribute <code>id</code></div>')
+  end
+
+  if quarto.doc.isFormat("html") then
+    -- Paper-view: embed static PNG instead of interactive iframe
+    if _paper_view then
+      local png_path = "state/figures/" .. id .. ".png"
+      local pf = io.open(png_path, "r")
+      if pf then pf:close() end
+      local cap_html = caption ~= "" and
+        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
+        caption .. '</figcaption>\n' or ""
+      if not pf then
+        return pandoc.RawBlock("html",
+          '<figure class="fourd-figure" style="margin:1.5rem 0;">' ..
+          '<div style="border:2px dashed #888;padding:1rem;text-align:center;">' ..
+          '⚠ Graph <code>' .. id .. '</code> not rendered — click Rebuild HTML</div>' ..
+          cap_html .. '</figure>')
+      end
+      return pandoc.RawBlock("html",
+        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+        '<img src="/state/figures/' .. id .. '.png" style="width:100%;display:block;">\n' ..
+        cap_html .. '</figure>')
+    end
+
+    local html_path = "state/figures/" .. id .. ".html"
+    local exists = io.open(html_path, "r")
+    if exists then exists:close() end
+
+    if not exists then
+      return pandoc.RawBlock("html",
+        '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;' ..
+        'border-radius:4px;margin:1rem 0">' ..
+        '<strong>⚠ 4D Graph not yet rendered</strong><br>' ..
+        'Figure ID: <code>' .. id .. '</code><br>' ..
+        '<small>Click <strong>Rebuild HTML</strong> in the dashboard to generate.</small>' ..
+        '</div>')
+    end
+
+    local cap_html = caption ~= "" and
+      '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
+      or ""
+
+    local body
+    if _app_mode then
+      body = '<iframe src="/state/figures/' .. id .. '.html" width="100%" height="600px" ' ..
+             'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
+    else
+      local f = io.open(html_path, "r")
+      local content = f:read("*all")
+      f:close()
+      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+      body = '<iframe srcdoc="' .. escaped .. '" width="100%" height="600px" ' ..
+             'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
+    end
+
+    local relay_script = ""
+    if not _relay_injected then
+      _relay_injected = true
+      relay_script = _RELAY_SCRIPT
+    end
+
+    return pandoc.RawBlock("html",
+      relay_script ..
+      '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+      body .. '\n' .. cap_html ..
+      '</figure>\n')
+
+  -- PDF / LaTeX output
+  else
+    local pdf_path = "state/figures/" .. id .. ".pdf"
+    local png_path = "state/figures/" .. id .. ".png"
+    local pf = io.open(pdf_path, "r")
+    local fig_path
+    if pf then
+      pf:close()
+      fig_path = pdf_path
+    else
+      local f2 = io.open(png_path, "r")
+      if f2 then f2:close(); fig_path = png_path end
+    end
+    if fig_path then
+      local img = pandoc.Image(caption, fig_path, id, pandoc.Attr(id, {}, { width = "90%" }))
+      return pandoc.Para({ img })
+    else
+      return pandoc.Para({
+        pandoc.Str("[Graph "),
+        pandoc.Code(id),
+        pandoc.Str(" - run 'Rebuild HTML' from the dashboard to generate this figure]"),
+      })
+    end
+  end
+end
+
 return {
   ["4d-image"]      = fourd_image,
   ["4d-video"]      = fourd_video,
   ["4d-panel"]      = fourd_panel,
   ["4d-pvsm"]       = fourd_pvsm,
   ["4d-timeseries"] = fourd_timeseries,
+  ["4d-graph"]      = fourd_graph,
 }
