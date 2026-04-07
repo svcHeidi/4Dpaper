@@ -1,0 +1,74 @@
+# 4DPapers Folder Shortcuts Template
+#
+# This file maps named shortcuts to external data directories.
+# Use shortcuts in .qmd files with @shortcut_name syntax.
+#
+# Copy this file to _shortcuts.yml and customize for your setup.
+# _shortcuts.yml is git-ignored (machine-specific).
+#
+# Syntax:
+#   {{< 4d-image src="@shortcut_name/path/to/case.foam" ... >}}
+#
+# Examples below show both short form and long form syntax.
+
+shortcuts:
+  # ─── Main simulation case ──────────────────────────────────
+  # Short form (path only):
+  sim_main: "/Users/simaocastro/cardiacFoamEP/NiedererEtAl2012"
+
+  # Long form (path + description):
+  sim_variant:
+    path: "/data/simulation_variants"
+    description: "Sensitivity analysis variant cases"
+
+  # ─── Portable test data (relative to project root) ─────────
+  # Useful for CI/testing on multiple machines
+  test_data:
+    path: "./test_data"
+    description: "Small test cases for local development"
+
+  # ─── External analysis output ──────────────────────────────
+  # Can be symlinked or copied from HPC results
+  analysis_output:
+    path: "/shared/research/cardiac_analysis"
+    description: "Pre-computed visualization outputs"
+
+  # ─── Comparison case ───────────────────────────────────────
+  sim_comparison:
+    path: "/volumes/research/comparison_data/case_v2"
+    description: "Comparison case from another researcher"
+
+# ─── Optional: Organize shortcuts into groups ──────────────
+# Groups help organize the UI but are optional.
+groups:
+  simulations:
+    - sim_main
+    - sim_variant
+    - sim_comparison
+  development:
+    - test_data
+  outputs:
+    - analysis_output
+
+# ─────────────────────────────────────────────────────────────
+# Notes:
+#
+# 1. Shortcut names must match [a-z0-9_] (lowercase alphanumeric + underscore)
+#    Good: sim_main, test_data_v2
+#    Bad:  Sim-Main, test.data
+#
+# 2. Paths can be:
+#    - Absolute: /path/to/folder → used as-is
+#    - Relative: ./folder → resolved from project root
+#    - Symlinks: creates @name pointing to actual folder
+#
+# 3. When HPC data regenerates:
+#    - If path is a symlink: automatically points to new results
+#    - If path is absolute: must manually update _shortcuts.yml
+#
+# 4. Usage in .qmd:
+#    {{< 4d-image src="@sim_main/Niederer.foam" field="Vm" id="fig-vm" >}}
+#    {{< 4d-image src="@test_data/small_case.foam" ... >}}
+#    {{< 4d-graph src="@analysis_output/results.json" ... >}}
+#
+# 5. Descriptions are optional but recommended for clarity

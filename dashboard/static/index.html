@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>4DPaper Code Editor</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        app: {
+                            bg: '#141725',
+                            nav: '#1B1F30',
+                            sidebar: '#1A1E2F',
+                            editorBg: '#0D1117',
+                            panelBg: '#1B1F30',
+                            accent: '#3B82F6',
+                            text: '#9CA3AF',
+                            textLight: '#E5E7EB',
+                            border: '#2A3047',
+                            tabBg: '#121521',
+                            tabActive: '#1B1F30'
+                        },
+                        syntax: {
+                            punctuation: '#89DDFF',
+                            keyword: '#C792EA',
+                            string: '#C3E88D',
+                            variable: '#F07178',
+                            property: '#82AAFF',
+                            comment: '#546E7A',
+                            tag: '#FF5370',
+                            attr: '#C792EA'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style data-purpose="custom-utilities">
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        /* Custom scrollbar for editor */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Code line numbers */
+        .line-number {
+            user-select: none;
+            text-align: right;
+            padding-right: 1rem;
+            color: #4B5563;
+        }
+
+        /* Split pane resize handle */
+        .split-handle {
+            width: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            cursor: col-resize;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .split-handle:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Main flex layout */
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100%;
+            background: #141725;
+        }
+
+        .workspace {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            gap: 2px;
+            padding: 2px;
+            background: #141725;
+        }
+
+        .pane {
+            display: flex;
+            flex-direction: column;
+            background: #1B1F30;
+            border: 1px solid #2A3047;
+            border-radius: 4px;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .editor-pane {
+            flex: 1;
+        }
+
+        .preview-pane {
+            flex: 1;
+        }
+
+        .pane-header {
+            height: 40px;
+            border-bottom: 1px solid #2A3047;
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            background: #121521;
+            flex-shrink: 0;
+            gap: 8px;
+        }
+
+        .pane-content {
+            flex: 1;
+            overflow: auto;
+            min-height: 0;
+        }
+
+        /* Tab styling */
+        .tab-bar {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid #2A3047;
+            background: #121521;
+            overflow-x: auto;
+            height: 40px;
+            flex-shrink: 0;
+        }
+
+        .tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0 12px;
+            border-right: 1px solid #2A3047;
+            color: #9CA3AF;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.2s;
+        }
+
+        .tab:hover {
+            background: #1B1F30;
+            color: #E5E7EB;
+        }
+
+        .tab.active {
+            background: #0D1117;
+            color: #E5E7EB;
+            border-top: 2px solid #3B82F6;
+            border-bottom: -1px;
+        }
+
+        .editor-content {
+            font-family: 'JetBrains Mono', monospace !important;
+            font-size: 13px !important;
+            color: #E5E7EB !important;
+            background-color: #0D1117 !important;
+            border: none !important;
+            padding: 16px !important;
+            flex: 1;
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .CodeMirror {
+            font-family: 'JetBrains Mono', monospace !important;
+            font-size: 13px !important;
+            height: 100% !important;
+            background-color: #0D1117 !important;
+            color: #E5E7EB !important;
+        }
+
+        .CodeMirror-gutters {
+            background-color: #0D1117 !important;
+            border-right: 1px solid #2A3047 !important;
+        }
+
+        .CodeMirror-linenumber {
+            color: #4B5563 !important;
+        }
+
+        .preview-content {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            overflow: auto;
+            background: #0D1117;
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+        }
+
+        .paper-page {
+            background: white;
+            max-width: 900px;
+            width: 90%;
+            min-height: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            padding: 40px;
+            color: #000;
+            line-height: 1.6;
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 14px;
+            flex-shrink: 0;
+            margin: 20px auto;
+        }
+
+        .paper-title {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        /* PDF Preview Mode (Paper View) */
+        .preview-pane.pdf-mode .pane-content {
+            background: #0D1117 !important; /* Force darker workspace background */
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            padding: 60px 20px !important;
+            overflow-y: auto !important;
+        }
+
+        .preview-pane.pdf-mode iframe {
+            background: white !important;
+            max-width: 850px !important;
+            width: 100% !important;
+            height: auto !important;
+            min-height: 1200px !important;
+            margin: 0 auto !important;
+            display: block !important;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6) !important;
+            border-radius: 4px !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            flex-shrink: 0 !important;
+        }
+
+
+        .paper-section {
+            margin-bottom: 20px;
+        }
+
+        .paper-h2 {
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .paper-abstract {
+            font-size: 12px;
+            text-align: justify;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        .paper-figure {
+            text-align: center;
+            margin: 30px 0;
+            width: 100%;
+        }
+
+        .paper-figure img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 2px;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .paper-figure iframe {
+            max-width: 100%;
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 2px;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .paper-figcaption {
+            font-size: 10px;
+            color: #999;
+            font-style: italic;
+            margin-top: 8px;
+        }
+
+        .status-bar {
+            height: 32px;
+            border-top: 1px solid #2A3047;
+            background: #141725;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            font-size: 12px;
+            color: #9CA3AF;
+            flex-shrink: 0;
+        }
+
+        .status-left, .status-right {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        /* File tree styling */
+        .file-tree-item {
+            padding: 4px 8px;
+            margin: 2px 0;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            user-select: none;
+            transition: background 0.2s;
+        }
+
+        .file-tree-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .file-tree-item.folder {
+            color: #E5E7EB;
+            font-weight: 500;
+        }
+
+        .file-tree-item.file {
+            color: #9CA3AF;
+            padding-left: 24px;
+        }
+
+        .file-tree-item.file.qmd {
+            color: #82AAFF;
+        }
+
+        .file-tree-item.file.bib {
+            color: #E8B884;
+        }
+
+        .file-tree-item.file.py {
+            color: #FFD700;
+        }
+
+        .file-tree-item.file.yml,
+        .file-tree-item.file.yaml {
+            color: #C3E88D;
+        }
+
+        .file-tree-item.expanded {
+            font-weight: 600;
+        }
+
+        .file-tree-children {
+            transition: display 0.2s;
+        }
+
+        .file-tree-folder-icon {
+            display: inline-block;
+            margin-right: 6px;
+            width: 16px;
+        }
+
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- MathJax for LaTeX rendering -->
+    <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+    <!-- CodeMirror for code editing -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material-darker.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/markdown/markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/yaml/yaml.min.js"></script>
+    <!-- Local scripts -->
+    <script src="/assets/js/shortcuts-graph.js"></script>
+    <script src="dashboard/static/js/insert-figure-overlay.js"></script>
+    <script src="dashboard/static/js/insert-file-overlay.js"></script>
+</head>
+<body class="bg-app-bg text-app-text font-sans selection:bg-app-accent selection:text-white">
+
+<div class="app-container">
+    <!-- Header -->
+    <header class="h-16 bg-app-nav border-b border-app-border flex items-center justify-between px-4 flex-shrink-0 z-10" data-purpose="top-navigation">
+        <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 flex items-center justify-center">
+                <i class="ph ph-cube text-app-accent text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-app-textLight font-semibold text-lg leading-tight">4DPaper</h1>
+                <p class="text-xs text-app-text opacity-75">Research Paper IDE</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-3">
+            <button class="bg-app-accent hover:bg-blue-600 text-white px-4 py-1.5 rounded-md text-sm font-medium flex items-center space-x-2 transition-colors shadow-sm" data-purpose="compile-button">
+                <i class="ph-fill ph-play text-white"></i>
+                <span>Compile</span>
+            </button>
+            <button class="bg-transparent hover:bg-app-bg border border-app-border text-app-textLight px-4 py-1.5 rounded-md text-sm font-medium flex items-center space-x-2 transition-colors shadow-sm" data-purpose="export-button">
+                <i class="ph ph-download-simple"></i>
+                <span>Export</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Left Activity Bar -->
+        <nav class="w-14 bg-app-sidebar border-r border-app-border flex flex-col items-center py-4 flex-shrink-0 z-10" data-purpose="activity-bar">
+            <!-- Top Icons -->
+            <div class="flex flex-col space-y-4 w-full">
+                <!-- Explorer (Active) -->
+                <div class="relative w-full flex justify-center group cursor-pointer" data-activity="explorer">
+                    <div class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-8 bg-app-accent rounded-r"></div>
+                    <div class="p-2.5 bg-app-tabBg rounded-lg text-app-textLight hover:text-app-accent transition-colors">
+                        <i class="ph ph-folder-simple text-xl"></i>
+                    </div>
+                </div>
+                <!-- Search -->
+                <div class="w-full flex justify-center group cursor-pointer hover:text-app-textLight transition-colors" data-activity="search">
+                    <div class="p-2.5">
+                        <i class="ph ph-magnifying-glass text-xl"></i>
+                    </div>
+                </div>
+            </div>
+            <!-- Bottom Icons -->
+            <div class="mt-auto flex flex-col space-y-4 w-full pb-2">
+                <div class="w-full flex justify-center group cursor-pointer hover:text-app-textLight transition-colors" data-activity="settings">
+                    <div class="p-2.5">
+                        <i class="ph ph-gear text-xl"></i>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Left File Tree Panel -->
+        <div style="width: 256px;" class="bg-app-panelBg border-r border-app-border flex flex-col overflow-hidden flex-shrink-0" data-purpose="file-tree-panel" id="fileTreePanel">
+            <!-- Panel Header -->
+            <div class="h-10 border-b border-app-border flex items-center justify-between px-4 bg-app-tabBg flex-shrink-0">
+                <span class="text-xs font-semibold text-app-text uppercase tracking-wider">Explorer</span>
+            </div>
+
+            <!-- Insert Toolbar -->
+            <div class="flex gap-1 p-2 border-b border-app-border bg-app-panelBg flex-shrink-0">
+                <button id="btn-insert-figure"
+                    class="flex-1 text-xs px-2 py-1.5 rounded hover:bg-app-accent/20 transition-colors"
+                    onclick="showInsertFigureModal()"
+                    title="Drag OpenFOAM case or click to select">
+                    <i class="ph ph-chart-line" style="margin-right: 4px;"></i>Figure
+                </button>
+                <button id="btn-insert-file"
+                    class="flex-1 text-xs px-2 py-1.5 rounded hover:bg-app-accent/20 transition-colors"
+                    onclick="showInsertFileModal()"
+                    title="Drag files or click to select">
+                    <i class="ph ph-file-plus" style="margin-right: 4px;"></i>File
+                </button>
+            </div>
+
+            <!-- File Tree View -->
+            <div class="flex-1 overflow-auto custom-scrollbar p-2" id="fileTreeContent" data-view="explorer">
+                <div class="text-xs text-app-text p-4 text-center">Loading files...</div>
+            </div>
+        </div>
+
+        <!-- Split Handle -->
+        <div class="split-handle" style="height: 100%;" data-split="filetree"></div>
+
+        <!-- Editor & Preview Split -->
+        <div class="workspace" style="flex: 1; gap: 2px; padding: 2px; width: 100%;">
+            <!-- Editor Pane -->
+            <div class="pane editor-pane">
+            <!-- Tab Bar -->
+            <div class="tab-bar custom-scrollbar">
+                <div class="tab active">
+                    <i class="ph-fill ph-file-code text-blue-400"></i>
+                    analysis_report.qmd
+                    <button class="ml-2 hover:bg-gray-700 rounded p-0.5" onclick="this.parentElement.remove()">
+                        <i class="ph ph-x text-xs"></i>
+                    </button>
+                </div>
+                <div class="tab">
+                    <i class="ph ph-file-text text-gray-400"></i>
+                    simulation_setup.qmd
+                </div>
+                <div class="tab">
+                    <i class="ph ph-file-text text-gray-400"></i>
+                    introduction.qmd
+                </div>
+            </div>
+
+            <!-- Editor Content -->
+            <div class="pane-content">
+                <textarea id="code-editor" class="editor-content">---
+title: "Cardiac Electrophysiology Analysis"
+subtitle: "Niederer et al. (2012) Benchmark"
+author:
+  - name: "Your Name"
+    affiliation: "Your Institution"
+date: today
+abstract: |
+  This paper uses the 4DPaper extension to embed interactive 3D simulation
+  visualisations directly in the HTML output, and high-resolution static
+  figures in the PDF export.
+format:
+  html:
+    code-fold: true
+    toc: true
+  theme:
+    light: cosmo
+    dark: darkly
+jupyter: python3
+---
+
+{{< include sections/01_introduction.qmd >}}
+{{< include sections/02_simulation_setup.qmd >}}
+</textarea>
+            </div>
+        </div>
+
+            <!-- Split Handle -->
+            <div class="split-handle" data-split="editor"></div>
+
+            <!-- Preview Pane -->
+            <div class="pane preview-pane">
+            <!-- Preview Header -->
+            <div class="pane-header">
+                <span class="text-xs font-semibold text-app-text uppercase tracking-widest">Preview</span>
+                <div class="ml-auto flex items-center bg-app-bg/50 rounded-lg p-0.5 border border-app-border/50">
+                    <button id="view-mode-interactive" class="px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all bg-app-accent text-white shadow-sm">
+                        Interactive
+                    </button>
+                    <button id="view-mode-pdf" class="px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all text-app-text hover:text-app-textLight">
+                        PDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- Preview Content -->
+            <div class="pane-content custom-scrollbar" style="padding: 0;">
+                <iframe
+                    id="preview-iframe"
+                    style="width: 100%; height: 100%; border: none; margin: 0; padding: 0;"
+                    srcdoc="<html><body style='display: flex; align-items: center; justify-content: center; height: 100vh; background: #f5f5f5; font-family: system-ui;'><div style='text-align: center; color: #666;'><div style='font-size: 48px; margin-bottom: 16px; opacity: 0.5;'>▶</div><div style='font-size: 16px; font-weight: 500; margin-bottom: 8px;'>Click Compile to Preview</div><div style='font-size: 12px; opacity: 0.7;'>Edit your QMD file on the left and compile to see the rendered output here</div></div></body></html>"
+                ></iframe>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <div class="status-left">
+            <span>Status: <span style="color: #22c55e;">Ready</span></span>
+            <i class="ph-fill ph-check-circle" style="color: #22c55e;"></i>
+        </div>
+        <div class="status-right">
+            <span>Building...</span>
+            <div style="width: 120px; height: 6px; background: #2A3047; border-radius: 3px; overflow: hidden;">
+                <div style="width: 85%; height: 100%; background: #3B82F6; border-radius: 3px;"></div>
+            </div>
+            <span style="font-family: 'JetBrains Mono';">85%</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // State management
+    const state = {
+        openTabs: [],
+        activeTab: null,
+        editorContent: {},
+        isCompiling: false,
+        codeEditor: null,
+        viewMode: 'interactive' // 'interactive' or 'pdf'
+    };
+
+    // Initialize app
+    async function initApp() {
+        initCodeEditor();
+        await loadFileTree();
+        setupEventListeners();
+        await openFile('analysis_report.qmd');
+    }
+
+    // Initialize CodeMirror editor
+    function initCodeEditor() {
+        const textarea = document.getElementById('code-editor');
+        if (!textarea) return;
+
+        state.codeEditor = CodeMirror.fromTextArea(textarea, {
+            mode: 'markdown',
+            theme: 'material-darker',
+            lineNumbers: true,
+            lineWrapping: true,
+            tabSize: 2,
+            indentUnit: 2,
+            indentWithTabs: false,
+            autoCloseBrackets: true,
+            styleActiveLine: true,
+            highlightSelectionMatches: { showToken: /\w/, annotateScrollbar: true }
+        });
+
+        state.codeEditor.setSize('100%', '100%');
+
+        // Keep editorContent and openTabs in sync on every change
+        state.codeEditor.on('changes', function() {
+            if (!state.activeTab) return;
+            const value = state.codeEditor.getValue();
+            state.editorContent[state.activeTab] = value;
+            const tab = state.openTabs.find(t => t.path === state.activeTab);
+            if (tab) tab.content = value;
+        });
+    }
+
+    // Load file tree from backend
+    async function loadFileTree() {
+        try {
+            const response = await fetch('/api/files');
+            if (!response.ok) throw new Error('Failed to load files');
+            const data = await response.json();
+            const files = data.files || data;
+            console.log(`[FileTree] Loaded ${files.length || 0} files/folders`);
+            renderFileTree(files);
+        } catch (error) {
+            console.error('Error loading file tree:', error);
+            document.getElementById('fileTreeContent').innerHTML =
+                '<div class="text-xs text-red-400 p-4">Error loading files</div>';
+        }
+    }
+
+    // Render file tree - hierarchical with folders
+    function renderFileTree(files) {
+        const container = document.getElementById('fileTreeContent');
+        container.innerHTML = '';
+
+        if (!files || files.length === 0) {
+            container.innerHTML = '<div class="text-xs text-gray-500 p-4">No files found</div>';
+            return;
+        }
+
+        // Build tree structure from flat list
+        const tree = {};
+
+        files.forEach(item => {
+            const fullPath = item.path || item;  // Support both old format and new
+            const parts = fullPath.split('/');
+            let current = tree;
+
+            for (let i = 0; i < parts.length; i++) {
+                const part = parts[i];
+                if (!current[part]) {
+                    const isDir = typeof item === 'string' ?
+                        (i < parts.length - 1) :
+                        item.is_dir;
+                    current[part] = {
+                        isDir: isDir,
+                        children: {},
+                        path: parts.slice(0, i + 1).join('/'),
+                        ext: isDir ? '' : part.split('.').pop()
+                    };
+                }
+                if (i < parts.length - 1) {
+                    current = current[part].children = current[part].children || {};
+                }
+            }
+        });
+
+        // Render tree recursively
+        function renderNode(node, name, depth = 0) {
+            const item = document.createElement('div');
+            item.style.paddingLeft = (depth * 16) + 'px';
+            item.className = 'file-tree-item';
+
+            if (node.isDir) {
+                // Folder
+                item.classList.add('folder');
+                const toggleEl = document.createElement('span');
+                toggleEl.style.cursor = 'pointer';
+                toggleEl.style.marginRight = '6px';
+                toggleEl.innerHTML = '<i class="ph ph-caret-right"></i>';
+
+                const labelEl = document.createElement('span');
+                labelEl.style.cursor = 'pointer';
+                labelEl.innerHTML = `<i class="ph ph-folder" style="margin-right:6px;"></i>${name}`;
+
+                item.appendChild(toggleEl);
+                item.appendChild(labelEl);
+
+                const childrenDiv = document.createElement('div');
+                childrenDiv.className = 'file-tree-children';
+                childrenDiv.style.display = 'none';
+                childrenDiv.setAttribute('data-path', node.path);
+
+                // Render children
+                const childPaths = Object.keys(node.children).sort((a, b) => {
+                    const aIsDir = node.children[a].isDir;
+                    const bIsDir = node.children[b].isDir;
+                    if (aIsDir !== bIsDir) return bIsDir ? 1 : -1;  // Dirs first
+                    return a.localeCompare(b);
+                });
+
+                childPaths.forEach(childName => {
+                    renderNode(node.children[childName], childName, depth + 1);
+                    const child = container.lastChild;
+                    if (child) childrenDiv.appendChild(child);
+                });
+
+                // Toggle folder
+                const toggleFolder = () => {
+                    const isOpen = childrenDiv.style.display !== 'none';
+                    childrenDiv.style.display = isOpen ? 'none' : 'block';
+                    toggleEl.innerHTML = isOpen ?
+                        '<i class="ph ph-caret-right"></i>' :
+                        '<i class="ph ph-caret-down"></i>';
+                    item.classList.toggle('expanded', !isOpen);
+                };
+
+                toggleEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleFolder();
+                });
+                labelEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleFolder();
+                });
+
+                item.appendChild(childrenDiv);
+            } else {
+                // File
+                item.classList.add('file');
+                item.classList.add(node.ext);
+                item.innerHTML = `<i class="ph ph-file" style="margin-right:6px;"></i>${name}`;
+                item.addEventListener('click', () => openFile(node.path));
+            }
+
+            container.appendChild(item);
+        }
+
+        // Render root level items, sorted
+        const rootKeys = Object.keys(tree).sort((a, b) => {
+            const aIsDir = tree[a].isDir;
+            const bIsDir = tree[b].isDir;
+            if (aIsDir !== bIsDir) return bIsDir ? 1 : -1;  // Dirs first
+            return a.localeCompare(b);
+        });
+
+        rootKeys.forEach(name => renderNode(tree[name], name, 0));
+    }
+
+    // Open file in editor
+    async function openFile(filePath) {
+        // Check if already open
+        let tab = state.openTabs.find(t => t.path === filePath);
+        if (!tab) {
+            try {
+                const response = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`);
+                if (!response.ok) throw new Error('Failed to load file');
+                const content = await response.text();
+
+                tab = {
+                    path: filePath,
+                    name: filePath.split('/').pop(),
+                    content: content
+                };
+                state.openTabs.push(tab);
+                state.editorContent[filePath] = content;
+            } catch (error) {
+                console.error('Error loading file:', error);
+                return;
+            }
+        }
+
+        activateTab(tab.path);
+        updateTabBar();
+    }
+
+    // Activate tab
+    function activateTab(filePath) {
+        state.activeTab = filePath;
+        const tab = state.openTabs.find(t => t.path === filePath);
+        if (tab && state.codeEditor) {
+            state.codeEditor.setValue(tab.content);
+        }
+    }
+
+    // Update tab bar
+    function updateTabBar() {
+        const tabBar = document.querySelector('.tab-bar');
+        tabBar.innerHTML = '';
+
+        state.openTabs.forEach(tab => {
+            const tabEl = document.createElement('div');
+            tabEl.className = `tab ${state.activeTab === tab.path ? 'active' : ''}`;
+
+            const icon = tab.name.endsWith('.qmd') ? 'ph-file-code' : 'ph-file-text';
+            const color = tab.name.endsWith('.qmd') ? 'text-blue-400' : 'text-gray-400';
+
+            tabEl.innerHTML = `
+                <i class="ph ${icon} ${color}"></i>
+                <span>${tab.name}</span>
+                <button class="ml-2 hover:bg-gray-700 rounded p-0.5" onclick="event.stopPropagation(); closeTab('${tab.path}')">
+                    <i class="ph ph-x text-xs"></i>
+                </button>
+            `;
+            tabEl.addEventListener('click', () => activateTab(tab.path));
+            tabBar.appendChild(tabEl);
+        });
+    }
+
+    // Close tab
+    function closeTab(filePath) {
+        state.openTabs = state.openTabs.filter(t => t.path !== filePath);
+        delete state.editorContent[filePath];
+
+        if (state.activeTab === filePath) {
+            state.activeTab = state.openTabs[0]?.path || null;
+        }
+        updateTabBar();
+    }
+
+    // Compile button handler
+    document.querySelector('[data-purpose="compile-button"]')?.addEventListener('click', async () => {
+        if (state.isCompiling) return;
+
+        state.isCompiling = true;
+        const btn = document.querySelector('[data-purpose="compile-button"]');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ph-fill ph-spinner text-white animate-spin"></i><span>Compiling...</span>';
+
+        try {
+            // Save current file if editing
+            if (state.activeTab) {
+                const content = state.codeEditor ? state.codeEditor.getValue() : '';
+                state.editorContent[state.activeTab] = content;
+            }
+
+            const response = await fetch('/api/compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    files: state.editorContent,
+                    format: state.viewMode
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.status === 'success') {
+                // Point the iframe at the served output file so relative asset
+                // paths (Bootstrap, quarto.js, vtk.js figures) resolve correctly.
+                // srcdoc takes precedence over src, so remove it first.
+                const iframe = document.querySelector('#preview-iframe');
+                iframe.srcdoc = '';
+                iframe.removeAttribute('srcdoc');
+                const filename = state.viewMode === 'pdf' ? 'analysis_report-paperview.html' : 'analysis_report.html';
+                iframe.src = '/output/' + filename + '?t=' + Date.now();
+
+                const statusBar = document.querySelector('.status-bar .status-left');
+                statusBar.innerHTML = '<span>Status: <span style="color: #22c55e;">Compiled</span></span><i class="ph-fill ph-check-circle" style="color: #22c55e;"></i>';
+            } else if (result.error && result.error.includes('quarto')) {
+                // Fallback: show editor content in preview when quarto not available
+                let mainContent = state.codeEditor ? state.codeEditor.getValue() : '';
+
+                // Extract title from YAML front matter
+                const titleMatch = mainContent.match(/title:\s*"([^"]+)"/);
+                const title = titleMatch ? titleMatch[1] : 'Untitled';
+
+                // Simple preview - show formatted content
+                let html = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { background: white; padding: 40px; font-family: 'Times New Roman', serif; color: #000; max-width: 850px; margin: 0 auto; box-shadow: 0 0 15px rgba(0,0,0,0.1); }
+        h1 { text-align: center; font-size: 24px; margin-bottom: 30px; font-weight: bold; }
+        .note { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 12px; }
+        pre { white-space: pre-wrap; font-size: 14px; line-height: 1.8; color: #333; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>${title}</h1>
+        <pre>${mainContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+        <div class="note">Preview mode - Quarto not installed. Install Quarto to enable full compilation.</div>
+    </div>
+</body>
+</html>`;
+
+                const iframe = document.querySelector('#preview-iframe');
+                iframe.srcdoc = html;
+
+                const statusBar = document.querySelector('.status-bar .status-left');
+                statusBar.innerHTML = '<span>Status: <span style="color: #f59e0b;">Preview (Quarto not found)</span></span>';
+            } else {
+                throw new Error(result.error || 'Compilation failed');
+            }
+
+        } catch (error) {
+            console.error('Compilation error:', error);
+            const statusBar = document.querySelector('.status-bar .status-left');
+            statusBar.innerHTML = '<span>Status: <span style="color: #ef4444;">Error</span></span><i class="ph-fill ph-x-circle" style="color: #ef4444;"></i>';
+        } finally {
+            state.isCompiling = false;
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ph-fill ph-play text-white"></i><span>Compile</span>';
+        }
+    });
+
+    // Export button handler
+    document.querySelector('[data-purpose="export-button"]')?.addEventListener('click', async () => {
+        const btn = document.querySelector('[data-purpose="export-button"]');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ph-fill ph-spinner text-white animate-spin"></i><span>Exporting...</span>';
+
+        try {
+            // Check if Quarto is available
+            const testResponse = await fetch('/api/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (testResponse.headers.get('content-type').includes('application/pdf')) {
+                // Export succeeded
+                const blob = await testResponse.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'analysis_report.pdf';
+                a.click();
+                URL.revokeObjectURL(url);
+
+                alert('PDF exported successfully!');
+            } else {
+                // Quarto not available
+                const result = await testResponse.json();
+                alert('PDF export requires Quarto to be installed.\n\nError: ' + (result.error || 'Unknown error'));
+            }
+
+        } catch (error) {
+            console.error('Export error:', error);
+            alert('Export failed: ' + error.message + '\n\nQuarto may not be installed.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ph ph-download-simple"></i><span>Export</span>';
+        }
+    });
+
+    // Setup event listeners
+    function setupEventListeners() {
+        // Split pane resizing
+        const handles = document.querySelectorAll('.split-handle');
+        handles.forEach(handle => {
+            let isResizing = false;
+            const splitType = handle.dataset.split;
+
+            handle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                document.body.style.cursor = 'col-resize';
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+
+                if (splitType === 'filetree') {
+                    // File tree vs editor/preview split
+                    const fileTree = document.querySelector('#fileTreePanel');
+                    const workspace = document.querySelector('.workspace');
+                    const mainContainer = handle.parentElement;
+
+                    if (fileTree && workspace && mainContainer) {
+                        const containerRect = mainContainer.getBoundingClientRect();
+                        const newWidth = e.clientX - containerRect.left - 56; // 56 = activity bar width
+
+                        if (newWidth > 150 && newWidth < containerRect.width - 400) {
+                            fileTree.style.width = newWidth + 'px';
+                            workspace.style.flex = '1';
+                        }
+                    }
+                } else if (splitType === 'editor') {
+                    // Editor vs preview split
+                    const editorPane = document.querySelector('.editor-pane');
+                    const previewPane = document.querySelector('.preview-pane');
+                    const workspace = document.querySelector('.workspace');
+
+                    if (editorPane && previewPane && workspace) {
+                        const workspaceRect = workspace.getBoundingClientRect();
+                        const newLeftWidth = e.clientX - workspaceRect.left;
+
+                        if (newLeftWidth > 250 && newLeftWidth < workspaceRect.width - 250) {
+                            editorPane.style.flex = `0 0 ${newLeftWidth}px`;
+                            previewPane.style.flex = '1';
+                        }
+                    }
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    isResizing = false;
+                    document.body.style.cursor = 'default';
+                }
+            });
+        });
+
+        // Activity bar
+        document.querySelectorAll('[data-activity]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                console.log('Activity:', btn.dataset.activity);
+            });
+        });
+
+        // View Mode Toggle
+        const btnInteractive = document.getElementById('view-mode-interactive');
+        const btnPdf = document.getElementById('view-mode-pdf');
+
+        const updateViewUI = () => {
+            if (state.viewMode === 'interactive') {
+                btnInteractive.className = 'px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all bg-app-accent text-white shadow-sm';
+                btnPdf.className = 'px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all text-app-text hover:text-app-textLight';
+            } else {
+                btnPdf.className = 'px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all bg-app-accent text-white shadow-sm';
+                btnInteractive.className = 'px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all text-app-text hover:text-app-textLight';
+            }
+        };
+
+        const switchView = (mode) => {
+            if (state.viewMode === mode) return;
+            state.viewMode = mode;
+            updateViewUI();
+            
+            const previewPane = document.querySelector('.preview-pane');
+            const iframe = document.querySelector('#preview-iframe');
+            
+            if (mode === 'interactive') {
+                previewPane.classList.remove('pdf-mode');
+                iframe.src = '/output/analysis_report.html?t=' + Date.now();
+            } else {
+                previewPane.classList.add('pdf-mode');
+                // When switching to PDF, automatically trigger a compile to ensure Paper View is current
+                document.querySelector('[data-purpose="compile-button"]')?.click();
+            }
+        };
+
+        btnInteractive?.addEventListener('click', () => switchView('interactive'));
+        btnPdf?.addEventListener('click', () => switchView('pdf'));
+    }
+
+
+    // Start app when DOM is ready
+    document.addEventListener('DOMContentLoaded', initApp);
+</script>
+
+
+</body>
+</html>

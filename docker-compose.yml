@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  4dpapers:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: 4dpapers-editor
+    ports:
+      - "5006:5006"  # Dashboard UI
+    volumes:
+      - .:/workspace  # Mounts current directory as the project
+    environment:
+      - PORT=5006
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5006/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    # Uncomment to enable GPU support (for PyVista rendering):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
