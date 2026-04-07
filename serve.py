@@ -34,10 +34,10 @@ def main():
     app = create_app()
 
     # Serve with explicit static directory
-    # Map /static/ to dashboard/static/ so /static/css/ and /static/js/ work
+    # Map /assets/ to dashboard/static/ (Panel reserves /static/ for internal use)
     pn.serve(
         {'/': app},
-        static_dirs={'static': str(static_dir)},
+        static_dirs={'assets': str(static_dir)},
         port=5006,
         show=False,
         title="4Dpapers Dashboard"

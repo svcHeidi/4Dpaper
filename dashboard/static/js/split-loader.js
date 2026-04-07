@@ -7,8 +7,8 @@
   if (window.__4dpapersSplitLoaderDone) return;
   window.__4dpapersSplitLoaderDone = true;
 
-  var SPLIT_SRC = "/static/js/split-pane.js?v=1";
-  var ACTIVITY_SRC = "/static/js/activity-bar.js?v=1";
+  var SPLIT_SRC = "/assets/js/split-pane.js?v=1";
+  var ACTIVITY_SRC = "/assets/js/activity-bar.js?v=1";
 
   function markFailed(msg) {
     var el =

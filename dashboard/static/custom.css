@@ -1,0 +1,130 @@
+/* 
+   4Dpaper Dashboard - Custom Stylesheet
+   This file is the primary entry point for a UI/UX expert.
+   All major components have dedicated classes.
+*/
+
+:root {
+    --primary-color: #138a7c;
+    --bg-dark: #0f111a;
+    --sidebar-width: 250px;
+    --header-height: 40px;
+    --border-color: rgba(255, 255, 255, 0.1);
+}
+
+body {
+    background-color: var(--bg-dark) !important;
+    color: #e6e6e6 !important;
+    font-family: 'Inter', sans-serif;
+}
+
+/* --- Layout Shell --- */
+.app-shell {
+    background-color: var(--bg-dark);
+}
+
+.app-header {
+    background-color: rgba(0, 0, 0, 0.4);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 20px;
+}
+
+.app-logo {
+    font-weight: 800;
+    font-size: 1.2rem;
+    color: var(--primary-color);
+    letter-spacing: 1px;
+}
+
+/* --- Sidebar --- */
+.app-sidebar {
+    background-color: #161922;
+    border-right: 1px solid var(--border-color);
+}
+
+.sidebar-title {
+    padding: 10px 15px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #888;
+}
+
+/* --- Editor Tabs --- */
+.editor-tab-bar {
+    background-color: #1a1d29;
+    padding-top: 5px;
+    gap: 2px;
+}
+
+.editor-tab {
+    border-radius: 4px 4px 0 0 !important;
+    border: none !important;
+    font-size: 11px !important;
+    transition: all 0.2s;
+}
+
+.editor-tab-inactive:hover {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.editor-tab-active {
+    background-color: var(--bg-dark) !important;
+    border-bottom: 2px solid var(--primary-color) !important;
+}
+
+/* --- Build/Compile Buttons --- */
+.btn-build {
+    border-radius: 6px !important;
+    padding: 0 12px !important;
+    font-weight: 600 !important;
+}
+
+.btn-primary {
+    background-color: var(--primary-color) !important;
+}
+
+/* --- Build Overlay --- */
+.build-overlay {
+    position: absolute;
+    top: 50px;
+    right: 20px;
+    z-index: 1000;
+    min-width: 300px;
+}
+
+.overlay-content {
+    background: rgba(20, 25, 35, 0.95);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+.overlay-log {
+    font-family: monospace;
+    font-size: 10px;
+    color: #aaa;
+    margin-top: 10px;
+    max-height: 100px;
+    overflow-y: auto;
+}
+
+/* --- Preview Area --- */
+.preview-title {
+    font-weight: 700;
+    color: #ccc;
+    font-size: 0.8rem;
+    padding: 10px;
+}
+
+.empty-iframe-msg {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #555;
+    text-align: center;
+}

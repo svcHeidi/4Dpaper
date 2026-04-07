@@ -1,0 +1,197 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --fourd-bg: rgba(18, 18, 22, 0.82);
+  --fourd-border: rgba(255, 255, 255, 0.14);
+  --fourd-accent: #38bdf8;
+  --fourd-text: #f8fafc;
+  --fourd-text-dim: #94a3b8;
+  --fourd-glass-bg: blur(12px) saturate(180%);
+  --fourd-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
+.fourd-strip {
+  position: fixed;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fourd-lock-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.fourd-lock-widget {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 10001;
+  width: 32px;
+  height: 32px;
+  background: var(--fourd-bg);
+  backdrop-filter: var(--fourd-glass-bg);
+  border: 1px solid var(--fourd-border);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  box-shadow: var(--fourd-shadow);
+}
+
+.fourd-lock-widget:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--fourd-accent);
+  transform: scale(1.05);
+}
+
+.fourd-lock-badge {
+  position: fixed;
+  top: 8px;
+  right: 48px;
+  z-index: 10001;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: var(--fourd-shadow);
+  animation: slide-in 0.3s ease-out;
+}
+
+.fourd-popup {
+  position: fixed;
+  right: 52px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 9999;
+  background: var(--fourd-bg);
+  backdrop-filter: var(--fourd-glass-bg);
+  border: 1px solid var(--fourd-border);
+  border-radius: 12px;
+  padding: 16px;
+  min-width: 180px;
+  color: var(--fourd-text);
+  font-family: 'Inter', sans-serif;
+  box-shadow: var(--fourd-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: fade-in 0.2s ease-out;
+}
+
+.fourd-popup-header {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--fourd-text-dim);
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--fourd-border);
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
+
+.fourd-select {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--fourd-border);
+  border-radius: 6px;
+  color: var(--fourd-text);
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  width: 100%;
+}
+
+.fourd-select:focus {
+  border-color: var(--fourd-accent);
+}
+
+.fourd-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--fourd-border);
+  border-radius: 2px;
+  outline: none;
+  accent-color: var(--fourd-accent);
+}
+
+.fourd-time-display {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  text-align: center;
+  margin: 4px 0;
+  color: var(--fourd-accent);
+}
+
+.fourd-time-meta {
+  font-size: 10px;
+  color: var(--fourd-text-dim);
+}
+
+.fourd-corner-widget {
+  position: fixed;
+  bottom: 8px;
+  left: 8px;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.fourd-axes-svg {
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.fourd-flash-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--fourd-accent);
+  background: rgba(0,0,0,0.4);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* Animations */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-40%) scale(0.95); }
+  to { opacity: 1; transform: translateY(-50%) scale(1); }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Scrollbar reset for better premium feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--fourd-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--fourd-accent);
+}

@@ -30,20 +30,20 @@ class Assets:
 
     # CSS files (order matters: design tokens first, then layout, then components)
     CSS = {
-        "theme_tokens": f"/static/css/theme-tokens.css?v={AssetVersion.THEME_TOKENS}",
-        "layout": f"/static/css/layout.css?v={AssetVersion.LAYOUT}",
-        "components": f"/static/css/components.css?v={AssetVersion.COMPONENTS}",
-        "overrides": f"/static/css/overrides.css?v={AssetVersion.OVERRIDES}",
+        "theme_tokens": f"/assets/css/theme-tokens.css?v={AssetVersion.THEME_TOKENS}",
+        "layout": f"/assets/css/layout.css?v={AssetVersion.LAYOUT}",
+        "components": f"/assets/css/components.css?v={AssetVersion.COMPONENTS}",
+        "overrides": f"/assets/css/overrides.css?v={AssetVersion.OVERRIDES}",
     }
 
     # JavaScript files (loaded asynchronously, order independent)
     JS = {
-        "split_pane": f"/static/js/split-pane.js?v={AssetVersion.SPLIT_PANE}",
-        "camera_sync": f"/static/js/camera-sync.js?v={AssetVersion.CAMERA_SYNC}",
-        "activity_bar": f"/static/js/activity-bar.js?v={AssetVersion.ACTIVITY_BAR}",
-        "tab_align": f"/static/js/tab-align.js?v={AssetVersion.TAB_ALIGN}",
-        "insert_figure": f"/static/js/insert-figure-overlay.js?v={AssetVersion.INSERT_FIGURE}",
-        "sync_receiver": f"/static/js/sync-receiver.js?v={AssetVersion.SYNC_RECEIVER}",
+        "split_pane": f"/assets/js/split-pane.js?v={AssetVersion.SPLIT_PANE}",
+        "camera_sync": f"/assets/js/camera-sync.js?v={AssetVersion.CAMERA_SYNC}",
+        "activity_bar": f"/assets/js/activity-bar.js?v={AssetVersion.ACTIVITY_BAR}",
+        "tab_align": f"/assets/js/tab-align.js?v={AssetVersion.TAB_ALIGN}",
+        "insert_figure": f"/assets/js/insert-figure-overlay.js?v={AssetVersion.INSERT_FIGURE}",
+        "sync_receiver": f"/assets/js/sync-receiver.js?v={AssetVersion.SYNC_RECEIVER}",
     }
 
     @staticmethod
