@@ -107,7 +107,7 @@
 /* Preview / Right pane */
 .pane-right,
 .preview-area {
-  flex: 0 0 400px;
+  flex: 0 0 350px;
   min-width: 320px;
   display: flex;
   flex-direction: column;

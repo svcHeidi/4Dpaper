@@ -9,10 +9,10 @@ When you need to change a version, update it here — it affects everywhere.
 class AssetVersion:
     """Version numbers for cache-busting and tracking."""
     THEME_TOKENS = "1"
-    LAYOUT = "1"
+    LAYOUT = "2"
     COMPONENTS = "1"
     OVERRIDES = "1"
-    SPLIT_PANE = "1"
+    SPLIT_PANE = "2"
     CAMERA_SYNC = "1"
     ACTIVITY_BAR = "1"
     TAB_ALIGN = "1"

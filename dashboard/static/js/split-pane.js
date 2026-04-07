@@ -80,9 +80,13 @@
     el.style.removeProperty("max-width");
   }
 
+  var _reflowing = false;
   function reflow() {
+    if (_reflowing) return;
+    _reflowing = true;
     applyWrap();
     try { window.dispatchEvent(new Event("resize")); } catch (e) {}
+    _reflowing = false;
   }
 
   function usableWidth(mainEl, previewEl) {
@@ -228,10 +232,12 @@
 
     var startX = 0;
     var startMainW = 0;
+    var startPreviewW = 0;
 
     els.gutter.addEventListener("mousedown", function (e) {
       startX = e.clientX;
       startMainW = els.main.getBoundingClientRect().width;
+      startPreviewW = els.preview.getBoundingClientRect().width;
     }, { capture: true });
 
     els.gutter.addEventListener("mousedown", function (e) {
@@ -245,7 +251,9 @@
       function onMove(ev) {
         var rowW = usableWidth(els.main, els.preview);
         var dx = ev.clientX - startX;
-        setFixedWidth(els.main, clamp(startMainW + dx, MIN_MAIN, rowW - MIN_PREVIEW));
+        var newMainW = clamp(startMainW + dx, MIN_MAIN, rowW - MIN_PREVIEW);
+        setFixedWidth(els.main, newMainW);
+        setFixedWidth(els.preview, startPreviewW - dx);
       }
       function onUp() {
         window.removeEventListener("mousemove", onMove, true);
