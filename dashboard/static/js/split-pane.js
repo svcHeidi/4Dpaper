@@ -249,13 +249,14 @@
       document.body.style.userSelect = "none";
 
       function onMove(ev) {
+        var rowW = usableWidth(els.main, els.preview);
         var dx = ev.clientX - startX;
-        // Constrain main growth to not exceed preview's available shrinkage
-        var maxMainGrowth = startPreviewW - MIN_PREVIEW;
-        var newMainW = clamp(startMainW + dx, MIN_MAIN, startMainW + maxMainGrowth);
-        var actualChange = newMainW - startMainW;
+        // Constrain main so preview always has at least MIN_PREVIEW space
+        var newMainW = clamp(startMainW + dx, MIN_MAIN, rowW - MIN_PREVIEW - GUTTER_WIDTH);
+        // Preview gets exactly the remaining space
+        var newPreviewW = Math.max(MIN_PREVIEW, rowW - GUTTER_WIDTH - newMainW);
         setFixedWidth(els.main, newMainW);
-        setFixedWidth(els.preview, startPreviewW - actualChange);
+        setFixedWidth(els.preview, newPreviewW);
       }
       function onUp() {
         window.removeEventListener("mousemove", onMove, true);
