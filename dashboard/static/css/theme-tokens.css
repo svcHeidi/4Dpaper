@@ -1,0 +1,76 @@
+/*
+   4Dpaper Dashboard - Design Tokens
+   Colors, spacing, typography, shadows — no layout, no component styling.
+*/
+
+:root {
+  /* Colors */
+  --primary-color: #138a7c;
+  --bg-dark: #0f111a;
+  --bg-panel: #161922;
+  --bg-sidebar: #161922;
+  --bg-header: rgba(0, 0, 0, 0.4);
+  --toolbar-bg: #1a1d29;
+  --text-primary: #ffffff;
+  --text-muted: #888888;
+  --text-accent: #b8def5;
+  --border-color: rgba(255, 255, 255, 0.1);
+  --border-subtle: #3d3834;
+  --btn-secondary: #2a2623;
+  --btn-secondary-hover: #35302c;
+  --accent: #138a7c;
+  --accent-hover: #1aad9a;
+  --accent-muted: rgba(19, 138, 124, 0.32);
+  --accent-muted-strong: rgba(19, 138, 124, 0.5);
+  --success: #138a7c;
+  --warning: #cea01e;
+  --danger: #c74444;
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+
+  /* Typography */
+  --font-family: 'Inter', sans-serif;
+  --font-family-mono: monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 800;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.7);
+
+  /* Sizes */
+  --header-height: 40px;
+  --sidebar-width: 250px;
+  --gutter-width: 8px;
+  --tab-height: 30px;
+
+  /* Panel / Bokeh shadow DOM */
+  --panel-background-color: #0f0f0f;
+  --panel-on-background-color: #ffffff;
+  --panel-surface-color: #2a2623;
+  --panel-on-surface-color: #ffffff;
+  --panel-primary-color: #138a7c;
+  --panel-on-primary-color: #ffffff;
+}
+
+body {
+  background-color: var(--bg-dark) !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-family);
+}
+
+html,
+body {
+  background: var(--bg-app, var(--bg-dark)) !important;
+}
