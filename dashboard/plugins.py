@@ -6,6 +6,7 @@ Add to panel serve with:
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import tornado.web
@@ -13,9 +14,11 @@ import tornado.web
 from dashboard.camera_plugin import ROUTES as camera_routes
 from dashboard.color_plugin import ROUTES as color_routes
 from dashboard.field_plugin import ROUTES as field_routes
+from dashboard.shortcuts_plugin import ROUTES as shortcuts_routes
 from dashboard.upload_plugin import ROUTES as upload_routes
 
-_PROJECT_ROOT = Path(__file__).parent.parent
+# PROJECT_ROOT can be set via environment variable (for Docker) or defaults to parent directory
+_PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 
 _state_route = (
     r"/state/(.*)",
@@ -30,6 +33,6 @@ _output_route = (
 )
 
 ROUTES = (
-    camera_routes + color_routes + field_routes + upload_routes
+    camera_routes + color_routes + field_routes + shortcuts_routes + upload_routes
     + [_state_route, _output_route]
 )

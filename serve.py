@@ -2,45 +2,82 @@
 4Dpapers Dashboard - Serve Entry Point
 
 This script starts the Panel development server with proper static file
-serving configuration. Use this instead of 'panel serve dashboard/app.py'.
+serving configuration AND loads all API plugins.
 
 Run with:
-    python serve.py
+    python serve.py [--port PORT]
 
-Then visit: http://localhost:5006/
+Environment variables:
+    PORT — Server port (default: auto)
+
+Then visit the server at the URL shown in console output.
 """
 
+import argparse
+import os
 import sys
 from pathlib import Path
 
-# Add repo root to path so imports work
-repo_root = Path(__file__).parent
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
+# Determine application and project roots
+app_root = Path(__file__).parent  # /app in Docker, or /Users/... in development
+if str(app_root) not in sys.path:
+    sys.path.insert(0, str(app_root))
 
+# Determine project root (workspace in Docker, or app root in development)
+project_root = Path(os.getenv("PROJECT_ROOT", str(app_root)))
+os.environ["PROJECT_ROOT"] = str(project_root)
+
+import tornado.web
 import panel as pn
-from dashboard.app import create_app
+from dashboard.plugins import ROUTES as plugin_routes
 
-# Static files directory
-static_dir = repo_root / "dashboard" / "static"
+# Static files directory (in app, not project)
+static_dir = app_root / "dashboard" / "static"
+
+class IndexHandler(tornado.web.StaticFileHandler):
+    """Serve index.html for root path."""
+    def get(self, path=""):
+        if path == "" or not path:
+            self.path = str(static_dir)
+            path = "index.html"
+        return super().get(path)
 
 def main():
     """Start the dashboard server."""
+    parser = argparse.ArgumentParser(description="4Dpapers Dashboard Server")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Server port (default: auto-select, or use PORT environment variable)"
+    )
+    args = parser.parse_args()
+
+    # Get port from: CLI args > environment variable > None (auto)
+    port = args.port or os.getenv("PORT")
+    if port:
+        port = int(port)
+
     print(f"Starting 4Dpapers Dashboard...")
+    print(f"Application root: {app_root}")
+    print(f"Project root: {project_root}")
     print(f"Static files: {static_dir}")
-    print(f"Visit: http://localhost:5006/")
+    print(f"API routes registered: {len(plugin_routes)}")
 
-    # Create app
-    app = create_app()
-
-    # Serve with explicit static directory
+    # Serve with explicit static directory AND plugin routes
     # Map /assets/ to dashboard/static/ (Panel reserves /static/ for internal use)
+    extra_patterns = [
+        (r"^/$", IndexHandler, {"path": str(static_dir)}),  # Serve index.html at root
+        (r"^/assets/(.*)", tornado.web.StaticFileHandler, {"path": str(static_dir)}),  # Asset files
+        *plugin_routes,  # API routes from plugins
+    ]
+
     pn.serve(
-        {'/': app},
-        static_dirs={'assets': str(static_dir)},
-        port=5006,
+        {},  # No Panel apps, just static + API routes
+        port=port,
         show=False,
-        title="4Dpapers Dashboard"
+        title="4Dpapers Dashboard",
+        extra_patterns=extra_patterns,
     )
 
 

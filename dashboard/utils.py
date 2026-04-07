@@ -36,7 +36,14 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
     _venv_bin = Path(__file__).parent.parent / ".venv" / "bin"
     _venv_python = _venv_bin / "python"
     env["QUARTO_PYTHON"] = str(_venv_python) if _venv_python.exists() else sys.executable
+
+    # Ensure common Quarto installation paths are in PATH
+    for qpath in ["/Applications/quarto/bin", "/usr/local/bin", "/opt/homebrew/bin"]:
+        if qpath not in env.get("PATH", ""):
+            env["PATH"] = qpath + ":" + env.get("PATH", "")
+
     env["PATH"] = str(_venv_bin) + ":" + env.get("PATH", "")
+
     # App mode: figures served as static files + embed-resources disabled.
     # embed-resources makes pandoc inline every iframe src (reads & base64s each
     # figure file), which causes 9GB RAM usage and 3-min builds.
@@ -52,14 +59,21 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
     else:
         cmd = ["quarto", "render", str(qmd_path), "--to", output_format]
 
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        cwd=str(qmd_path.parent),
-        env=env,
-    )
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=str(qmd_path.parent),
+            env=env,
+        )
+    except FileNotFoundError:
+        # Provide a descriptive error in the logs if quarto is not found.
+        log_lines.append(f"CRITICAL ERROR: 'quarto' executable not found in PATH.")
+        log_lines.append(f"PATH checked: {env.get('PATH')}")
+        log_lines.append("Please ensure Quarto is installed (https://quarto.org/docs/get-started/)")
+        return 127
 
     def _read():
         for line in proc.stdout:

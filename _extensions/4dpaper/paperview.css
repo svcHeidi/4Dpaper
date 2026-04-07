@@ -1,25 +1,164 @@
+/* 4DPaper - Academic PDF Parity Styles for HTML Preview */
+
+/* General Document Setup */
 body {
-  max-width: 700px;
-  margin: 2rem auto;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 11pt;
-  line-height: 1.6;
-  color: #111;
+  max-width: 800px !important;
+  margin: 0 auto !important;
+  padding: 4rem 5rem !important;
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-size: 11.5pt !important;
+  line-height: 1.45 !important;
+  color: #111 !important;
+  background-color: #fff !important; /* Forces white page background inside dashboard iframe */
+  text-align: justify !important;
 }
-h1, h2, h3, h4 {
-  font-family: system-ui, Arial, sans-serif;
+
+/* Hide ALL Quarto interactive and layout elements */
+#quarto-header, 
+#quarto-sidebar, 
+#quarto-footer, 
+#quarto-toc-sidebar,
+.quarto-color-scheme-toggle, 
+.quarto-code-collapse, 
+.code-tools-button,
+.quarto-back-to-top,
+.quarto-format-links,
+.quarto-code-toggle,
+.code-tools,
+.btn-quarto-theme {
+  display: none !important;
 }
-figure {
-  margin: 1.5rem 0;
-  text-align: center;
+
+/* Headings: Academic Serif Style */
+h1, h2, h3, h4, h5, .title, .subtitle {
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-weight: bold !important;
+  color: #000 !important;
+  margin-top: 2rem !important;
 }
-figure img {
-  width: 100%;
-  display: block;
+
+h1.title, .title {
+  font-size: 24pt !important;
+  text-align: center !important;
+  margin-top: 0 !important;
+  margin-bottom: 0.5rem !important;
+  display: block !important;
+  width: 100% !important;
 }
-figcaption {
-  font-style: italic;
-  font-size: 0.9em;
-  margin-top: 0.4rem;
-  color: #444;
+
+.subtitle {
+  font-size: 16pt !important;
+  text-align: center !important;
+  font-style: italic !important;
+  margin-top: 0 !important;
+  margin-bottom: 2rem !important;
+  font-weight: normal !important;
+  display: block !important;
+  width: 100% !important;
+}
+
+h2 {
+  font-size: 16pt !important;
+  border-bottom: 1px solid #eee !important;
+  padding-bottom: 0.3rem !important;
+  margin-top: 2.5rem !important;
+  text-align: left !important;
+}
+
+h3 {
+  font-size: 13pt !important;
+  font-style: italic !important;
+  text-align: left !important;
+}
+
+/* Title Block and Authors */
+header.quarto-title-block {
+  text-align: center !important;
+  margin-bottom: 3rem !important;
+  display: block !important;
+}
+
+.quarto-title-meta {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  font-size: 11pt !important;
+}
+
+.quarto-title-meta-heading {
+  display: none !important; /* Hide "Author", "Published" labels to mirror academic journals */
+}
+
+/* Abstract: Centered block with tight margins */
+.abstract {
+  margin: 2.5rem 10% !important;
+  font-size: 11pt !important;
+  line-height: 1.5 !important;
+  font-style: normal !important;
+  border-top: 1px solid #000 !important;
+  border-bottom: 1px solid #000 !important;
+  padding: 1rem 0 !important;
+  text-align: justify !important;
+}
+
+.abstract-title {
+  display: block !important;
+  text-align: center !important;
+  font-weight: bold !important;
+  text-transform: uppercase !important;
+  font-size: 10pt !important;
+  margin-bottom: 0.5rem !important;
+}
+
+/* Figures and Captions */
+figure, .fourd-figure {
+  margin: 2.5rem 0 !important;
+  text-align: center !important;
+  width: 100% !important;
+}
+
+figure img, .fourd-figure img {
+  max-width: 100% !important;
+  height: auto !important;
+  display: block !important;
+  margin: 0 auto !important;
+}
+
+figcaption, .fourd-figure figcaption {
+  font-style: italic !important;
+  font-size: 10pt !important;
+  margin-top: 1rem !important;
+  color: #333 !important;
+  text-align: center !important;
+}
+
+/* Equations */
+.math.display {
+  margin: 2rem 0 !important;
+  text-align: center !important;
+}
+
+/* Tables */
+table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  margin: 2rem 0 !important;
+  font-size: 10.5pt !important;
+}
+
+th, td {
+  padding: 0.6rem !important;
+  border-bottom: 1px solid #eee !important;
+}
+
+th {
+  border-top: 2px solid #000 !important;
+  border-bottom: 2px solid #000 !important;
+  font-weight: bold !important;
+}
+
+/* Clean up paragraph spacing */
+p {
+  margin-bottom: 1rem !important;
 }

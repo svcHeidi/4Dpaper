@@ -11,6 +11,7 @@ abstract: |
   output, and high-resolution static figures in the PDF export.
 format:
   html:
+    format-links: false
     code-fold: true
     toc: true
     toc-depth: 3

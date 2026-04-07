@@ -417,23 +417,54 @@ local function fourd_panel(args, kwargs)
   if quarto.doc.isFormat("html") then
     -- Paper-view: embed composite PNG instead of interactive grid
     if _paper_view then
-      local png_path = "state/figures/" .. id .. ".png"
-      local pf = io.open(png_path, "r")
-      if pf then pf:close() end
       local cap_html = caption ~= "" and
         '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
         caption .. '</figcaption>\n' or ""
-      if not pf then
+
+      -- Try to read the manifest for subfigure IDs (high-fidelity grid)
+      local manifest_path = "state/figures/" .. id .. ".manifest.json"
+      local mf = io.open(manifest_path, "r")
+      local subfig_ids = {}
+      local ncols = 1
+      if mf then
+        local ms = mf:read("*all"); mf:close()
+        for s in ms:gmatch('"subfigures"%s*:%s*%[([^%]]*)%]') do
+          for sub_id in s:gmatch('"([^"]+)"') do
+            table.insert(subfig_ids, sub_id)
+          end
+        end
+        local layout_str = ms:match('"layout"%s*:%s*"(%d+)x%d+"')
+        ncols = tonumber(layout_str) or 1
+      end
+
+      if #subfig_ids > 0 then
+        -- Build high-fidelity CSS grid of individual PNGs (PDF-like)
+        local imgs = ""
+        for _, sub_id in ipairs(subfig_ids) do
+          imgs = imgs .. '<img src="/state/figures/' .. sub_id .. '.png" style="width:100%;display:block;">\n'
+        end
+        local grid_style = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);gap:4px;width:100%;background:white;'
         return pandoc.RawBlock("html",
-          '<figure class="fourd-figure" style="margin:1.5rem 0;">' ..
-          '<div style="border:2px dashed #888;padding:1rem;text-align:center;">' ..
-          '⚠ Panel <code>' .. id .. '</code> not rendered — click Rebuild HTML</div>' ..
+          '<figure class="fourd-figure" style="margin:1.5rem 0;background:white;padding:10px;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">\n' ..
+          '<div style="' .. grid_style .. '">' .. imgs .. '</div>\n' ..
+          cap_html .. '</figure>')
+      else
+        -- Fallback: single composite PNG
+        local png_path = "state/figures/" .. id .. ".png"
+        local pf = io.open(png_path, "r")
+        if pf then pf:close() end
+        if not pf then
+          return pandoc.RawBlock("html",
+            '<figure class="fourd-figure" style="margin:1.5rem 0;">' ..
+            '<div style="border:2px dashed #888;padding:1rem;text-align:center;">' ..
+            '⚠ Panel <code>' .. id .. '</code> not rendered — click Rebuild HTML</div>' ..
+            cap_html .. '</figure>')
+        end
+        return pandoc.RawBlock("html",
+          '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+          '<img src="/state/figures/' .. id .. '.png" style="width:100%;display:block;">\n' ..
           cap_html .. '</figure>')
       end
-      return pandoc.RawBlock("html",
-        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-        '<img src="/state/figures/' .. id .. '.png" style="width:100%;display:block;">\n' ..
-        cap_html .. '</figure>')
     end
 
     -- Inject relay script once per page
@@ -841,20 +872,16 @@ local function fourd_timeseries(args, kwargs)
           cap_html .. '</figure>')
       end
 
-      -- Build a flex row: each cell has a minimum width of 240 px so images are
-      -- readable; the row scrolls horizontally when the page is too narrow.
-      local cell_min = 240
+      -- Build high-fidelity CSS grid (PDF-like)
+      local ncols = #subfig_ids
       local imgs = ""
       for _, sub_id in ipairs(subfig_ids) do
-        imgs = imgs ..
-          '<img src="/state/figures/' .. sub_id .. '.png" ' ..
-          'style="flex:1 1 ' .. cell_min .. 'px;min-width:' .. cell_min .. 'px;' ..
-          'height:auto;display:block;">\n'
+        imgs = imgs .. '<img src="/state/figures/' .. sub_id .. '.png" style="width:100%;display:block;">\n'
       end
+      local grid_style = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);gap:4px;width:100%;background:white;'
       return pandoc.RawBlock("html",
-        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-        '<div style="display:flex;flex-wrap:nowrap;gap:4px;overflow-x:auto;">\n' ..
-        imgs .. '</div>\n' ..
+        '<figure class="fourd-figure" style="margin:1.5rem 0;background:white;padding:10px;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">\n' ..
+        '<div style="' .. grid_style .. '">' .. imgs .. '</div>\n' ..
         cap_html .. '</figure>')
     end
 

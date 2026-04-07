@@ -34,6 +34,32 @@ if (
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
+# ── Import shortcut resolver ──────────────────────────────────────────────────
+from _extensions.4dpaper.shortcut_resolver import ShortcutResolver
+
+_shortcut_resolver = ShortcutResolver(
+    config_path=_project_root / "_shortcuts.yml",
+    project_root=_project_root
+)
+
+
+# ── Path resolution helper ───────────────────────────────────────────────────
+
+def resolve_src_path(src_str: str) -> Path:
+    """
+    Resolve src path with shortcut support (@syntax).
+
+    Handles @shortcut_name/path, relative paths, and absolute paths.
+    Raises ValueError if shortcut not found.
+    """
+    try:
+        return _shortcut_resolver.resolve(src_str)
+    except ValueError as e:
+        print(f"[4dpaper] Warning: {e}", file=sys.stderr)
+        # Fallback: treat as relative path (may still fail if path doesn't exist)
+        path = Path(src_str)
+        return path if path.is_absolute() else _project_root / path
+
 
 # ── Shortcode parsing ─────────────────────────────────────────────────────────
 
@@ -1640,7 +1666,7 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
     camera_mode = panel.get("camera_mode", "independent")
 
     for sub_idx, sub in enumerate(panel["subfigures"]):
-        src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
+        src = resolve_src_path(sub["src"])
         out = figures_dir / f"{sub['id']}.html"
         af = [f.strip() for f in sub.get("fields", "").split(",") if f.strip()] or None
         # For timeseries: only show colorbar and lock button on the first panel
@@ -1779,7 +1805,7 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
     is_timeseries = panel.get("timeseries", False)
     # Generate each sub-figure PNG
     for sub_idx, sub in enumerate(panel["subfigures"]):
-        src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
+        src = resolve_src_path(sub["src"])
         out = figures_dir / f"{sub['id']}.png"
         cam_id = panel["id"] if camera_mode == "sync" else sub["id"]
         show_cb = (sub_idx == 0) if is_timeseries else True
@@ -2066,7 +2092,7 @@ def main() -> None:
     if ts_raw:
         from scripts.data_loader import SimulationData as _SimData  # noqa: PLC0415
     for ts in ts_raw:
-        src = Path(ts["src"]) if Path(ts["src"]).is_absolute() else _project_root / ts["src"]
+        src = resolve_src_path(ts["src"])
         try:
             sim = _SimData(str(src)).load()
             n_steps = sim.n_steps
@@ -2089,7 +2115,7 @@ def main() -> None:
 
     for fig in figures:
         fig_id = fig["id"]
-        src = Path(fig["src"]) if Path(fig["src"]).is_absolute() else _project_root / fig["src"]
+        src = resolve_src_path(fig["src"])
         field = fig["field"]
         time_spec = fig.get("time", "mid")
         style = resolve_style(styles_config, fig["style"], field)
@@ -2179,7 +2205,7 @@ def main() -> None:
     # ── Video shortcode processing ─────────────────────────────────────────────
     for vid in videos:
         fig_id = vid["id"]
-        src = Path(vid["src"]) if Path(vid["src"]).is_absolute() else _project_root / vid["src"]
+        src = resolve_src_path(vid["src"])
         field = vid["field"]
         time_spec = vid.get("time", "mid")
         fps = int(vid.get("fps", "10"))
@@ -2228,7 +2254,7 @@ def main() -> None:
         # Determine max mtime of all sub-figure source files and camera deps
         sub_mtimes = []
         for sub in panel["subfigures"]:
-            src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
+            src = resolve_src_path(sub["src"])
             if src.exists():
                 sub_mtimes.append(src.stat().st_mtime)
         # Camera deps: sync panels use one shared file; independent use per-subfigure files
@@ -2274,10 +2300,9 @@ def main() -> None:
 
     for pvsm_fig in pvsm_figs:
         fig_id   = pvsm_fig["id"]
-        pvsm_src = Path(pvsm_fig["src"]) if Path(pvsm_fig["src"]).is_absolute() \
-                   else _project_root / pvsm_fig["src"]
+        pvsm_src = resolve_src_path(pvsm_fig["src"])
         data_str = pvsm_fig.get("data", "").strip()
-        data_path = Path(data_str) if data_str else None
+        data_path = resolve_src_path(data_str) if data_str else None
         time_spec = pvsm_fig.get("time", "").strip() or None
 
         out_html    = figures_dir / f"{fig_id}.html"
@@ -2334,8 +2359,8 @@ def main() -> None:
 
     for graph in graphs:
         fig_id = graph["id"]
-        src = Path(graph["src"]) if Path(graph["src"]).is_absolute() else _project_root / graph["src"]
-        
+        src = resolve_src_path(graph["src"])
+
         out_html = figures_dir / f"{fig_id}.html"
         out_png = figures_dir / f"{fig_id}.png"
         

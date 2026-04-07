@@ -8,12 +8,14 @@ reuses existing core logic (`copy_case_data`, `generate_shortcode`).
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 
 import tornado.web
 
-_PROJECT_ROOT = Path(__file__).parent.parent
+# PROJECT_ROOT can be set via environment variable (for Docker) or defaults to parent directory
+_PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 _UPLOAD_ROOT = _PROJECT_ROOT / "state" / "upload_tmp"
 
 
@@ -34,6 +36,45 @@ def generate_shortcode(
     return "{{< 4d-image " + " ".join(parts) + " >}}"
 
 
+def create_case_symlink(
+    foam_path: Path,
+    dest_data_dir: Path,
+    log_lines: list[str]
+) -> Path:
+    """
+    Create a symlink to the OpenFOAM case folder (instead of copying).
+
+    This allows data to be auto-updated when simulations re-run on HPC:
+    if the source case is updated, the symlink automatically points to
+    the new results without manual re-configuration.
+
+    Returns the path to the symlink'd .foam marker file.
+
+    Falls back to copy_case_data() if symlink creation fails (e.g., on Windows).
+    """
+    case_root = foam_path.parent
+    case_name = case_root.name
+    dest_case = dest_data_dir / case_name
+
+    # Remove existing symlink/directory if present
+    if dest_case.exists() or dest_case.is_symlink():
+        if dest_case.is_symlink():
+            dest_case.unlink()
+        else:
+            shutil.rmtree(dest_case)
+
+    try:
+        # Create symlink to the case folder
+        dest_case.parent.mkdir(parents=True, exist_ok=True)
+        dest_case.symlink_to(case_root)
+        log_lines.append(f"  Symlinked {case_root} → {dest_case}")
+        return dest_case / foam_path.name
+    except (OSError, NotImplementedError) as e:
+        # Fallback: if symlink fails (e.g., no permissions, Windows), copy instead
+        log_lines.append(f"  Symlink failed ({e}), falling back to copy")
+        return copy_case_data(foam_path, dest_data_dir, log_lines)
+
+
 def copy_case_data(foam_path: Path, dest_data_dir: Path, log_lines: list[str]) -> Path:
     """
     Copy the minimal OpenFOAM case files required for PyVista rendering into
@@ -46,6 +87,8 @@ def copy_case_data(foam_path: Path, dest_data_dir: Path, log_lines: list[str]) -
     - processor*/<timestep>/ (all timesteps)
 
     Returns the path to the new .foam marker file.
+
+    Used as fallback if symlink creation fails, or when copying is explicitly desired.
     """
     case_root = foam_path.parent
     case_name = case_root.name
@@ -178,6 +221,8 @@ class UploadFinishHandler(tornado.web.RequestHandler):
             return
 
         upload_id = body.get("upload_id")
+        mode = body.get("mode", "figure")  # "figure" or "file"
+
         if not upload_id:
             self.set_status(400)
             self.write({"status": "error", "detail": "missing upload_id"})
@@ -190,50 +235,91 @@ class UploadFinishHandler(tornado.web.RequestHandler):
             return
 
         try:
-            foam_files = sorted(staging_dir.rglob("*.foam"))
-            if not foam_files:
-                self.set_status(400)
-                self.write({"status": "error", "detail": "No .foam file found in dropped folder"})
-                return
+            if mode == "figure":
+                # Insert Figure: Find .foam file, symlink to data/
+                foam_files = sorted(staging_dir.rglob("*.foam"))
+                if not foam_files:
+                    self.set_status(400)
+                    self.write({"status": "error", "detail": "No .foam file found in dropped folder"})
+                    return
 
-            foam_path = foam_files[0]
+                foam_path = foam_files[0]
 
-            # Reuse existing copy + shortcode logic so we don't fork behavior.
-            log_lines: list[str] = []
-            dest_foam = copy_case_data(
-                foam_path=foam_path,
-                dest_data_dir=_PROJECT_ROOT / "data",
-                log_lines=log_lines,
-            )
+                # Create symlink to the case (or copy if symlink fails)
+                # This allows data to auto-update when HPC simulations are re-run
+                log_lines: list[str] = []
+                dest_foam = create_case_symlink(
+                    foam_path=foam_path,
+                    dest_data_dir=_PROJECT_ROOT / "data",
+                    log_lines=log_lines,
+                )
 
-            src = dest_foam.relative_to(_PROJECT_ROOT).as_posix()
+                src = dest_foam.relative_to(_PROJECT_ROOT).as_posix()
 
-            # Default insertion (as requested): keep parity with the form defaults.
-            shortcode = generate_shortcode(
-                src=src,
-                field="Vm",
-                fig_id="fig-vm",
-                time="mid",
-                caption="",
-            )
+                # Default insertion (as requested): keep parity with the form defaults.
+                shortcode = generate_shortcode(
+                    src=src,
+                    field="Vm",
+                    fig_id="fig-vm",
+                    time="mid",
+                    caption="",
+                )
 
-            # Cleanup staging to keep disk usage bounded.
-            try:
-                shutil.rmtree(staging_dir, ignore_errors=True)
-            except Exception:
-                pass
+                self.write(
+                    {
+                        "status": "ok",
+                        "shortcode": shortcode,
+                        "src": src,
+                        "fig_id": "fig-vm",
+                        "log": log_lines[-20:],
+                    }
+                )
 
-            self.write(
-                {
+            else:  # mode == "file"
+                # Insert File: Copy arbitrary files to data/
+                all_files = sorted(staging_dir.rglob("*"))
+                file_list = [f for f in all_files if f.is_file()]
+
+                if not file_list:
+                    self.set_status(400)
+                    self.write({"status": "error", "detail": "No files found"})
+                    return
+
+                # Symlink or copy files to data/
+                copied_paths = []
+                for src_file in file_list:
+                    rel_name = src_file.name
+                    dest_file = _PROJECT_ROOT / "data" / rel_name
+
+                    # If file already exists with same name, use symlink approach
+                    dest_file.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Remove existing if present
+                    if dest_file.exists():
+                        dest_file.unlink()
+
+                    # Create symlink (or copy if symlink fails)
+                    try:
+                        dest_file.symlink_to(src_file.resolve())
+                    except (OSError, NotImplementedError):
+                        # Fallback to copy if symlink fails
+                        shutil.copy2(src_file, dest_file)
+
+                    copied_paths.append(str(dest_file.relative_to(_PROJECT_ROOT)))
+
+                # Generate include shortcode for first file
+                # Example: {{< include data/references.bib >}}
+                first_file = copied_paths[0]
+                shortcode = f"{{{{< include {first_file} >}}}}"
+
+                self.write({
                     "status": "ok",
                     "shortcode": shortcode,
-                    "src": src,
-                    "fig_id": "fig-vm",
-                    "log": log_lines[-20:],
-                }
-            )
+                    "files": copied_paths,
+                })
+
         finally:
-            # Cleanup in case of exceptions as well.
+            # Cleanup staging to keep disk usage bounded
             try:
                 shutil.rmtree(staging_dir, ignore_errors=True)
             except Exception:
