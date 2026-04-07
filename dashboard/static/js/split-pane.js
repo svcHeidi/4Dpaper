@@ -249,12 +249,14 @@
       document.body.style.userSelect = "none";
 
       function onMove(ev) {
-        var rowW = usableWidth(els.main, els.preview);
         var dx = ev.clientX - startX;
-        // Constrain main so preview always has at least MIN_PREVIEW space
-        var newMainW = clamp(startMainW + dx, MIN_MAIN, rowW - MIN_PREVIEW - GUTTER_WIDTH);
-        // Preview gets exactly the remaining space
-        var newPreviewW = Math.max(MIN_PREVIEW, rowW - GUTTER_WIDTH - newMainW);
+        // How much can preview shrink? (down to MIN_PREVIEW)
+        var previewShrinkAvailable = startPreviewW - MIN_PREVIEW;
+        // Main can only grow up to the space preview can provide
+        var newMainW = clamp(startMainW + dx, MIN_MAIN, startMainW + previewShrinkAvailable);
+        // Preview shrinks/grows by exactly the amount main changed
+        var actualChange = newMainW - startMainW;
+        var newPreviewW = startPreviewW - actualChange;
         setFixedWidth(els.main, newMainW);
         setFixedWidth(els.preview, newPreviewW);
       }
