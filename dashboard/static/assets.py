@@ -12,7 +12,7 @@ class AssetVersion:
     LAYOUT = "2"
     COMPONENTS = "1"
     OVERRIDES = "1"
-    SPLIT_PANE = "2"
+    SPLIT_PANE = "3"
     CAMERA_SYNC = "1"
     ACTIVITY_BAR = "1"
     TAB_ALIGN = "1"

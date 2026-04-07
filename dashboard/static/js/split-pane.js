@@ -252,8 +252,9 @@
         var rowW = usableWidth(els.main, els.preview);
         var dx = ev.clientX - startX;
         var newMainW = clamp(startMainW + dx, MIN_MAIN, rowW - MIN_PREVIEW);
+        var actualChange = newMainW - startMainW;
         setFixedWidth(els.main, newMainW);
-        setFixedWidth(els.preview, startPreviewW - dx);
+        setFixedWidth(els.preview, Math.max(MIN_PREVIEW, startPreviewW - actualChange));
       }
       function onUp() {
         window.removeEventListener("mousemove", onMove, true);
