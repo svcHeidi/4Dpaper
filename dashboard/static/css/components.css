@@ -1,0 +1,219 @@
+/*
+   4Dpaper Dashboard - Components
+   Buttons, headers, tabs, inputs, overlays, status indicators.
+*/
+
+/* ── BUTTONS ────────────────────────────────────────────────────────── */
+
+/* Button base styles (shared by all variants) */
+.bk-btn {
+  border-radius: 4px !important;
+  font-weight: var(--font-weight-semibold) !important;
+  transition: background 0.12s, box-shadow 0.12s, color 0.12s !important;
+  font-family: var(--font-family) !important;
+}
+
+/* Primary buttons (high emphasis, teal) */
+.btn-primary.bk-btn {
+  background: rgba(19, 138, 124, 0.35) !important;
+  border: none !important;
+  color: #fff !important;
+  box-shadow: inset 0 0 0 1px rgba(19, 138, 124, 0.5) !important;
+}
+
+.btn-primary.bk-btn:hover:not(:disabled) {
+  background: rgba(19, 138, 124, 0.45) !important;
+  box-shadow: inset 0 0 0 1px rgba(19, 138, 124, 0.65) !important;
+  color: #fff !important;
+}
+
+.btn-primary.bk-btn:active:not(:disabled) {
+  background: rgba(19, 138, 124, 0.5) !important;
+  box-shadow: inset 0 0 0 1px rgba(19, 138, 124, 0.7) !important;
+}
+
+/* Secondary buttons (low emphasis) */
+.btn-secondary.bk-btn,
+.btn-secondary.bk-btn-default {
+  background: var(--btn-secondary) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  box-shadow: none !important;
+}
+
+.btn-secondary.bk-btn:hover:not(:disabled),
+.btn-secondary.bk-btn-default:hover:not(:disabled) {
+  background: var(--btn-secondary-hover) !important;
+  border-color: var(--accent) !important;
+}
+
+.btn-secondary.bk-btn:active:not(:disabled),
+.btn-secondary.bk-btn-default:active:not(:disabled) {
+  background: #3d3834 !important;
+}
+
+/* Danger buttons (red) */
+.btn-danger.bk-btn {
+  background: rgba(199, 68, 68, 0.35) !important;
+  border: none !important;
+  color: #fff !important;
+  box-shadow: inset 0 0 0 1px rgba(199, 68, 68, 0.5) !important;
+}
+
+.btn-danger.bk-btn:hover:not(:disabled) {
+  background: rgba(199, 68, 68, 0.45) !important;
+  box-shadow: inset 0 0 0 1px rgba(199, 68, 68, 0.65) !important;
+}
+
+/* Button sizes */
+.btn-size-small.bk-btn {
+  height: 22px !important;
+  min-height: 22px !important;
+  max-height: 22px !important;
+  line-height: 22px !important;
+  padding: 0 10px !important;
+  font-size: var(--font-size-xs) !important;
+}
+
+.btn-size-medium.bk-btn {
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  line-height: 30px !important;
+  padding: 0 12px !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+.btn-size-large.bk-btn {
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  line-height: 36px !important;
+  padding: 0 16px !important;
+  font-size: var(--font-size-base) !important;
+}
+
+/* Icon-only buttons */
+.btn-icon.bk-btn {
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* ── TABS ───────────────────────────────────────────────────────────── */
+
+.editor-tab {
+  border-radius: 4px 4px 0 0 !important;
+  border: none !important;
+  font-size: var(--font-size-xs) !important;
+  transition: all 0.2s;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+}
+
+.editor-tab-inactive:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.editor-tab-active {
+  background-color: var(--bg-dark) !important;
+  border-bottom: 2px solid var(--primary-color) !important;
+}
+
+/* ── BUILD OVERLAY ──────────────────────────────────────────────────── */
+
+.build-overlay {
+  position: absolute;
+  top: 50px;
+  right: 20px;
+  z-index: 1000;
+  min-width: 300px;
+}
+
+.overlay-content {
+  background: rgba(20, 25, 35, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 15px;
+  box-shadow: var(--shadow-md);
+}
+
+.overlay-content strong {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.overlay-log {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: #aaa;
+  margin-top: 10px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.overlay-warning {
+  border-color: var(--warning);
+}
+
+.overlay-success {
+  border-color: var(--success);
+}
+
+.overlay-danger {
+  border-color: var(--danger);
+}
+
+/* ── STATUS LABEL ───────────────────────────────────────────────────── */
+
+.header-status-label,
+.save-status-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  padding: 0 10px;
+}
+
+.status-text {
+  font-weight: var(--font-weight-normal);
+}
+
+/* ── PAPER PAGE ─────────────────────────────────────────────────────── */
+
+.paper-page-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── VIEW TOGGLE ────────────────────────────────────────────────────── */
+
+.view-toggle-group.bk-btn-group {
+  display: flex;
+  gap: 4px;
+  background: transparent !important;
+}
+
+.view-toggle-group.bk-btn-group .bk-btn {
+  border: 1px solid var(--border-color) !important;
+  background: transparent !important;
+  color: var(--text-primary) !important;
+  padding: 0 10px !important;
+  border-radius: 4px !important;
+  font-size: var(--font-size-sm) !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  line-height: 26px !important;
+}
+
+.view-toggle-group.bk-btn-group .bk-btn.bk-active {
+  background: rgba(19, 138, 124, 0.2) !important;
+  border-color: var(--accent) !important;
+  color: var(--text-primary) !important;
+}

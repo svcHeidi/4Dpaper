@@ -19,6 +19,7 @@ if str(_repo_root) not in sys.path:
 
 import panel as pn
 
+from dashboard.static.assets import Assets
 from dashboard.editor_tabs import after_close_tab, open_in_tabs
 from dashboard.file_tree import (
     EXPLORER_BUTTON_STYLESHEETS,
@@ -66,11 +67,8 @@ pn.extension(
     sizing_mode="stretch_width",
     template="bootstrap",
     raw_css=[_RAW_CSS],
-    css_files=["/assets/theme.css?v=117"],
-    js_files={
-        "insert_figure": "/assets/insert_figure_overlay.js?v=113",
-        "split_loader": "/assets/split_loader.js?v=113",
-    },
+    css_files=Assets.css_list(),
+    js_files=Assets.js_dict(),
 )
 
 

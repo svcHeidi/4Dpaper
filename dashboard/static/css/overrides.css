@@ -1,0 +1,95 @@
+/*
+   4Dpaper Dashboard - Overrides
+   Panel/Bokeh shadow DOM fixes and compatibility patches.
+*/
+
+/* Ace editor (CodeEditor) overrides */
+.ace_editor {
+  background-color: var(--bg-panel) !important;
+  color: var(--text-primary) !important;
+  font-family: 'Monaco', 'Courier New', monospace !important;
+}
+
+.ace_gutter {
+  background-color: #1a1d29 !important;
+  color: #666 !important;
+}
+
+.ace_line {
+  color: var(--text-primary) !important;
+}
+
+.ace_selection {
+  background-color: rgba(19, 138, 124, 0.2) !important;
+}
+
+/* Panel column styling */
+.bk-column.sidebar-pane {
+  background: var(--bg-sidebar) !important;
+}
+
+.bk-column.editor-pane {
+  background: var(--bg-panel) !important;
+}
+
+.bk-column.preview-pane {
+  background: var(--bg-panel) !important;
+}
+
+/* Panel scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  scrollbar-width: thin;
+}
+
+/* Bokeh default button fixes */
+.bk-btn:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+/* Input field styling */
+.bk-input,
+.bk-input-group input {
+  background-color: var(--bg-dark) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+  padding: 6px 10px !important;
+  border-radius: 4px !important;
+}
+
+.bk-input:focus,
+.bk-input-group input:focus {
+  border-color: var(--accent) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(19, 138, 124, 0.2) !important;
+}
+
+/* Hover state for interactive elements */
+.bk-btn:not(:disabled):hover {
+  cursor: pointer;
+}
+
+/* Loading spinner */
+.bk-root .bk-btn.bk-loading {
+  opacity: 0.6 !important;
+}
