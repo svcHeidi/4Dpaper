@@ -55,3 +55,4 @@ Library/
 debug_bounds.py
 test_js.py
 test_script.js
+scripts/__pycache__/

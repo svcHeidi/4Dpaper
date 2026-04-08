@@ -36,9 +36,10 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
     _venv_bin = Path(__file__).parent.parent / ".venv" / "bin"
     _venv_python = _venv_bin / "python"
     env["QUARTO_PYTHON"] = str(_venv_python) if _venv_python.exists() else sys.executable
+    env["PATH"] = "/opt/quarto/bin:" + env.get("PATH", "")
 
     # Ensure common Quarto installation paths are in PATH
-    for qpath in ["/Applications/quarto/bin", "/usr/local/bin", "/opt/homebrew/bin"]:
+    for qpath in ["/opt/quarto/bin", "/usr/local/bin/quarto", "/Applications/quarto/bin", "/usr/local/bin", "/opt/homebrew/bin"]:
         if qpath not in env.get("PATH", ""):
             env["PATH"] = qpath + ":" + env.get("PATH", "")
 

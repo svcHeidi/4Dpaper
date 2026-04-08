@@ -66,9 +66,14 @@ def main():
 
     # Serve with explicit static directory AND plugin routes
     # Map /assets/ to dashboard/static/ (Panel reserves /static/ for internal use)
+    output_dir = project_root / "_output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     extra_patterns = [
         (r"^/$", IndexHandler, {"path": str(static_dir)}),  # Serve index.html at root
         (r"^/assets/(.*)", tornado.web.StaticFileHandler, {"path": str(static_dir)}),  # Asset files
+        (r"^/dashboard/static/(.*)", tornado.web.StaticFileHandler, {"path": str(static_dir)}),  # JS/CSS files
+        (r"^/output/(.*)", tornado.web.StaticFileHandler, {"path": str(output_dir)}),  # Compiled output
         *plugin_routes,  # API routes from plugins
     ]
 

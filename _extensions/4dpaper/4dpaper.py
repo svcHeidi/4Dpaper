@@ -35,7 +35,11 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # ── Import shortcut resolver ──────────────────────────────────────────────────
-from _extensions.4dpaper.shortcut_resolver import ShortcutResolver
+import importlib.util as _ilu
+_sr_spec = _ilu.spec_from_file_location("shortcut_resolver", _here.parent / "shortcut_resolver.py")
+_sr_mod = _ilu.module_from_spec(_sr_spec)
+_sr_spec.loader.exec_module(_sr_mod)
+ShortcutResolver = _sr_mod.ShortcutResolver
 
 _shortcut_resolver = ShortcutResolver(
     config_path=_project_root / "_shortcuts.yml",
@@ -2048,14 +2052,30 @@ def main() -> None:
     output_format = os.environ.get("QUARTO_OUTPUT_FORMAT", "html")  # kept for logging only
 
     # QUARTO_DOCUMENT_PATH is not always set for project-level pre-render hooks.
-    # Fall back to scanning all .qmd files in QUARTO_PROJECT_DIR (or project root).
+    # Fall back to following includes from main.qmd (or analysis_report.qmd).
     if qmd_path and Path(qmd_path).exists():
         qmd_files = [Path(qmd_path)]
     else:
         project_dir = Path(os.environ.get("QUARTO_PROJECT_DIR", str(_project_root)))
-        # Scan root *.qmd files and all *.qmd files in sections/ and subdirectories
-        qmd_files = sorted(project_dir.glob("*.qmd"))
-        qmd_files.extend(sorted(project_dir.glob("sections/**/*.qmd")))
+
+        def collect_includes(qmd: Path, seen: set) -> list:
+            if qmd in seen or not qmd.exists():
+                return []
+            seen.add(qmd)
+            result = [qmd]
+            for m in re.finditer(r'\{\{<\s*include\s+([^\s>]+)\s*>\}\}', qmd.read_text()):
+                child = (qmd.parent / m.group(1)).resolve()
+                result.extend(collect_includes(child, seen))
+            return result
+
+        for candidate in ["main.qmd", "analysis_report.qmd"]:
+            root_qmd = project_dir / candidate
+            if root_qmd.exists():
+                qmd_files = collect_includes(root_qmd, set())
+                break
+        else:
+            qmd_files = sorted(project_dir.glob("*.qmd"))
+
         if not qmd_files:
             print("[4dpaper] No .qmd files found — skipping.", file=sys.stderr)
             return

@@ -23,6 +23,19 @@ _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)
 _SAFE_FIG_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
+def _find_main_qmd() -> Path:
+    """Find the main QMD file: prefers main.qmd, falls back to analysis_report.qmd,
+    then any single .qmd in the project root."""
+    for name in ["main.qmd", "analysis_report.qmd"]:
+        p = _PROJECT_ROOT / name
+        if p.exists():
+            return p
+    candidates = [f for f in _PROJECT_ROOT.glob("*.qmd") if f.is_file()]
+    if candidates:
+        return candidates[0]
+    return _PROJECT_ROOT / "main.qmd"  # will fail with a clear error
+
+
 class CameraHandler(tornado.web.RequestHandler):
     def set_default_headers(self) -> None:
         self.set_header("Access-Control-Allow-Origin", "*")
@@ -132,6 +145,14 @@ class FilesHandler(tornado.web.RequestHandler):
                 if path.parent.name == "state" and path.is_file():
                     if path.suffix == ".json":
                         return False
+                # Hide Quarto build artifact folders (*_files/)
+                if path.is_dir() and path.name.endswith("_files"):
+                    return False
+                if any(part.endswith("_files") for part in path.parts):
+                    return False
+                # Hide compiled HTML at project root (goes to _output/)
+                if path.parent == _PROJECT_ROOT and path.suffix == ".html":
+                    return False
                 return True
 
             # Get all files recursively, with filtering
@@ -195,6 +216,33 @@ class FileHandler(tornado.web.RequestHandler):
             self.set_header("Content-Type", "application/json")
             self.write({"error": str(e)})
 
+    async def post(self) -> None:
+        """Save file content."""
+        try:
+            self.set_header("Content-Type", "application/json")
+            body = json.loads(self.request.body)
+            file_path_param = body.get("path", "")
+            content = body.get("content", "")
+
+            if not file_path_param:
+                self.set_status(400)
+                self.write({"error": "path required"})
+                return
+
+            file_path = _PROJECT_ROOT / file_path_param
+            if not file_path.resolve().is_relative_to(_PROJECT_ROOT.resolve()):
+                self.set_status(403)
+                self.write({"error": "Access denied"})
+                return
+
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(content, encoding="utf-8")
+            self.write({"status": "saved", "path": file_path_param})
+
+        except Exception as e:
+            self.set_status(500)
+            self.write({"error": str(e)})
+
 
 class CompileHandler(tornado.web.RequestHandler):
     """Compile QMD to HTML."""
@@ -222,7 +270,8 @@ class CompileHandler(tornado.web.RequestHandler):
                 print(f"[CompileHandler] Saved: {path}")
 
             # Render main document
-            main_qmd = _PROJECT_ROOT / "analysis_report.qmd"
+            main_qmd = _find_main_qmd()
+            stem = main_qmd.stem
             print(f"[CompileHandler] Main QMD: {main_qmd}")
             print(f"[CompileHandler] Exists: {main_qmd.exists()}")
 
@@ -236,11 +285,11 @@ class CompileHandler(tornado.web.RequestHandler):
 
             print(f"[CompileHandler] Starting Quarto render...")
             log_lines = []
-            
+
             # Map 'pdf' from frontend to 'paperview' for rendering
             requested_format = body.get("format", "html")
             render_format = "paperview" if requested_format == "pdf" else "html"
-            
+
             exit_code = run_quarto_render(main_qmd, log_lines, output_format=render_format)
             print(f"[CompileHandler] Quarto exit code: {exit_code}")
             print(f"[CompileHandler] Log lines: {len(log_lines)}")
@@ -253,34 +302,35 @@ class CompileHandler(tornado.web.RequestHandler):
                 self.write({
                     "error": "Compilation failed",
                     "exit_code": exit_code,
-                    "log": "\n".join(log_lines[-50:])  # Last 50 lines
+                    "log": "\n".join(log_lines[-50:])
                 })
                 return
 
-            # Read compiled HTML
-            filename = "analysis_report.html"
-            if render_format == "paperview":
-                filename = "analysis_report-paperview.html"
+            # Output filename is derived from the QMD stem
+            filename = f"{stem}-paperview.html" if render_format == "paperview" else f"{stem}.html"
             
             html_output = _PROJECT_ROOT / "_output" / filename
             print(f"[CompileHandler] Looking for output: {html_output}")
             print(f"[CompileHandler] Output exists: {html_output.exists()}")
 
             if not html_output.exists():
+                # List what IS in _output for debugging
+                output_dir = _PROJECT_ROOT / "_output"
+                found = list(output_dir.glob("*")) if output_dir.exists() else []
                 self.set_status(500)
                 self.write({
                     "error": f"Compiled output not found at {html_output}",
                     "path_checked": str(html_output),
+                    "output_dir_contents": [str(f) for f in found],
                     "log": "\n".join(log_lines[-30:])
                 })
                 return
 
-            html_content = html_output.read_text(encoding="utf-8")
-            print(f"[CompileHandler] Successfully read HTML output ({len(html_content)} bytes)")
-
+            print(f"[CompileHandler] Successfully compiled: {filename}")
             self.write({
                 "status": "success",
-                "html": html_content,
+                "filename": filename,
+                "log": "\n".join(log_lines[-50:]),
             })
 
         except json.JSONDecodeError as e:
@@ -309,7 +359,8 @@ class ExportHandler(tornado.web.RequestHandler):
     def post(self) -> None:
         """Export compiled document to PDF."""
         try:
-            main_qmd = _PROJECT_ROOT / "analysis_report.qmd"
+            main_qmd = _find_main_qmd()
+            stem = main_qmd.stem
 
             log_lines = []
             exit_code = run_quarto_render(main_qmd, log_lines, output_format="pdf")
@@ -323,8 +374,7 @@ class ExportHandler(tornado.web.RequestHandler):
                 })
                 return
 
-            # Read PDF
-            pdf_output = _PROJECT_ROOT / "_output" / "analysis_report.pdf"
+            pdf_output = _PROJECT_ROOT / "_output" / f"{stem}.pdf"
             if not pdf_output.exists():
                 self.set_status(500)
                 self.set_header("Content-Type", "application/json")
@@ -333,7 +383,7 @@ class ExportHandler(tornado.web.RequestHandler):
 
             pdf_content = pdf_output.read_bytes()
             self.set_header("Content-Type", "application/pdf")
-            self.set_header("Content-Disposition", 'attachment; filename="analysis_report.pdf"')
+            self.set_header("Content-Disposition", f'attachment; filename="{stem}.pdf"')
             self.write(pdf_content)
 
         except Exception as e:
@@ -351,7 +401,7 @@ class HealthCheckHandler(tornado.web.RequestHandler):
 
     def get(self) -> None:
         """Check if backend is ready to compile."""
-        main_qmd = _PROJECT_ROOT / "analysis_report.qmd"
+        main_qmd = _find_main_qmd()
         output_dir = _PROJECT_ROOT / "_output"
         state_dir = _PROJECT_ROOT / "state"
 

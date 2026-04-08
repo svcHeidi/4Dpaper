@@ -1,18 +1,18 @@
-version: '3.8'
-
 services:
   4dpapers:
     build:
-      context: .
+      context: /Users/simaocastro/4Dpapers
       dockerfile: Dockerfile
     container_name: 4dpapers-editor
     ports:
       - "5006:5006"  # Dashboard UI
     volumes:
       - .:/workspace  # Mounts current directory as the project
+      - /Users/simaocastro/cardiacFoamEP:/Users/simaocastro/cardiacFoamEP:ro  # OpenFOAM data (read-only)
     environment:
       - PORT=5006
       - PYTHONUNBUFFERED=1
+      - PROJECT_ROOT=/workspace
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5006/api/health"]
       interval: 30s

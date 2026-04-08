@@ -1,5 +1,5 @@
 # 4Dpapers - Containerized Scientific Paper Authoring
-FROM python:3.11-slim
+FROM --platform=linux/arm64 python:3.11-slim
 
 # Install system dependencies (Quarto, git, etc.)
 RUN apt-get update && apt-get install -y \
@@ -8,8 +8,9 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Quarto
-RUN curl -fsSL https://quarto.org/download/latest/quarto-linux-amd64.deb -o quarto.deb && \
+# Install Quarto (architecture-aware)
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://quarto.org/download/latest/quarto-linux-${ARCH}.deb" -o quarto.deb && \
     dpkg -i quarto.deb && \
     rm quarto.deb
 
@@ -19,8 +20,11 @@ WORKDIR /app
 # Copy application code (not the project - that comes via volume)
 COPY dashboard /app/dashboard
 COPY _extensions /app/_extensions
+COPY scripts /app/scripts
 COPY serve.py /app/serve.py
-COPY requirements.txt /app/requirements.txt 2>/dev/null || echo "# No requirements.txt yet" > /app/requirements.txt
+COPY requirements.txt /app/requirements.txt
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Install Python dependencies
 RUN pip install --no-cache-dir \
@@ -41,4 +45,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Entry point: initialize project structure and start server
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["--port", "5006"]

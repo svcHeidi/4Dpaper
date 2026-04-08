@@ -573,8 +573,17 @@ jupyter: python3
                 </div>
             </div>
 
+            <!-- Build Log Panel -->
+            <div id="build-log-panel" style="display:none; flex-direction: column; border-bottom: 1px solid #2A3047; background: #0D1117; max-height: 180px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; padding: 4px 12px; background: #121521; border-bottom: 1px solid #2A3047; flex-shrink:0;">
+                    <span id="build-log-title" style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:#9CA3AF;">Build Log</span>
+                    <button onclick="document.getElementById('build-log-panel').style.display='none';" style="background:none; border:none; color:#9CA3AF; cursor:pointer; font-size:14px; line-height:1; padding:2px 4px;">&times;</button>
+                </div>
+                <pre id="build-log-output" style="margin:0; padding:10px 14px; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.6; overflow-y:auto; flex:1; color:#E5E7EB; white-space:pre-wrap; word-break:break-all;"></pre>
+            </div>
+
             <!-- Preview Content -->
-            <div class="pane-content custom-scrollbar" style="padding: 0;">
+            <div class="pane-content custom-scrollbar" style="padding: 0; flex: 1; overflow: hidden;">
                 <iframe
                     id="preview-iframe"
                     style="width: 100%; height: 100%; border: none; margin: 0; padding: 0;"
@@ -591,12 +600,12 @@ jupyter: python3
             <span>Status: <span style="color: #22c55e;">Ready</span></span>
             <i class="ph-fill ph-check-circle" style="color: #22c55e;"></i>
         </div>
-        <div class="status-right">
-            <span>Building...</span>
+        <div class="status-right" id="build-progress-area" style="display:none;">
+            <span id="build-progress-label" style="font-size:11px; color:#9CA3AF;">Building...</span>
             <div style="width: 120px; height: 6px; background: #2A3047; border-radius: 3px; overflow: hidden;">
-                <div style="width: 85%; height: 100%; background: #3B82F6; border-radius: 3px;"></div>
+                <div id="build-progress-bar" style="width: 0%; height: 100%; background: #3B82F6; border-radius: 3px; transition: width 0.3s ease;"></div>
             </div>
-            <span style="font-family: 'JetBrains Mono';">85%</span>
+            <span id="build-progress-pct" style="font-family: 'JetBrains Mono'; font-size:11px;">0%</span>
         </div>
     </div>
 </div>
@@ -609,7 +618,8 @@ jupyter: python3
         editorContent: {},
         isCompiling: false,
         codeEditor: null,
-        viewMode: 'interactive' // 'interactive' or 'pdf'
+        viewMode: 'interactive', // 'interactive' or 'pdf'
+        mainFilename: 'main'
     };
 
     // Initialize app
@@ -618,6 +628,99 @@ jupyter: python3
         await loadFileTree();
         setupEventListeners();
         await openFile('analysis_report.qmd');
+    }
+
+    // Build progress bar
+    const buildProgress = (() => {
+        const AVG_KEY = '4dpapers_avg_build_ms';
+        const SAMPLE_KEY = '4dpapers_build_samples';
+        let _raf = null;
+        let _start = null;
+        let _estimate = null;
+
+        function getEstimate() {
+            const samples = JSON.parse(localStorage.getItem(SAMPLE_KEY) || '[]');
+            if (samples.length === 0) return 20000; // default 20s
+            return samples.reduce((a, b) => a + b, 0) / samples.length;
+        }
+
+        function recordDuration(ms) {
+            const samples = JSON.parse(localStorage.getItem(SAMPLE_KEY) || '[]');
+            samples.push(ms);
+            if (samples.length > 5) samples.shift(); // keep last 5
+            localStorage.setItem(SAMPLE_KEY, JSON.stringify(samples));
+        }
+
+        function easeProgress(elapsed, estimate) {
+            // Fast start, asymptotically approaches 95%
+            const t = Math.min(elapsed / estimate, 1);
+            return 95 * (1 - Math.exp(-3 * t));
+        }
+
+        function tick() {
+            const elapsed = Date.now() - _start;
+            const pct = easeProgress(elapsed, _estimate);
+            _setPct(pct);
+            _raf = requestAnimationFrame(tick);
+        }
+
+        function _setPct(pct) {
+            const bar = document.getElementById('build-progress-bar');
+            const label = document.getElementById('build-progress-pct');
+            if (bar) bar.style.width = pct.toFixed(1) + '%';
+            if (label) label.textContent = Math.floor(pct) + '%';
+        }
+
+        return {
+            start() {
+                _estimate = getEstimate();
+                _start = Date.now();
+                document.getElementById('build-progress-area').style.display = 'flex';
+                document.getElementById('build-progress-label').textContent = 'Building...';
+                _setPct(0);
+                if (_raf) cancelAnimationFrame(_raf);
+                _raf = requestAnimationFrame(tick);
+            },
+            finish(success) {
+                if (_raf) cancelAnimationFrame(_raf);
+                recordDuration(Date.now() - _start);
+                _setPct(100);
+                const label = document.getElementById('build-progress-label');
+                if (label) label.textContent = success ? 'Done' : 'Failed';
+                const bar = document.getElementById('build-progress-bar');
+                if (bar) bar.style.background = success ? '#22c55e' : '#ef4444';
+                setTimeout(() => {
+                    const area = document.getElementById('build-progress-area');
+                    if (area) area.style.display = 'none';
+                    if (bar) bar.style.background = '#3B82F6';
+                    _setPct(0);
+                }, 2000);
+            }
+        };
+    })();
+
+    // Save active file to backend
+    async function saveActiveFile() {
+        if (!state.activeTab) return;
+        const content = state.codeEditor ? state.codeEditor.getValue() : '';
+        try {
+            const res = await fetch('/api/file', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: state.activeTab, content })
+            });
+            const statusBar = document.querySelector('.status-bar .status-left');
+            if (res.ok) {
+                statusBar.innerHTML = '<span>Status: <span style="color:#22c55e;">Saved</span></span><i class="ph-fill ph-floppy-disk" style="color:#22c55e;"></i>';
+                setTimeout(() => {
+                    statusBar.innerHTML = '<span>Status: <span style="color:#22c55e;">Up to date</span></span><i class="ph-fill ph-check-circle" style="color:#22c55e;"></i>';
+                }, 5000);
+            } else {
+                statusBar.innerHTML = '<span>Status: <span style="color:#ef4444;">Save failed</span></span>';
+            }
+        } catch (e) {
+            console.error('Save error:', e);
+        }
     }
 
     // Initialize CodeMirror editor
@@ -639,6 +742,12 @@ jupyter: python3
         });
 
         state.codeEditor.setSize('100%', '100%');
+
+        // Cmd+S / Ctrl+S → save active file
+        state.codeEditor.addKeyMap({
+            'Ctrl-S': saveActiveFile,
+            'Cmd-S': saveActiveFile
+        });
 
         // Keep editorContent and openTabs in sync on every change
         state.codeEditor.on('changes', function() {
@@ -861,6 +970,7 @@ jupyter: python3
         if (state.isCompiling) return;
 
         state.isCompiling = true;
+        buildProgress.start();
         const btn = document.querySelector('[data-purpose="compile-button"]');
         btn.disabled = true;
         btn.innerHTML = '<i class="ph-fill ph-spinner text-white animate-spin"></i><span>Compiling...</span>';
@@ -883,14 +993,26 @@ jupyter: python3
 
             const result = await response.json();
 
+            // Show build log
+            const logPanel = document.getElementById('build-log-panel');
+            const logOutput = document.getElementById('build-log-output');
+            const logTitle = document.getElementById('build-log-title');
+            const logText = result.log || result.error || '';
+            if (logText) {
+                logOutput.textContent = logText;
+                logPanel.style.display = 'flex';
+            }
+
             if (response.ok && result.status === 'success') {
-                // Point the iframe at the served output file so relative asset
-                // paths (Bootstrap, quarto.js, vtk.js figures) resolve correctly.
-                // srcdoc takes precedence over src, so remove it first.
+                buildProgress.finish(true);
+                state.mainFilename = result.filename ? result.filename.replace(/(-paperview)?\.html$/, '') : 'main';
+                logTitle.style.color = '#22c55e';
+                logTitle.textContent = 'Build Log — Success';
+                setTimeout(() => { logPanel.style.display = 'none'; }, 3000);
                 const iframe = document.querySelector('#preview-iframe');
                 iframe.srcdoc = '';
                 iframe.removeAttribute('srcdoc');
-                const filename = state.viewMode === 'pdf' ? 'analysis_report-paperview.html' : 'analysis_report.html';
+                const filename = result.filename;
                 iframe.src = '/output/' + filename + '?t=' + Date.now();
 
                 const statusBar = document.querySelector('.status-bar .status-left');
@@ -931,10 +1053,19 @@ jupyter: python3
                 const statusBar = document.querySelector('.status-bar .status-left');
                 statusBar.innerHTML = '<span>Status: <span style="color: #f59e0b;">Preview (Quarto not found)</span></span>';
             } else {
-                throw new Error(result.error || 'Compilation failed');
+                buildProgress.finish(false);
+                logTitle.style.color = '#ef4444';
+                logTitle.textContent = 'Build Log — Error';
+                if (!logText) {
+                    logOutput.textContent = result.error || 'Compilation failed';
+                    logPanel.style.display = 'flex';
+                }
+                const statusBar = document.querySelector('.status-bar .status-left');
+                statusBar.innerHTML = '<span>Status: <span style="color: #ef4444;">Error</span></span><i class="ph-fill ph-x-circle" style="color: #ef4444;"></i>';
             }
 
         } catch (error) {
+            buildProgress.finish(false);
             console.error('Compilation error:', error);
             const statusBar = document.querySelector('.status-bar .status-left');
             statusBar.innerHTML = '<span>Status: <span style="color: #ef4444;">Error</span></span><i class="ph-fill ph-x-circle" style="color: #ef4444;"></i>';
@@ -964,7 +1095,7 @@ jupyter: python3
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'analysis_report.pdf';
+                a.download = state.mainFilename + '.pdf';
                 a.click();
                 URL.revokeObjectURL(url);
 
@@ -1073,7 +1204,7 @@ jupyter: python3
             
             if (mode === 'interactive') {
                 previewPane.classList.remove('pdf-mode');
-                iframe.src = '/output/analysis_report.html?t=' + Date.now();
+                iframe.src = '/output/' + (state.mainFilename || 'main') + '.html?t=' + Date.now();
             } else {
                 previewPane.classList.add('pdf-mode');
                 // When switching to PDF, automatically trigger a compile to ensure Paper View is current
