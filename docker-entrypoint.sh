@@ -138,8 +138,13 @@ else
     echo -e "${YELLOW}[3/4] .gitignore already exists${NC}"
 fi
 
-# 5. Check required files
-echo -e "${YELLOW}[4/4] Verifying setup...${NC}"
+# 5. Clear Quarto cache
+echo -e "${YELLOW}[4/4] Clearing Quarto cache...${NC}"
+rm -rf "$PROJECT_ROOT/.quarto" "$PROJECT_ROOT/_freeze"
+echo -e "${GREEN}✓ Cache cleared${NC}"
+
+# 6. Check required files
+echo -e "${YELLOW}[5/5] Verifying setup...${NC}"
 
 if [ ! -f "$PROJECT_ROOT/main.qmd" ] && [ ! -f "$PROJECT_ROOT/analysis_report.qmd" ]; then
     echo -e "${YELLOW}⚠ Warning: main.qmd not found${NC}"
@@ -162,10 +167,8 @@ fi
 # Link Quarto profile files into workspace
 for profile_file in /app/_quarto-apphtml.yml /app/_quarto-paperview.yml; do
     dest="$PROJECT_ROOT/$(basename $profile_file)"
-    if [ ! -e "$dest" ]; then
-        ln -s "$profile_file" "$dest"
-        echo -e "${GREEN}✓ Linked $(basename $profile_file)${NC}"
-    fi
+    ln -sf "$profile_file" "$dest"
+    echo -e "${GREEN}✓ Linked $(basename $profile_file)${NC}"
 done
 
 if [ ! -e "$PROJECT_ROOT/scripts" ]; then
@@ -202,6 +205,9 @@ echo ""
 # Set environment variables for the app
 export PYTHONUNBUFFERED=1
 export PROJECT_ROOT="$PROJECT_ROOT"
+export DISPLAY=""
+export PYVISTA_OFF_SCREEN=true
+export VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN=1
 
 # Change to app directory and run serve.py with the workspace path
 cd /app

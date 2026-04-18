@@ -13,6 +13,7 @@ import glob
 import gzip
 import struct
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -93,11 +94,9 @@ class SimulationData:
             case_dir = self.case_path.parent
             proc_dirs = sorted(glob.glob(str(case_dir / "processor*")))
             if proc_dirs:
-                print(f"🔍 Detected {len(proc_dirs)} processor directories — using decomposed mode.")
                 self._format = "openfoam_decomposed"
                 self._is_decomposed = True
             else:
-                print("🔍 No processor directories found — using reconstructed mode.")
                 self._format = "openfoam"
             return
 
@@ -188,10 +187,11 @@ class SimulationData:
 
         # Get time steps from first processor
         self._time_steps = list(self._proc_readers[0].time_values)
-        print(f"✅ Decomposed case loaded: {len(proc_dirs)} processors, "
-              f"{len(self._time_steps)} time steps")
-        print(f"   Processors: {[os.path.basename(p) for p in proc_dirs]}")
-        print(f"   Time range: {self._time_steps[0]} → {self._time_steps[-1]}")
+        print(
+            f"[4dpaper] Decomposed case: {len(proc_dirs)} processors, "
+            f"{len(self._time_steps)} time steps",
+            file=sys.stderr,
+        )
 
     def load_openfoam(self):
         """Load a reconstructed OpenFOAM case."""
@@ -259,8 +259,8 @@ class SimulationData:
             self._meshes[(0, "default")] = _CustomPLYReader.read(self.case_path)
         except (OSError, ValueError, NotImplementedError) as exc:
             print(
-                "⚠️ Custom PLY reader fallback to PyVista "
-                f"for '{self.case_path}': {exc}"
+                f"[4dpaper] PLY custom reader fallback to PyVista for '{self.case_path}': {exc}",
+                file=sys.stderr,
             )
             self._meshes[(0, "default")] = pv.read(str(self.case_path))
         self._format = (
@@ -442,7 +442,6 @@ class SimulationData:
                 if part in mesh.keys():
                     mesh = mesh[part]
                 elif "internalMesh" in mesh.keys():
-                    print(f"⚠️ Part '{part}' not found, falling back to 'internalMesh'")
                     mesh = mesh["internalMesh"]
                 else:
                     mesh = mesh.combine()
@@ -477,7 +476,7 @@ class SimulationData:
             else:
                 sub = block
                 
-            if sub is not None and (hasattr(sub, 'n_points') and sub.n_points > 0):
+            if sub is not None and hasattr(sub, 'n_points') and sub.n_points > 0:
                 parts.append(sub)
 
         if not parts:
@@ -500,20 +499,21 @@ class SimulationData:
         """Return a human-readable summary of the loaded dataset."""
         mesh = self.get_mesh(0)
         lines = [
-            f"📂 Source:      {self.case_path}",
-            f"📐 Format:      {self._format}",
-            f"⏱  Time steps:  {self.n_steps}",
-            f"⏱  Time range:  {self._time_steps[0]} → {self._time_steps[-1]}" if self._time_steps else "",
+            f"Source:       {self.case_path}",
+            f"Format:       {self._format}",
+            f"Time steps:   {self.n_steps}",
         ]
+        if self._time_steps:
+            lines.append(f"Time range:   {self._time_steps[0]} -> {self._time_steps[-1]}")
         if mesh:
             lines += [
-                f"📍 Points:      {mesh.n_points:,}",
-                f"🔷 Cells:       {mesh.n_cells:,}",
-                f"📊 Point fields: {', '.join(mesh.point_data.keys()) if mesh.point_data else 'none'}",
-                f"📊 Cell fields:  {', '.join(mesh.cell_data.keys()) if mesh.cell_data else 'none'}",
+                f"Points:       {mesh.n_points:,}",
+                f"Cells:        {mesh.n_cells:,}",
+                f"Point fields: {', '.join(mesh.point_data.keys()) if mesh.point_data else 'none'}",
+                f"Cell fields:  {', '.join(mesh.cell_data.keys()) if mesh.cell_data else 'none'}",
             ]
         if self._is_decomposed:
-            lines.append(f"🖥  Processors:  {len(self._proc_readers)}")
+            lines.append(f"Processors:   {len(self._proc_readers)}")
         return "\n".join(lines)
 
     def cleanup(self):

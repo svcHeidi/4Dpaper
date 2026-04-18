@@ -7,12 +7,14 @@ Add to panel serve with:
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
 import tornado.web
 
-_PROJECT_ROOT = Path(__file__).parent.parent
+# PROJECT_ROOT can be set via environment variable (for Docker) or defaults to parent directory
+_PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 _SAFE_FIG_ID = re.compile(r'^[A-Za-z0-9_-]+$')
 
 

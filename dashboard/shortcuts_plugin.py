@@ -7,21 +7,24 @@ Shortcuts are defined in _shortcuts.yml and allow using @shortcut_name syntax in
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 import tornado.web
 import yaml
 
-# Add extensions to path to import 4dpaper module
-_project_root = Path(__file__).parent.parent
-_extensions_path = _project_root / "_extensions" / "4dpaper"
+# _APP_DIR is always the directory containing the application code (dashboard/../).
+# Used only to locate the bundled shortcut_resolver module.
+_APP_DIR = Path(__file__).parent.parent
+_extensions_path = _APP_DIR / "_extensions" / "4dpaper"
 if str(_extensions_path) not in sys.path:
     sys.path.insert(0, str(_extensions_path))
 
 from shortcut_resolver import ShortcutResolver
 
-_PROJECT_ROOT = Path(__file__).parent.parent
+# PROJECT_ROOT is where the user's paper lives (set via env in Docker, inferred locally).
+_PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(_APP_DIR)))
 
 # Initialize the shortcut resolver (same instance as 4dpaper.py)
 _shortcut_resolver = ShortcutResolver(

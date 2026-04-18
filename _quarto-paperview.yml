@@ -7,4 +7,4 @@ format:
     number-sections: true
     embed-resources: false
     css: _extensions/4dpaper/paperview.css
-    output-file: analysis_report-paperview.html
+    output-file: main-paperview.html

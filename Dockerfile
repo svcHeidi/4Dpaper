@@ -6,6 +6,15 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     ca-certificates \
+    libgl1-mesa-dev \
+    libegl1-mesa-dev \
+    libgles2-mesa-dev \
+    libosmesa6-dev \
+    libglfw3-dev \
+    xvfb \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libfontconfig1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Quarto (architecture-aware)
@@ -17,21 +26,27 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # Create app directory (contains the 4Dpapers application code)
 WORKDIR /app
 
-# Copy application code (not the project - that comes via volume)
+# Install Python dependencies first (cached unless requirements.txt changes)
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir \
+    panel>=1.3.0 \
+    tornado>=6.3 \
+    "pyvista[jupyter]>=0.43.0" \
+    trame \
+    trame-vtk \
+    trame-vuetify \
+    quarto>=0.1.0 \
+    "weasyprint>=60.0"
+
+# Copy application code (changes more frequently — after pip for cache efficiency)
 COPY dashboard /app/dashboard
 COPY _extensions /app/_extensions
 COPY scripts /app/scripts
 COPY serve.py /app/serve.py
-COPY requirements.txt /app/requirements.txt
+COPY _quarto-apphtml.yml /app/_quarto-apphtml.yml
+COPY _quarto-paperview.yml /app/_quarto-paperview.yml
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
-
-# Install Python dependencies
-RUN pip install --no-cache-dir \
-    panel>=1.3.0 \
-    tornado>=6.3 \
-    pyvista>=0.43.0 \
-    quarto>=0.1.0
 
 # Create project volume mount point
 WORKDIR /workspace

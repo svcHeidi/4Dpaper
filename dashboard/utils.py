@@ -4,20 +4,8 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 import yaml
-
-# Resolved at module load; tests can patch this.
-CONFIG_PATH = Path(__file__).parent / "config.yaml"
-
-
-def load_config() -> dict[str, Any]:
-    """Load and return the dashboard config.yaml."""
-    if not CONFIG_PATH.exists():
-        raise FileNotFoundError(f"Config not found: {CONFIG_PATH}")
-    with CONFIG_PATH.open() as fh:
-        return yaml.safe_load(fh)
 
 
 def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str = "html") -> int:

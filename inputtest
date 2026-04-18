@@ -1,5 +1,0 @@
-crew.kickoff(inputs={
-    'file_type': 'OpenFOAM (.foam)',
-    'simulation_goal': 'Analyze the turbulent vortex behind a wing',
-    'scalar_field': 'Velocity (U)'
-})

@@ -1,20 +1,4 @@
 (function(){
-  /* ── Debug bar: shows message chain status without DevTools ─────── */
-  (function(){
-    if (document.getElementById('fourd-dbg')) return;
-    var d=document.createElement('div');
-    d.id='fourd-dbg';
-    d.style.cssText='position:fixed;bottom:4px;right:4px;z-index:2147483646;'+
-      'background:rgba(0,0,0,0.82);color:#0f0;font-size:10px;font-family:monospace;'+
-      'padding:4px 8px;border-radius:4px;max-width:320px;pointer-events:none;';
-    d.textContent='[4d] relay ready';
-    document.body.appendChild(d);
-  })();
-  function _dbg(msg){
-    var d=document.getElementById('fourd-dbg');
-    if(d)d.textContent='[4d] '+msg;
-    console.log('[4dpaper]',msg);
-  }
 
   /* ── Camera overlay: lives in this document (paper preview) ──────── */
   if (!document.getElementById('fourd-cam-overlay')) {
@@ -51,16 +35,13 @@
     _in.appendChild(_hd); _in.appendChild(_sb); _in.appendChild(_fr); _in.appendChild(_ft);
     _ov.appendChild(_in);
     document.body.appendChild(_ov);
-    _dbg('overlay created in document');
   }
 
-  /* ── Message handler: camera open, camera sync, field update ─────── */
+  /* ── Message handler: camera open, camera sync, field update, locking ── */
   window.addEventListener("message",function(e){
     if(!e.data)return;
-    _dbg('msg received: '+e.data.type);
 
     if(e.data.type==="4dpaper-open-camera"){
-      _dbg('opening camera for '+e.data.fig_id);
       var _o=document.getElementById('fourd-cam-overlay');
       var _f=document.getElementById('fourd-cam-iframe');
       var _lb=document.getElementById('fourd-cam-figid');
@@ -68,8 +49,7 @@
       if(_lb)_lb.textContent='fig id: '+e.data.fig_id;
       if(_f)_f.src=e.data.preview_src+'?t='+Date.now();
       if(_ss){_ss.textContent='Rotate then release \u2014 camera position saves automatically';_ss.style.color='#888';}
-      if(_o){_o.style.display='flex';_dbg('overlay shown for '+e.data.fig_id);}
-      else{_dbg('ERROR: overlay element not found!');}
+      if(_o)_o.style.display='flex';
 
     } else if(e.data.type==="4dpaper-camera"){
       /* Check if message comes from a sync-panel subfigure (has data-panel attr) */
@@ -127,6 +107,7 @@
       }).catch(function(){
         if(e.source)e.source.postMessage({type:'4dpaper-field-ack',fig_id:figId2,status:'error'},'*');
       });
+
     } else if(e.data.type==="4dpaper-lock-query"){
       var lockFigId=e.data.fig_id;
       fetch("/camera-lock/"+lockFigId)
@@ -138,6 +119,7 @@
           if(e.source)e.source.postMessage(
             {type:"4dpaper-lock-state",fig_id:lockFigId,locked:false},"*");
         });
+
     } else if(e.data.type==="4dpaper-lock-toggle"){
       var lockFigId2=e.data.fig_id;
       fetch("/camera-lock/"+lockFigId2,{

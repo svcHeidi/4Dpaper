@@ -1,6 +1,6 @@
 # 4DPaper
 
-A research paper IDE for writing scientific papers with embedded 3D/4D interactive visualizations (HTML) and high-quality static figures (PDF).
+A paper authoring IDE for embedding interactive 3D figures and graphs into Quarto documents. Works across disciplines — CFD (OpenFOAM), FEA (Exodus/XDMF), geometry-heavy workflows (Blender `.obj`/`.ply`/`.stl`), and any other dataset readable by PyVista. Produces interactive HTML output and high-quality static figures for PDF.
 
 ## Quick Start
 

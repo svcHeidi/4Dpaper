@@ -410,6 +410,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/markdown/markdown.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/yaml/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/show-hint.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/show-hint.min.css">
     <!-- Local scripts -->
     <script src="/assets/js/shortcuts-graph.js"></script>
     <script src="dashboard/static/js/insert-figure-overlay.js"></script>
@@ -627,7 +629,11 @@ jupyter: python3
         initCodeEditor();
         await loadFileTree();
         setupEventListeners();
-        await openFile('analysis_report.qmd');
+        // Open main.qmd if it exists, fall back to analysis_report.qmd
+        const files = await fetch('/api/files').then(r => r.json()).catch(() => ({}));
+        const mainFile = (files.files || []).find(f => f.path === 'main.qmd')
+            || (files.files || []).find(f => f.path === 'analysis_report.qmd');
+        if (mainFile) await openFile(mainFile.path);
     }
 
     // Build progress bar
@@ -723,6 +729,102 @@ jupyter: python3
         }
     }
 
+    // ── Snippet completions ───────────────────────────────────────────────────
+    const SNIPPETS = [
+        // 4Dpapers shortcodes
+        { trigger: '4d-image',      label: '4d-image',      text: '{{< 4d-image src="data/" field="Vm" id="fig-" >}}',                          desc: '4D interactive figure' },
+        { trigger: '4d-timeseries', label: '4d-timeseries', text: '{{< 4d-timeseries src="data/" fields="Vm" id="ts-" >}}',                     desc: '4D timeseries panel' },
+        { trigger: '4d-panel',      label: '4d-panel',      text: '{{< 4d-panel id="panel-" >}}',                                               desc: '4D panel layout' },
+        { trigger: 'include',       label: 'include',       text: '{{< include sections/ >}}',                                                   desc: 'Include a QMD file' },
+        // Quarto callouts
+        { trigger: 'callout-note',  label: 'callout-note',  text: '::: {.callout-note}\n## Note\n\n\n:::',                                       desc: 'Note callout block' },
+        { trigger: 'callout-warn',  label: 'callout-warning', text: '::: {.callout-warning}\n## Warning\n\n\n:::',                               desc: 'Warning callout block' },
+        { trigger: 'callout-tip',   label: 'callout-tip',   text: '::: {.callout-tip}\n## Tip\n\n\n:::',                                         desc: 'Tip callout block' },
+        // Code blocks
+        { trigger: '```python',     label: '```python',     text: '```{python}\n\n```',                                                          desc: 'Python code chunk' },
+        { trigger: '```r',          label: '```r',          text: '```{r}\n\n```',                                                               desc: 'R code chunk' },
+        // Cross-references
+        { trigger: '@fig-',         label: '@fig-',         text: '@fig-',                                                                       desc: 'Figure cross-reference' },
+        { trigger: '@sec-',         label: '@sec-',         text: '@sec-',                                                                       desc: 'Section cross-reference' },
+        { trigger: '@tbl-',         label: '@tbl-',         text: '@tbl-',                                                                       desc: 'Table cross-reference' },
+        { trigger: '[@',            label: '[@ref]',        text: '[@]',                                                                         desc: 'Citation' },
+        // Headings
+        { trigger: '# ',            label: '# H1',          text: '# ',                                                                         desc: 'Heading 1' },
+        { trigger: '## ',           label: '## H2',         text: '## ',                                                                         desc: 'Heading 2' },
+        { trigger: '### ',          label: '### H3',        text: '### ',                                                                         desc: 'Heading 3' },
+        // YAML front matter
+        { trigger: '---',           label: 'Front matter',  text: '---\ntitle: ""\nauthor:\n  - name: ""\ndate: today\nformat:\n  html:\n    toc: true\n---\n', desc: 'YAML front matter' },
+        // Math
+        { trigger: '$$',            label: '$$',            text: '$$\n\n$$',                                                                    desc: 'Display math block' },
+    ];
+
+    function getSnippetHints(cm) {
+        const cur = cm.getCursor();
+        const line = cm.getLine(cur.line);
+        const textBefore = line.slice(0, cur.ch);
+
+        // Find longest matching trigger suffix
+        let match = null;
+        let matchFrom = cur.ch;
+        for (const s of SNIPPETS) {
+            if (textBefore.endsWith(s.trigger)) {
+                if (!match || s.trigger.length > match.trigger.length) {
+                    match = s;
+                    matchFrom = cur.ch - s.trigger.length;
+                }
+            }
+        }
+
+        // Also do prefix match for partial typing
+        const word = textBefore.match(/[\w{<@#$`-]+$/)?.[0] || '';
+        const prefixMatches = word.length >= 2
+            ? SNIPPETS.filter(s => s.trigger.startsWith(word) || s.label.startsWith(word))
+            : [];
+
+        const candidates = match
+            ? [match, ...prefixMatches.filter(s => s !== match)]
+            : prefixMatches;
+
+        if (!candidates.length) return null;
+
+        const from = match ? { line: cur.line, ch: matchFrom } : { line: cur.line, ch: cur.ch - word.length };
+
+        return {
+            list: candidates.map(s => ({
+                text: s.text,
+                displayText: s.label,
+                hint(cm, data, completion) {
+                    const from = data.from;
+                    const to = cm.getCursor();
+                    cm.replaceRange(completion.text, from, to);
+                    // Move cursor to first placeholder (empty quotes or end of first line)
+                    const inserted = completion.text;
+                    const firstEmpty = inserted.indexOf('""');
+                    if (firstEmpty !== -1) {
+                        const newPos = { line: from.line, ch: from.ch + firstEmpty + 1 };
+                        cm.setCursor(newPos);
+                    }
+                },
+                render(el) {
+                    const label = document.createElement('span');
+                    label.textContent = s.label;
+                    label.style.fontFamily = 'JetBrains Mono, monospace';
+                    label.style.fontSize = '12px';
+                    el.appendChild(label);
+                    if (s.desc) {
+                        const desc = document.createElement('span');
+                        desc.textContent = '  ' + s.desc;
+                        desc.style.color = '#6B7280';
+                        desc.style.fontSize = '11px';
+                        el.appendChild(desc);
+                    }
+                }
+            })),
+            from,
+            to: cur,
+        };
+    }
+
     // Initialize CodeMirror editor
     function initCodeEditor() {
         const textarea = document.getElementById('code-editor');
@@ -744,9 +846,27 @@ jupyter: python3
         state.codeEditor.setSize('100%', '100%');
 
         // Cmd+S / Ctrl+S → save active file
+        // Tab → snippet completion or indent
+        // Ctrl+Space → force show all snippets
         state.codeEditor.addKeyMap({
             'Ctrl-S': saveActiveFile,
-            'Cmd-S': saveActiveFile
+            'Cmd-S': saveActiveFile,
+            'Ctrl-Space': (cm) => {
+                cm.showHint({ hint: getSnippetHints, completeSingle: false });
+            },
+            'Tab': (cm) => {
+                const hints = getSnippetHints(cm);
+                if (hints && hints.list.length === 1) {
+                    // Single match — complete immediately
+                    hints.list[0].hint(cm, hints, hints.list[0]);
+                } else if (hints && hints.list.length > 1) {
+                    // Multiple matches — show dropdown
+                    cm.showHint({ hint: getSnippetHints, completeSingle: false });
+                } else {
+                    // No snippet — default indent
+                    cm.execCommand('indentMore');
+                }
+            }
         });
 
         // Keep editorContent and openTabs in sync on every change
@@ -1076,39 +1196,33 @@ jupyter: python3
         }
     });
 
-    // Export button handler
+    // Export button handler — compiles paperview HTML then opens print dialog
     document.querySelector('[data-purpose="export-button"]')?.addEventListener('click', async () => {
         const btn = document.querySelector('[data-purpose="export-button"]');
         btn.disabled = true;
         btn.innerHTML = '<i class="ph-fill ph-spinner text-white animate-spin"></i><span>Exporting...</span>';
 
         try {
-            // Check if Quarto is available
-            const testResponse = await fetch('/api/export', {
+            // Compile paperview format
+            const response = await fetch('/api/compile', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ files: state.editorContent, format: 'pdf' })
             });
+            const result = await response.json();
 
-            if (testResponse.headers.get('content-type').includes('application/pdf')) {
-                // Export succeeded
-                const blob = await testResponse.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = state.mainFilename + '.pdf';
-                a.click();
-                URL.revokeObjectURL(url);
-
-                alert('PDF exported successfully!');
+            if (response.ok && result.status === 'success') {
+                // Open paperview HTML in new tab and trigger print
+                const printUrl = '/output/' + result.filename + '?t=' + Date.now();
+                const win = window.open(printUrl, '_blank');
+                win.addEventListener('load', () => {
+                    win.print();
+                });
             } else {
-                // Quarto not available
-                const result = await testResponse.json();
-                alert('PDF export requires Quarto to be installed.\n\nError: ' + (result.error || 'Unknown error'));
+                alert('Export failed:\n\n' + (result.error || 'Unknown error'));
             }
-
         } catch (error) {
-            console.error('Export error:', error);
-            alert('Export failed: ' + error.message + '\n\nQuarto may not be installed.');
+            alert('Export failed: ' + error.message);
         } finally {
             btn.disabled = false;
             btn.innerHTML = '<i class="ph ph-download-simple"></i><span>Export</span>';

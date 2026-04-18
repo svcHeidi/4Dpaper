@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import os
+
 import tornado.web
 
 from dashboard.figure_state import (
@@ -22,7 +24,8 @@ from dashboard.figure_state import (
     validate_colormap_payload,
 )
 
-_PROJECT_ROOT = Path(__file__).parent.parent
+# PROJECT_ROOT can be set via environment variable (for Docker) or defaults to parent directory
+_PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 
 
 class ColorHandler(tornado.web.RequestHandler):

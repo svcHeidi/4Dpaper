@@ -20,7 +20,13 @@ from pathlib import Path
 
 # ── Ensure venv Python is used ────────────────────────────────────────────────
 _here = Path(__file__).resolve()
-_project_root = _here.parent.parent.parent  # _extensions/4dpaper/ → project root
+# Prefer PROJECT_ROOT / QUARTO_PROJECT_DIR env vars (set in Docker) over
+# path arithmetic, which breaks when _extensions is a symlink into /app.
+_project_root = Path(
+    os.environ.get("PROJECT_ROOT")
+    or os.environ.get("QUARTO_PROJECT_DIR")
+    or str(_here.parent.parent.parent)
+)
 _venv_python = _project_root / ".venv" / "bin" / "python"
 _under_pytest = "pytest" in sys.modules or any("pytest" in a for a in sys.argv)
 if (
@@ -63,6 +69,161 @@ def resolve_src_path(src_str: str) -> Path:
         # Fallback: treat as relative path (may still fail if path doesn't exist)
         path = Path(src_str)
         return path if path.is_absolute() else _project_root / path
+
+
+# ── Polyline simplification (Ramer-Douglas-Peucker) ──────────────────────────
+
+def _rdp_simplify_xy(
+    xs: list,
+    ys: list,
+    epsilon_fraction: float = 0.001,
+) -> tuple[list, list]:
+    """
+    Ramer–Douglas–Peucker polyline simplification (iterative, NumPy-based).
+
+    Both axes are normalised to [0, 1] before distance computation so that
+    series with very different x/y scales are treated consistently.
+    ``epsilon_fraction`` is expressed as a fraction of the normalised unit
+    square (default 0.1 % — preserves all visually significant features while
+    eliminating redundant collinear points).
+
+    Returns simplified ``(xs, ys)`` lists.  Falls back to the original data if
+    either array is not numeric or has fewer than 3 points.
+    """
+    import numpy as np
+
+    try:
+        x = np.asarray(xs, dtype=float)
+        y = np.asarray(ys, dtype=float)
+    except (TypeError, ValueError):
+        return xs, ys  # non-numeric axes — leave unchanged
+
+    n = len(x)
+    if n != len(y) or n < 3:
+        return xs, ys
+
+    # Normalise to [0, 1] so epsilon is scale-independent
+    x_rng = x.max() - x.min()
+    y_rng = y.max() - y.min()
+    xn = (x - x.min()) / x_rng if x_rng > 0 else np.zeros(n)
+    yn = (y - y.min()) / y_rng if y_rng > 0 else np.zeros(n)
+
+    pts = np.column_stack([xn, yn])
+    eps = float(epsilon_fraction)
+
+    # Iterative RDP using an explicit stack (avoids Python recursion limits)
+    keep = np.zeros(n, dtype=bool)
+    keep[0] = True
+    keep[-1] = True
+
+    stack = [(0, n - 1)]
+    while stack:
+        start, end = stack.pop()
+        if end - start < 2:
+            continue
+        p1 = pts[start]
+        p2 = pts[end]
+        d = p2 - p1
+        norm = np.linalg.norm(d)
+        seg = pts[start + 1:end]
+        if norm == 0:
+            dists = np.linalg.norm(seg - p1, axis=1)
+        else:
+            dists = np.abs(np.cross(d, seg - p1)) / norm
+        max_local = int(np.argmax(dists))
+        if dists[max_local] > eps:
+            mid = start + 1 + max_local
+            keep[mid] = True
+            stack.append((start, mid))
+            stack.append((mid, end))
+
+    idx = np.where(keep)[0]
+    return x[idx].tolist(), y[idx].tolist()
+
+
+# ── Mesh decimation ────────────────────────────────────────────────────────────
+
+_DECIMATE_TARGET_FACES = 150_000  # default cap; meshes below this are untouched
+
+
+def _decimate_surface(surface, target_faces: int = _DECIMATE_TARGET_FACES,
+                      target_reduction: float | None = None):
+    """
+    Apply ``decimate_pro`` to *surface* when it exceeds *target_faces*.
+
+    Parameters
+    ----------
+    surface : pyvista.PolyData
+        Output of ``extract_surface()``.
+    target_faces : int
+        Maximum face count to keep when *target_reduction* is ``None``.
+        Meshes already below this are returned unchanged.
+    target_reduction : float | None
+        Explicit reduction ratio (0 < value < 1) that overrides *target_faces*.
+
+    Returns
+    -------
+    pyvista.PolyData
+        Decimated (or original) surface.
+    """
+    n_faces = int(surface.n_faces)
+    if target_reduction is not None:
+        ratio = float(target_reduction)
+    else:
+        if n_faces <= target_faces:
+            return surface
+        ratio = 1.0 - target_faces / n_faces
+
+    ratio = max(0.0, min(ratio, 0.99))  # clamp to valid range
+    try:
+        return surface.decimate_pro(
+            ratio,
+            feature_angle=15.0,
+            splitting=True,
+            boundary_vertex_deletion=False,
+            preserve_topology=False,
+        )
+    except Exception as exc:
+        print(
+            f"[4dpaper] WARNING: decimate_pro failed ({exc}) — using original surface.",
+            file=sys.stderr,
+        )
+        return surface
+
+
+def _apply_decimation(surface, decimate_spec: str, label: str = ""):
+    """
+    Parse the ``decimate`` shortcode attribute and apply decimation.
+
+    Accepted values:
+    - ``"auto"``        — decimate only when faces > 150 000 (default)
+    - ``"0"`` / ``"none"`` / ``"off"`` — skip decimation entirely
+    - ``"0.75"``        — explicit reduction ratio (removes 75 % of faces)
+    """
+    spec = (decimate_spec or "auto").strip().lower()
+    if spec in ("0", "none", "off", "false", "no"):
+        return surface
+
+    target_reduction: float | None = None
+    if spec != "auto":
+        try:
+            val = float(spec)
+            if val <= 0.0:
+                return surface
+            target_reduction = min(val, 0.99)
+        except ValueError:
+            pass  # unrecognised string → auto
+
+    n_before = int(surface.n_faces)
+    result = _decimate_surface(surface, target_reduction=target_reduction)
+    n_after = int(result.n_faces)
+    if n_after < n_before and n_before > 0:
+        pct = 100.0 * (1.0 - n_after / n_before)
+        print(
+            f"[4dpaper] {label}: decimated {n_before:,} → {n_after:,} faces ({pct:.1f}% reduction)",
+            file=sys.stderr,
+        )
+    return result
 
 
 # ── Shortcode parsing ─────────────────────────────────────────────────────────
@@ -115,8 +276,9 @@ def parse_shortcodes(text: str) -> list[dict]:
             continue
         kwargs.setdefault("time", "mid")
         kwargs.setdefault("field", "")
-        kwargs.setdefault("fields", "")  # comma-separated list for live switching
-        kwargs.setdefault("style", "")   # named style template
+        kwargs.setdefault("fields", "")    # comma-separated list for live switching
+        kwargs.setdefault("style", "")     # named style template
+        kwargs.setdefault("decimate", "auto")  # mesh decimation: "auto"|"none"|ratio
         results.append(kwargs)
     return results
 
@@ -242,32 +404,6 @@ def _expand_timeseries_steps(ts: dict, n_steps: int) -> list[int]:
     return [round(i * (n_steps - 1) / (N - 1)) for i in range(N)]
 
 
-# -- PVSM parsing ---------------------------------------------------------------
-
-def parse_pvsm_shortcodes(text: str) -> list[dict]:
-    """
-    Parse {{< 4d-pvsm key="value" ... >}} shortcodes from QMD text.
-
-    Required: id, src. Optional: data, time, caption.
-    Shortcodes missing 'id' or 'src' are silently skipped.
-    """
-    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
-    pattern = r'\{\{<\s*4d-pvsm\s+(.*?)\s*>\}\}'
-    results = []
-    for match in re.finditer(pattern, stripped, re.DOTALL):
-        raw = match.group(1)
-        kwargs: dict[str, str] = {}
-        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
-            kwargs[key] = val
-        if "id" not in kwargs or "src" not in kwargs:
-            continue
-        kwargs.setdefault("data", "")
-        kwargs.setdefault("time", "")
-        kwargs.setdefault("caption", "")
-        results.append(kwargs)
-    return results
-
-
 def parse_graph_shortcodes(text: str) -> list[dict]:
     """
     Parse {{< 4d-graph key="value" ... >}} shortcodes from QMD text.
@@ -288,140 +424,6 @@ def parse_graph_shortcodes(text: str) -> list[dict]:
         kwargs.setdefault("caption", "")
         results.append(kwargs)
     return results
-
-
-def parse_pvsm_color_info(pvsm_path: Path) -> dict:
-    """
-    Extract color/scalar info from a ParaView state (.pvsm) XML file.
-
-    Returns a dict with keys:
-      scalar_name      : str   -- active array name (empty string if not found)
-      field_association: str   -- 'point' or 'cell'
-      vmin             : float -- scalar range minimum
-      vmax             : float -- scalar range maximum
-      cmap             : str or matplotlib colormap -- color map for PyVista
-    """
-    import xml.etree.ElementTree as ET
-    from matplotlib.colors import LinearSegmentedColormap
-
-    _PRESET_MAP = {
-        "Cool to Warm":               "coolwarm",
-        "Cool to Warm (Extended)":    "coolwarm",
-        "Viridis (matplotlib)":       "viridis",
-        "Plasma (matplotlib)":        "plasma",
-        "Inferno (matplotlib)":       "inferno",
-        "Magma (matplotlib)":         "magma",
-        "Rainbow Desaturated":        "rainbow",
-        "Blue to Red Rainbow":        "jet",
-        "erdc_iceFire_H":             "coolwarm",
-    }
-
-    _FALLBACK = {
-        "scalar_name": "",
-        "field_association": "point",
-        "vmin": 0.0,
-        "vmax": 1.0,
-        "cmap": "coolwarm",
-    }
-
-    if not pvsm_path.exists():
-        return _FALLBACK.copy()
-
-    try:
-        tree = ET.parse(str(pvsm_path))
-        root = tree.getroot()
-        sms = root.find("ServerManagerState")
-        if sms is None:
-            return _FALLBACK.copy()
-
-        # -- Find the leaf (terminal) visible source proxy id ---------------------
-        # Walk all representation proxies (any type) that have both an Input
-        # and a ColorArrayName property; pick the last one in XML order.
-        leaf_rep_proxy = None
-        for proxy in sms.findall("Proxy[@group='representations']"):
-            inp_prop = proxy.find("Property[@name='Input']")
-            if inp_prop is None:
-                continue
-            inp_proxy_elem = inp_prop.find("Proxy")
-            if inp_proxy_elem is None:
-                continue
-            # Must have a ColorArrayName property to be useful
-            color_prop_check = proxy.find("Property[@name='ColorArrayName']")
-            if color_prop_check is None:
-                continue
-            leaf_rep_proxy = proxy
-
-        if leaf_rep_proxy is None:
-            return _FALLBACK.copy()
-
-        # -- Extract ColorArrayName -----------------------------------------------
-        scalar_name = ""
-        field_association = "point"
-        color_prop = leaf_rep_proxy.find("Property[@name='ColorArrayName']")
-        if color_prop is not None:
-            elems = color_prop.findall("Element")
-            if len(elems) >= 5:
-                assoc_val = elems[3].get("value", "1")
-                field_association = "point" if assoc_val == "1" else "cell"
-                scalar_name = elems[4].get("value", "")
-
-        # -- Find LookupTable proxy id --------------------------------------------
-        lut_id = ""
-        lut_prop = leaf_rep_proxy.find("Property[@name='LookupTable']")
-        if lut_prop is not None:
-            lut_proxy_elem = lut_prop.find("Proxy")
-            if lut_proxy_elem is not None:
-                lut_id = lut_proxy_elem.get("value", "")
-
-        # -- Extract scalar range + color map from LookupTable --------------------
-        vmin, vmax = 0.0, 1.0
-        cmap = "coolwarm"
-
-        if lut_id:
-            lut_proxy = sms.find(f"Proxy[@id='{lut_id}']")
-            if lut_proxy is not None:
-                # RGBPoints: flat list [scalar, R, G, B, ...]
-                rgb_prop = lut_proxy.find("Property[@name='RGBPoints']")
-                if rgb_prop is not None:
-                    vals = [float(e.get("value", 0)) for e in rgb_prop.findall("Element")]
-                    if len(vals) >= 8:  # at least 2 control points
-                        groups = [vals[i:i+4] for i in range(0, len(vals), 4)]
-                        vmin = groups[0][0]
-                        vmax = groups[-1][0]
-
-                        # Try named preset first
-                        preset_prop = lut_proxy.find("Property[@name='NameOfLastPresetApplied']")
-                        preset_name = ""
-                        if preset_prop is not None:
-                            elem = preset_prop.find("Element")
-                            if elem is not None:
-                                preset_name = elem.get("value", "")
-
-                        if preset_name and preset_name in _PRESET_MAP:
-                            cmap = _PRESET_MAP[preset_name]
-                        else:
-                            # Build colormap from RGBPoints control points
-                            span = vmax - vmin if vmax != vmin else 1.0
-                            norm_colors = [
-                                ((g[0] - vmin) / span, (g[1], g[2], g[3]))
-                                for g in groups
-                            ]
-                            cmap = LinearSegmentedColormap.from_list(
-                                "pvsm",
-                                [(t, c) for t, c in norm_colors],
-                            )
-
-        return {
-            "scalar_name": scalar_name,
-            "field_association": field_association,
-            "vmin": vmin,
-            "vmax": vmax,
-            "cmap": cmap,
-        }
-
-    except Exception as exc:
-        print(f"[4dpaper] WARNING: PVSM color parsing failed ({exc}); using defaults.", file=sys.stderr)
-        return _FALLBACK.copy()
 
 
 # ── Cache helpers ─────────────────────────────────────────────────────────────
@@ -792,26 +794,13 @@ def _controls_strip_snippet(
             f'    if(c&&c.style){{c.style.pointerEvents=v?"none":"";c.style.touchAction=v?"none":"";}}\n'
             f'    if(v&&i&&i.stopAnimating)i.stopAnimating();\n'
             f'  }}\n'
-            f'  if(window.parent!==window){{\n'
-            f'    parent.postMessage({{type:"4dpaper-lock-query",fig_id:FIG_ID}},"*");\n'
-            f'  }}else{{\n'
-            f'    fetch("/camera-lock/"+FIG_ID)\n'
-            f'      .then(function(r){{return r.json();}})\n'
-            f'      .then(function(d){{_setLocked(!!d.locked);}})\n'
-            f'      .catch(function(){{}});\n'
-            f'  }}\n'
+            f'  parent.postMessage({{type:"4dpaper-lock-query",fig_id:FIG_ID}},"*");\n'
             f'  (function(){{\n'
             f'    var _lw=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
             f'    if(_lw)_lw.addEventListener("click",function(){{\n'
             f'      var nv=!_locked;\n'
             f'      _setLocked(nv);\n'
-            f'      if(window.parent!==window){{\n'
-            f'        parent.postMessage({{type:"4dpaper-lock-toggle",fig_id:FIG_ID,locked:nv}},"*");\n'
-            f'      }}else{{\n'
-            f'        fetch("/camera-lock/"+FIG_ID,{{'
-            f'method:"POST",headers:{{"Content-Type":"application/json"}},'
-            f'body:JSON.stringify({{locked:nv}})}}).catch(function(){{_setLocked(!nv);}});\n'
-            f'      }}\n'
+            f'      parent.postMessage({{type:"4dpaper-lock-toggle",fig_id:FIG_ID,locked:nv}},"*");\n'
             f'    }});\n'
             f'  }})();\n'
         )
@@ -866,13 +855,7 @@ def _controls_strip_snippet(
         f'      var camData={{position:cam.getPosition(),focal_point:cam.getFocalPoint(),'
         f'view_up:cam.getViewUp(),parallel_scale:cam.getParallelScale(),'
         f'parallel_projection:cam.getParallelProjection()?1:0}};\n'
-        f'      if(window.parent!==window){{\n'
-        f'        parent.postMessage({{type:"4dpaper-camera",fig_id:FIG_ID,camera:camData}},"*");\n'
-        f'      }}else{{\n'
-        f'        fetch("/camera/"+FIG_ID,{{method:"POST",'
-        f'headers:{{"Content-Type":"application/json"}},body:JSON.stringify(camData)}})\n'
-        f'          .catch(function(){{}});\n'
-        f'      }}\n'
+        f'      parent.postMessage({{type:"4dpaper-camera",fig_id:FIG_ID,camera:camData}},"*");\n'
         f'    }},300);\n'
         f'  }}\n'
     )
@@ -1175,6 +1158,7 @@ def generate_png_figure(
     axis_color: str = "black",
     cmap: str = "coolwarm",
     show_colorbar: bool = True,
+    decimate: str = "auto",
 ) -> None:
     """
     Generate a static PNG figure using PyVista.
@@ -1209,6 +1193,7 @@ def generate_png_figure(
         raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
 
     surface = mesh.extract_surface(algorithm='dataset_surface')
+    surface = _apply_decimation(surface, decimate, label=f"{fig_id or 'fig'}.png")
 
     pl = pv.Plotter(off_screen=True, window_size=(900, 600))
     pl.background_color = background if background != "transparent" else "white"
@@ -1255,6 +1240,7 @@ def generate_html_figure(
     show_colorbar: bool = True,
     show_lock_btn: bool = True,
     show_orientation: bool = True,
+    decimate: str = "auto",
 ) -> None:
     """
     Generate a self-contained vtk.js HTML figure using PyVista.
@@ -1290,6 +1276,7 @@ def generate_html_figure(
         raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
 
     surface = mesh.extract_surface(algorithm='dataset_surface')
+    surface = _apply_decimation(surface, decimate, label=f"{fig_id or 'fig'}.html")
 
     pl = pv.Plotter(off_screen=True, window_size=(900, 600))
     pl.background_color = background if background != "transparent" else "white"
@@ -1371,6 +1358,7 @@ def generate_html_figure(
                 time_labels.append(str(t_idx))
                 continue
             t_surface = t_mesh.extract_surface(algorithm="dataset_surface")
+            t_surface = _apply_decimation(t_surface, decimate, label=f"{fig_id or 'fig'} t={t_idx}")
             # Get scalar array — same cell→point conversion logic as _get_arr
             arr_np = None
             if field in t_surface.point_data:
@@ -1436,207 +1424,6 @@ def generate_html_figure(
     output_path.write_text(html)
 
     print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
-
-
-def generate_html_from_vtu(
-    vtu_path: Path,
-    out_html: Path,
-    fig_id: str,
-    scalar_name: str,
-    clim: list[float],
-    cmap,
-    field_association: str,
-    preview: bool = False,
-) -> None:
-    """
-    Export a PyVista HTML figure from a .vtu geometry file.
-
-    Uses off_screen=False so that export_html() initialises the WebGL exporter
-    correctly -- same pattern as generate_html_figure().
-    """
-    import pyvista as pv
-
-    mesh = pv.read(str(vtu_path))
-
-    pl = pv.Plotter(off_screen=False)
-    pl.background_color = "#1a1a2e"
-
-    add_kwargs: dict = dict(cmap=cmap, preference=field_association)
-    if scalar_name and scalar_name in {**mesh.point_data, **mesh.cell_data}:
-        add_kwargs["scalars"] = scalar_name
-        add_kwargs["clim"] = clim
-
-    pl.add_mesh(mesh, **add_kwargs)
-
-    if not preview:
-        camera_path = _project_root / "state" / f"camera_{fig_id}.json"
-        if camera_path.exists():
-            try:
-                cam = json.loads(camera_path.read_text())
-                _apply_camera_from_dict(pl, fig_id, cam)
-            except Exception as exc:
-                print(f"[4dpaper] WARNING: could not apply camera for {fig_id}: {exc}", file=sys.stderr)
-        else:
-            pl.isometric_view()
-    else:
-        pl.isometric_view()
-
-    out_html.parent.mkdir(parents=True, exist_ok=True)
-    pl.export_html(str(out_html))
-    pl.close()
-
-
-def generate_pvsm_figure(
-    pvsm_path: Path,
-    fig_id: str,
-    figures_dir: Path,
-    data_path: Path | None = None,
-    time_spec: str | None = None,
-    pvpython_path: Path | None = None,
-) -> None:
-    """
-    Generate HTML + PNG figures from a ParaView state file.
-
-    Step 1: pvpython subprocess -> {fig_id}-pipeline.vtu + {fig_id}.png
-    Step 2: PyVista in-process -> {fig_id}.html + {fig_id}-preview.html
-    """
-    import subprocess
-
-    if pvpython_path is None:
-        pvpython_path = Path("/Applications/ParaView-6.0.1.app/Contents/bin/pvpython")
-    if not pvpython_path.exists():
-        raise RuntimeError(
-            f"pvpython not found at {pvpython_path}. "
-            "Set the correct path in config or install ParaView."
-        )
-
-    pvsm_render_script = _here.parent / "pvsm_render.py"
-    out_vtu     = figures_dir / f"{fig_id}-pipeline.vtu"
-    out_png     = figures_dir / f"{fig_id}.png"
-    out_html    = figures_dir / f"{fig_id}.html"
-    out_preview = figures_dir / f"{fig_id}-preview.html"
-    camera_path = _project_root / "state" / f"camera_{fig_id}.json"
-
-    # -- Step 1: pvpython subprocess -------------------------------------------
-    color_info = parse_pvsm_color_info(pvsm_path)
-
-    cmd = [
-        str(pvpython_path), str(pvsm_render_script),
-        "--pvsm",    str(pvsm_path),
-        "--out-vtu", str(out_vtu),
-        "--out-png", str(out_png),
-    ]
-    if data_path:
-        cmd += ["--data", str(data_path)]
-    if time_spec:
-        cmd += ["--time", str(time_spec)]
-    if camera_path.exists():
-        cmd += ["--camera", str(camera_path)]
-    if not time_spec and color_info.get("scalar_name"):
-        cmd += ["--all-times", "--scalar", color_info["scalar_name"]]
-
-    print(f"[4dpaper] Running pvpython for {fig_id} ...", file=sys.stderr)
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.stdout:
-        print(result.stdout, end="", file=sys.stderr)
-    if result.stderr:
-        print(result.stderr, end="", file=sys.stderr)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"pvpython failed for {fig_id} (exit {result.returncode}). "
-            "See output above."
-        )
-
-    if not out_vtu.exists():
-        raise RuntimeError(f"pvpython did not produce {out_vtu}")
-
-    # -- Step 2: PyVista HTML export -------------------------------------------
-
-    print(f"[4dpaper] Generating {fig_id}.html from VTU ...", file=sys.stderr)
-    generate_html_from_vtu(
-        vtu_path=out_vtu,
-        out_html=out_html,
-        fig_id=fig_id,
-        scalar_name=color_info["scalar_name"],
-        clim=[color_info["vmin"], color_info["vmax"]],
-        cmap=color_info["cmap"],
-        field_association=color_info["field_association"],
-        preview=False,
-    )
-
-    print(f"[4dpaper] Generating {fig_id}-preview.html ...", file=sys.stderr)
-    generate_html_from_vtu(
-        vtu_path=out_vtu,
-        out_html=out_preview,
-        fig_id=fig_id,
-        scalar_name=color_info["scalar_name"],
-        clim=[color_info["vmin"], color_info["vmax"]],
-        cmap=color_info["cmap"],
-        field_association=color_info["field_association"],
-        preview=True,
-    )
-
-    # -- Step 3: Build time data and inject controls ----------------------------
-    scalar_name = color_info.get("scalar_name", "") or ""
-    time_labels: list[str] | None = None
-    time_data_b64: list[str] | None = None
-    time_global_range: list[float] | None = None
-
-    # Only attempt time embedding when no specific time step was requested
-    # and the PVSM has an active scalar field.
-    if not time_spec and scalar_name:
-        times_json = figures_dir / f"{fig_id}-times.json"
-        if times_json.exists():
-            try:
-                time_labels = json.loads(times_json.read_text(encoding="utf-8"))
-                arrays = []
-                for i in range(len(time_labels)):
-                    bin_path = figures_dir / f"{fig_id}-scalars-t{i}.bin"
-                    raw = bin_path.read_bytes()
-                    arr = _array.array("f")
-                    arr.frombytes(raw)
-                    arrays.append(arr)
-
-                # Topology guard: all frame arrays must have the same length
-                ref_len = len(arrays[0]) if arrays else 0
-                if any(len(a) != ref_len for a in arrays):
-                    print(
-                        f"[4dpaper] WARNING: {fig_id} — mesh topology changes between "
-                        "time steps; time scrubber disabled.",
-                        file=sys.stderr,
-                    )
-                    time_labels = None
-                    time_data_b64 = None
-                else:
-                    time_data_b64 = [
-                        _b64.b64encode(a.tobytes()).decode("ascii") for a in arrays
-                    ]
-                    time_global_range = [
-                        float(min(min(a) for a in arrays)),
-                        float(max(max(a) for a in arrays)),
-                    ]
-            except (OSError, ValueError) as exc:
-                print(
-                    f"[4dpaper] WARNING: {fig_id} — could not load time data: {exc}; "
-                    "time scrubber disabled.",
-                    file=sys.stderr,
-                )
-                time_labels = None
-
-    controls = _controls_strip_snippet(
-        fig_id=fig_id,
-        show_lock_btn=True,
-        show_orientation=True,
-        time_labels=time_labels,
-        time_data_b64=time_data_b64,
-        time_global_range=time_global_range,
-        time_field=scalar_name,
-    )
-    if controls:
-        html = out_html.read_text(encoding="utf-8")
-        if "</body>" in html:
-            out_html.write_text(html.replace("</body>", controls + "\n</body>", 1),
-                                encoding="utf-8")
 
 
 def generate_panel_html(panel: dict, figures_dir: Path) -> None:
@@ -2084,7 +1871,6 @@ def main() -> None:
     figures = []
     videos = []
     panels = []
-    pvsm_figs = []
     ts_raw = []
     graphs = []
     for qmd in qmd_files:
@@ -2092,12 +1878,11 @@ def main() -> None:
         figures.extend(parse_shortcodes(text))
         videos.extend(parse_video_shortcodes(text))
         panels.extend(parse_panel_shortcodes(text))
-        pvsm_figs.extend(parse_pvsm_shortcodes(text))
         ts_raw.extend(parse_timeseries_shortcodes(text))
         graphs.extend(parse_graph_shortcodes(text))
 
-    if not any([figures, videos, panels, pvsm_figs, ts_raw, graphs]):
-        print("[4dpaper] No 4d-image, 4d-video, 4d-panel, 4d-pvsm, 4d-timeseries, or 4d-graph shortcodes found.", file=sys.stderr)
+    if not any([figures, videos, panels, ts_raw, graphs]):
+        print("[4dpaper] No 4d-image, 4d-video, 4d-panel, 4d-timeseries, or 4d-graph shortcodes found.", file=sys.stderr)
         return
 
     figures_dir = _project_root / "state" / "figures"
@@ -2182,6 +1967,7 @@ def main() -> None:
                     background=style["background"],
                     axis_color=style["axis_color"],
                     cmap=style["cmap"],
+                    decimate=fig.get("decimate", "auto"),
                 )
             except Exception as exc:
                 print(f"[4dpaper] ERROR generating {fig_id}.html: {exc}", file=sys.stderr)
@@ -2217,6 +2003,7 @@ def main() -> None:
                     background=style["background"],
                     axis_color=style["axis_color"],
                     cmap=style["cmap"],
+                    decimate=fig.get("decimate", "auto"),
                 )
             except Exception as exc:
                 print(f"[4dpaper] WARNING: could not generate {fig_id}.png: {exc}")
@@ -2314,69 +2101,6 @@ def main() -> None:
                 print(f"[4dpaper] ERROR generating panel {panel_id}.png: {exc}")
                 sys.exit(1)
 
-    # -- PVSM shortcode processing -----------------------------------------------
-    _pvsm_render_script = _here.parent / "pvsm_render.py"
-    _pvpython_path = Path("/Applications/ParaView-6.0.1.app/Contents/bin/pvpython")
-
-    for pvsm_fig in pvsm_figs:
-        fig_id   = pvsm_fig["id"]
-        pvsm_src = resolve_src_path(pvsm_fig["src"])
-        data_str = pvsm_fig.get("data", "").strip()
-        data_path = resolve_src_path(data_str) if data_str else None
-        time_spec = pvsm_fig.get("time", "").strip() or None
-
-        out_html    = figures_dir / f"{fig_id}.html"
-        out_png     = figures_dir / f"{fig_id}.png"
-        camera_path = _project_root / "state" / f"camera_{fig_id}.json"
-
-        extra_deps = [_pvsm_render_script]
-        script_newer = out_html.exists() and _here.stat().st_mtime > out_html.stat().st_mtime
-
-        # time_spec figures render a single frame; no per-step bins to check.
-        scalar_bins_ok = True
-        if not time_spec:
-            times_json_path = figures_dir / f"{fig_id}-times.json"
-            if times_json_path.exists():
-                try:
-                    n_steps = len(json.loads(times_json_path.read_text(encoding="utf-8")))
-                    bin_paths = [
-                        figures_dir / f"{fig_id}-scalars-t{i}.bin"
-                        for i in range(n_steps)
-                    ]
-                    scalar_bins_ok = all(
-                        is_cache_valid(p, pvsm_src, camera_path=camera_path)
-                        for p in bin_paths
-                    )
-                except (OSError, ValueError):
-                    scalar_bins_ok = False
-            else:
-                scalar_bins_ok = False
-
-        cache_ok = (
-            not script_newer
-            and scalar_bins_ok
-            and is_cache_valid(out_html, pvsm_src, camera_path=camera_path, extra_deps=extra_deps)
-            and is_cache_valid(out_png,  pvsm_src, camera_path=camera_path, extra_deps=extra_deps)
-        )
-
-        if cache_ok:
-            print(f"[4dpaper] {fig_id} PVSM outputs are up to date -- skipping.", file=sys.stderr)
-            continue
-
-        print(f"[4dpaper] Generating PVSM figure for {fig_id} ...", file=sys.stderr)
-        try:
-            generate_pvsm_figure(
-                pvsm_path=pvsm_src,
-                fig_id=fig_id,
-                figures_dir=figures_dir,
-                data_path=data_path,
-                time_spec=time_spec,
-                pvpython_path=_pvpython_path,
-            )
-        except Exception as exc:
-            print(f"[4dpaper] ERROR generating PVSM figure {fig_id}: {exc}", file=sys.stderr)
-            sys.exit(1)
-
     for graph in graphs:
         fig_id = graph["id"]
         src = resolve_src_path(graph["src"])
@@ -2399,10 +2123,30 @@ def main() -> None:
         try:
             import plotly.io as pio
             import plotly.graph_objects as go
-            
+
             with open(src, "r") as f:
                 fig_dict = json.load(f)
-            
+
+            # Apply RDP simplification to every trace that carries (x, y) arrays.
+            for trace in fig_dict.get("data", []):
+                xs = trace.get("x")
+                ys = trace.get("y")
+                if (isinstance(xs, list) and isinstance(ys, list)
+                        and len(xs) == len(ys) and len(xs) > 2):
+                    n_before = len(xs)
+                    xs_s, ys_s = _rdp_simplify_xy(xs, ys)
+                    n_after = len(xs_s)
+                    if n_after < n_before:
+                        trace["x"] = xs_s
+                        trace["y"] = ys_s
+                        pct = 100.0 * (1.0 - n_after / n_before)
+                        tname = trace.get("name", "")
+                        print(
+                            f"[4dpaper] {fig_id} RDP{f' ({tname})' if tname else ''}: "
+                            f"{n_before:,} → {n_after:,} points ({pct:.1f}% reduction)",
+                            file=sys.stderr,
+                        )
+
             fig = go.Figure(fig_dict)
             
             # Export PNG for static PDF builds

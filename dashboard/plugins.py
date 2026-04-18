@@ -13,7 +13,9 @@ import tornado.web
 
 from dashboard.camera_plugin import ROUTES as camera_routes
 from dashboard.color_plugin import ROUTES as color_routes
+from dashboard.compile_plugin import ROUTES as compile_routes
 from dashboard.field_plugin import ROUTES as field_routes
+from dashboard.file_plugin import ROUTES as file_routes
 from dashboard.shortcuts_plugin import ROUTES as shortcuts_routes
 from dashboard.upload_plugin import ROUTES as upload_routes
 
@@ -33,6 +35,7 @@ _output_route = (
 )
 
 ROUTES = (
-    camera_routes + color_routes + field_routes + shortcuts_routes + upload_routes
+    camera_routes + color_routes + compile_routes + field_routes
+    + file_routes + shortcuts_routes + upload_routes
     + [_state_route, _output_route]
 )

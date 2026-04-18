@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pyvista = pytest.importorskip("pyvista", reason="pyvista not installed")
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from data_loader import SimulationData
 

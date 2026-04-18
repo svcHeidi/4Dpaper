@@ -4,32 +4,11 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 # Make dashboard importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from dashboard.utils import load_config
-
-
-class TestLoadConfig:
-    def test_returns_dict_with_expected_keys(self, tmp_path):
-        cfg_file = tmp_path / "config.yaml"
-        cfg_file.write_text(
-            "cardiacfoam_root: /foo\nquarto_paper_path: /bar.qmd\n"
-        )
-        with patch("dashboard.utils.CONFIG_PATH", cfg_file):
-            cfg = load_config()
-        assert cfg["cardiacfoam_root"] == "/foo"
-
-    def test_raises_on_missing_file(self, tmp_path):
-        missing = tmp_path / "no_such.yaml"
-        with patch("dashboard.utils.CONFIG_PATH", missing):
-            with pytest.raises(FileNotFoundError):
-                load_config()
-
 
 class TestSaveCameraState:
     def test_writes_json_with_correct_keys(self, tmp_path):
