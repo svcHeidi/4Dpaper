@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-# Make the extension importable
 sys.path.insert(0, str(Path(__file__).parent.parent / "_extensions" / "4dpaper"))
 import importlib
 import importlib.util
@@ -52,7 +51,6 @@ class TestParseShortcodes:
 
     def test_skips_shortcode_missing_required_keys(self):
         mod = _load_4dpaper()
-        # Missing 'id'
         text = '{{< 4d-image src="case.foam" field="Vm" >}}'
         result = mod.parse_shortcodes(text)
         assert result == []

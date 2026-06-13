@@ -1,13 +1,4 @@
-"""
-Dashboard plugin: per-figure camera state sync and lock endpoints.
-
-Routes:
-  POST /camera/<fig_id>       — persist camera position/orientation to state/
-  GET  /camera-lock/<fig_id>  — read lock state
-  POST /camera-lock/<fig_id>  — write lock state
-
-The srcdoc iframe has a null origin, so CORS headers allow all origins.
-"""
+"""Per-figure camera state and lock endpoints."""
 from __future__ import annotations
 
 import json
@@ -19,13 +10,12 @@ import tornado.web
 
 from dashboard.utils import save_camera_state
 
-# PROJECT_ROOT can be set via environment variable (for Docker) or defaults to parent directory
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 _SAFE_FIG_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class CameraHandler(tornado.web.RequestHandler):
-    """Persist camera position, focal point and view-up to state/camera_<fig_id>.json."""
+    """Persist camera state for one figure."""
 
     def set_default_headers(self) -> None:
         self.set_header("Access-Control-Allow-Origin", "*")
@@ -64,7 +54,7 @@ class CameraHandler(tornado.web.RequestHandler):
 
 
 class CameraLockHandler(tornado.web.RequestHandler):
-    """Read or write the lock state for a figure (state/camera_<fig_id>_lock.json)."""
+    """Read or write the lock state for one figure."""
 
     def set_default_headers(self) -> None:
         self.set_header("Access-Control-Allow-Origin", "*")

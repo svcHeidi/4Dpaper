@@ -1,9 +1,4 @@
-"""
-Panel plugin: per-figure field and timestep state sync endpoint.
-
-Add to panel serve with:
-    panel serve dashboard/app.py --plugins dashboard.plugins ...
-"""
+"""Per-figure field and timestep state endpoint."""
 from __future__ import annotations
 
 import json
@@ -13,14 +8,12 @@ from pathlib import Path
 
 import tornado.web
 
-# PROJECT_ROOT can be set via environment variable (for Docker) or defaults to parent directory
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 _SAFE_FIG_ID = re.compile(r'^[A-Za-z0-9_-]+$')
 
 
 class FieldHandler(tornado.web.RequestHandler):
     def set_default_headers(self) -> None:
-        # srcdoc iframes have a null origin — allow all for local-only server
         self.set_header("Access-Control-Allow-Origin", "*")
         self.set_header("Content-Type", "application/json")
 
@@ -49,7 +42,6 @@ class FieldHandler(tornado.web.RequestHandler):
         if "time" in body:
             payload["time"] = str(body["time"])
 
-        # Merge with existing if any
         if cam_path.exists():
             try:
                 existing = json.loads(cam_path.read_text())
@@ -67,4 +59,3 @@ class FieldHandler(tornado.web.RequestHandler):
 ROUTES = [
     (r"/field/(?P<fig_id>[^/]+)", FieldHandler),
 ]
-

@@ -9,34 +9,23 @@ import yaml
 
 
 def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str = "html") -> int:
-    """
-    Run `quarto render <qmd_path> --to <output_format>`.
-    Streams output to *log_lines*. Returns the process exit code.
-    """
+    """Run `quarto render` and stream output to `log_lines`."""
     import os
     import subprocess
     import threading
 
     env = os.environ.copy()
-    # Always use the project .venv Python for Quarto — it has nbformat/jupyter.
-    # sys.executable may point to a different environment (e.g. the system venv
-    # used to launch `panel serve`) that lacks those packages.
     _venv_bin = Path(__file__).parent.parent / ".venv" / "bin"
     _venv_python = _venv_bin / "python"
     env["QUARTO_PYTHON"] = str(_venv_python) if _venv_python.exists() else sys.executable
     env["PATH"] = "/opt/quarto/bin:" + env.get("PATH", "")
 
-    # Ensure common Quarto installation paths are in PATH
     for qpath in ["/opt/quarto/bin", "/usr/local/bin/quarto", "/Applications/quarto/bin", "/usr/local/bin", "/opt/homebrew/bin"]:
         if qpath not in env.get("PATH", ""):
             env["PATH"] = qpath + ":" + env.get("PATH", "")
 
     env["PATH"] = str(_venv_bin) + ":" + env.get("PATH", "")
 
-    # App mode: figures served as static files + embed-resources disabled.
-    # embed-resources makes pandoc inline every iframe src (reads & base64s each
-    # figure file), which causes 9GB RAM usage and 3-min builds.
-    # In the app the HTML is always served locally so standalone is not needed.
     cmd = ["quarto", "render", str(qmd_path), "--to", "html"]
     if output_format == "html":
         env["FOURD_APP_MODE"] = "1"
@@ -58,7 +47,6 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
             env=env,
         )
     except FileNotFoundError:
-        # Provide a descriptive error in the logs if quarto is not found.
         log_lines.append(f"CRITICAL ERROR: 'quarto' executable not found in PATH.")
         log_lines.append(f"PATH checked: {env.get('PATH')}")
         log_lines.append("Please ensure Quarto is installed (https://quarto.org/docs/get-started/)")
@@ -74,8 +62,6 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
     thread.join()
     return proc.returncode
 
-
-# ── Camera state helpers ──────────────────────────────────────────────────────
 
 def save_camera_state(
     position: list[float],
@@ -98,7 +84,7 @@ def save_camera_state(
 
 
 def load_camera_state(path: Path) -> dict | None:
-    """Return camera dict from JSON, or None if file does not exist."""
+    """Load camera JSON or return `None`."""
     if not path.exists():
         return None
     return json.loads(path.read_text())

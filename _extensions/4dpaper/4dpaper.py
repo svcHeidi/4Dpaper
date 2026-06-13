@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""
-4DPaper pre-render hook — run by Quarto before rendering.
-
-Scans the .qmd for {{< 4d-image >}} shortcodes and generates
-figure files in state/figures/ (HTML for web, PNG for PDF).
-
-Quarto calls this script before rendering. It reads QUARTO_DOCUMENT_PATH
-and QUARTO_OUTPUT_FORMAT from the environment.
-"""
+"""Render 4DPaper shortcode assets before Quarto runs."""
 from __future__ import annotations
 
 import array as _array
@@ -18,10 +10,7 @@ import re
 import sys
 from pathlib import Path
 
-# ── Ensure venv Python is used ────────────────────────────────────────────────
 _here = Path(__file__).resolve()
-# Prefer PROJECT_ROOT / QUARTO_PROJECT_DIR env vars (set in Docker) over
-# path arithmetic, which breaks when _extensions is a symlink into /app.
 _project_root = Path(
     os.environ.get("PROJECT_ROOT")
     or os.environ.get("QUARTO_PROJECT_DIR")
@@ -36,11 +25,9 @@ if (
 ):
     os.execv(str(_venv_python), [str(_venv_python)] + sys.argv)
 
-# Add project root to path for scripts/
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-# ── Import shortcut resolver ──────────────────────────────────────────────────
 import importlib.util as _ilu
 _sr_spec = _ilu.spec_from_file_location("shortcut_resolver", _here.parent / "shortcut_resolver.py")
 _sr_mod = _ilu.module_from_spec(_sr_spec)
@@ -53,56 +40,34 @@ _shortcut_resolver = ShortcutResolver(
 )
 
 
-# ── Path resolution helper ───────────────────────────────────────────────────
-
 def resolve_src_path(src_str: str) -> Path:
-    """
-    Resolve src path with shortcut support (@syntax).
-
-    Handles @shortcut_name/path, relative paths, and absolute paths.
-    Raises ValueError if shortcut not found.
-    """
+    """Resolve a source path with optional `@shortcut` syntax."""
     try:
         return _shortcut_resolver.resolve(src_str)
-    except ValueError as e:
-        print(f"[4dpaper] Warning: {e}", file=sys.stderr)
-        # Fallback: treat as relative path (may still fail if path doesn't exist)
+    except ValueError as exc:
+        print(f"[4dpaper] Warning: {exc}", file=sys.stderr)
         path = Path(src_str)
         return path if path.is_absolute() else _project_root / path
 
-
-# ── Polyline simplification (Ramer-Douglas-Peucker) ──────────────────────────
 
 def _rdp_simplify_xy(
     xs: list,
     ys: list,
     epsilon_fraction: float = 0.001,
 ) -> tuple[list, list]:
-    """
-    Ramer–Douglas–Peucker polyline simplification (iterative, NumPy-based).
-
-    Both axes are normalised to [0, 1] before distance computation so that
-    series with very different x/y scales are treated consistently.
-    ``epsilon_fraction`` is expressed as a fraction of the normalised unit
-    square (default 0.1 % — preserves all visually significant features while
-    eliminating redundant collinear points).
-
-    Returns simplified ``(xs, ys)`` lists.  Falls back to the original data if
-    either array is not numeric or has fewer than 3 points.
-    """
+    """Simplify an `(x, y)` polyline with iterative RDP."""
     import numpy as np
 
     try:
         x = np.asarray(xs, dtype=float)
         y = np.asarray(ys, dtype=float)
     except (TypeError, ValueError):
-        return xs, ys  # non-numeric axes — leave unchanged
+        return xs, ys
 
     n = len(x)
     if n != len(y) or n < 3:
         return xs, ys
 
-    # Normalise to [0, 1] so epsilon is scale-independent
     x_rng = x.max() - x.min()
     y_rng = y.max() - y.min()
     xn = (x - x.min()) / x_rng if x_rng > 0 else np.zeros(n)
@@ -111,7 +76,6 @@ def _rdp_simplify_xy(
     pts = np.column_stack([xn, yn])
     eps = float(epsilon_fraction)
 
-    # Iterative RDP using an explicit stack (avoids Python recursion limits)
     keep = np.zeros(n, dtype=bool)
     keep[0] = True
     keep[-1] = True
@@ -141,31 +105,12 @@ def _rdp_simplify_xy(
     return x[idx].tolist(), y[idx].tolist()
 
 
-# ── Mesh decimation ────────────────────────────────────────────────────────────
-
-_DECIMATE_TARGET_FACES = 150_000  # default cap; meshes below this are untouched
+_DECIMATE_TARGET_FACES = 150_000
 
 
 def _decimate_surface(surface, target_faces: int = _DECIMATE_TARGET_FACES,
                       target_reduction: float | None = None):
-    """
-    Apply ``decimate_pro`` to *surface* when it exceeds *target_faces*.
-
-    Parameters
-    ----------
-    surface : pyvista.PolyData
-        Output of ``extract_surface()``.
-    target_faces : int
-        Maximum face count to keep when *target_reduction* is ``None``.
-        Meshes already below this are returned unchanged.
-    target_reduction : float | None
-        Explicit reduction ratio (0 < value < 1) that overrides *target_faces*.
-
-    Returns
-    -------
-    pyvista.PolyData
-        Decimated (or original) surface.
-    """
+    """Decimate a surface when it exceeds the face target."""
     n_faces = int(surface.n_faces)
     if target_reduction is not None:
         ratio = float(target_reduction)
@@ -174,7 +119,7 @@ def _decimate_surface(surface, target_faces: int = _DECIMATE_TARGET_FACES,
             return surface
         ratio = 1.0 - target_faces / n_faces
 
-    ratio = max(0.0, min(ratio, 0.99))  # clamp to valid range
+    ratio = max(0.0, min(ratio, 0.99))
     try:
         return surface.decimate_pro(
             ratio,
@@ -192,14 +137,7 @@ def _decimate_surface(surface, target_faces: int = _DECIMATE_TARGET_FACES,
 
 
 def _apply_decimation(surface, decimate_spec: str, label: str = ""):
-    """
-    Parse the ``decimate`` shortcode attribute and apply decimation.
-
-    Accepted values:
-    - ``"auto"``        — decimate only when faces > 150 000 (default)
-    - ``"0"`` / ``"none"`` / ``"off"`` — skip decimation entirely
-    - ``"0.75"``        — explicit reduction ratio (removes 75 % of faces)
-    """
+    """Apply the parsed `decimate` shortcode setting."""
     spec = (decimate_spec or "auto").strip().lower()
     if spec in ("0", "none", "off", "false", "no"):
         return surface
@@ -212,7 +150,7 @@ def _apply_decimation(surface, decimate_spec: str, label: str = ""):
                 return surface
             target_reduction = min(val, 0.99)
         except ValueError:
-            pass  # unrecognised string → auto
+            pass
 
     n_before = int(surface.n_faces)
     result = _decimate_surface(surface, target_reduction=target_reduction)
@@ -226,16 +164,8 @@ def _apply_decimation(surface, decimate_spec: str, label: str = ""):
     return result
 
 
-# ── Shortcode parsing ─────────────────────────────────────────────────────────
-
 def parse_video_shortcodes(text: str) -> list[dict]:
-    """
-    Parse {{< 4d-video key="value" ... >}} shortcodes from QMD text.
-
-    Returns a list of dicts with at minimum 'id', 'src', 'field' keys.
-    Shortcodes missing 'id' or 'src' are silently skipped.
-    'fps' defaults to '10', 'time' defaults to 'mid' if not specified.
-    """
+    """Parse `4d-video` shortcodes from QMD text."""
     stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
     pattern = r'\{\{<\s*4d-video\s+(.*?)\s*>\}\}'
     results = []
@@ -254,15 +184,7 @@ def parse_video_shortcodes(text: str) -> list[dict]:
 
 
 def parse_shortcodes(text: str) -> list[dict]:
-    """
-    Parse {{< 4d-image key="value" ... >}} shortcodes from QMD text.
-
-    Returns a list of dicts with at minimum 'id', 'src', 'field' keys.
-    Shortcodes missing 'id' or 'src' are silently skipped.
-    'time' defaults to 'mid' if not specified.
-    """
-    # Strip fenced code blocks (``` ... ```) before scanning for shortcodes
-    # so that shortcodes shown as examples in code blocks are not processed.
+    """Parse `4d-image` shortcodes from QMD text."""
     stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
 
     pattern = r'\{\{<\s*4d-image\s+(.*?)\s*>\}\}'
@@ -276,25 +198,15 @@ def parse_shortcodes(text: str) -> list[dict]:
             continue
         kwargs.setdefault("time", "mid")
         kwargs.setdefault("field", "")
-        kwargs.setdefault("fields", "")    # comma-separated list for live switching
-        kwargs.setdefault("style", "")     # named style template
-        kwargs.setdefault("decimate", "auto")  # mesh decimation: "auto"|"none"|ratio
+        kwargs.setdefault("fields", "")
+        kwargs.setdefault("style", "")
+        kwargs.setdefault("decimate", "auto")
         results.append(kwargs)
     return results
 
 
 def parse_panel_shortcodes(text: str) -> list[dict]:
-    """
-    Parse {{< 4d-panel key="value" ... >}} shortcodes from QMD text.
-
-    Layout convention: "COLSxROWS" — columns first, rows second.
-    E.g. "2x2" = 2 columns 2 rows, "3x1" = 3 columns 1 row.
-
-    Sub-figures are numbered from 1: src1/id1/field1/time1, src2/id2/...
-    Parser reads until src<n> is absent for the next n.
-
-    Returns list of panel dicts; panels missing 'id' or sub-figures are skipped.
-    """
+    """Parse `4d-panel` shortcodes from QMD text."""
     stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
     pattern = r'\{\{<\s*4d-panel\s+(.*?)\s*>\}\}'
     results = []
@@ -306,7 +218,6 @@ def parse_panel_shortcodes(text: str) -> list[dict]:
         if "id" not in kwargs:
             print("[4dpaper] Warning: 4d-panel shortcode missing 'id' — skipping.", file=sys.stderr)
             continue
-        # Collect numbered sub-figures
         subfigures = []
         n = 1
         while f"src{n}" in kwargs:
@@ -332,15 +243,8 @@ def parse_panel_shortcodes(text: str) -> list[dict]:
     return results
 
 
-# -- Timeseries parsing ----------------------------------------------------------
-
 def parse_timeseries_shortcodes(text: str) -> list[dict]:
-    """
-    Parse {{< 4d-timeseries key="value" ... >}} shortcodes from QMD text.
-
-    Returns raw dicts — step expansion happens in main() after simulation load.
-    Shortcodes missing 'id' or 'src' are skipped.
-    """
+    """Parse `4d-timeseries` shortcodes from QMD text."""
     stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
     pattern = r'\{\{<\s*4d-timeseries\s+(.*?)\s*>\}\}'
     results = []
@@ -372,12 +276,7 @@ def parse_timeseries_shortcodes(text: str) -> list[dict]:
 
 
 def _expand_timeseries_steps(ts: dict, n_steps: int) -> list[int]:
-    """Expand steps/times string to list of integer step indices.
-
-    times= takes precedence. If all tokens are invalid, falls back to steps= logic.
-    n_steps <= 1 yields [0] with a warning (degenerate single-frame case).
-    steps="1" is treated as steps="2" (minimum useful timeseries).
-    """
+    """Expand `steps` or `times` into step indices."""
     if ts["times"]:
         result = []
         for tok in ts["times"].split(","):
@@ -390,10 +289,9 @@ def _expand_timeseries_steps(ts: dict, n_steps: int) -> list[int]:
                 try:
                     result.append(max(0, min(int(tok), n_steps - 1)))
                 except ValueError:
-                    pass  # skip invalid tokens
+                    pass
         if result:
             return result
-        # All tokens invalid — fall through to steps= logic
     if n_steps <= 1:
         print(
             f"[4dpaper] WARNING: timeseries '{ts['id']}' source has only {n_steps} step(s) "
@@ -405,12 +303,7 @@ def _expand_timeseries_steps(ts: dict, n_steps: int) -> list[int]:
 
 
 def parse_graph_shortcodes(text: str) -> list[dict]:
-    """
-    Parse {{< 4d-graph key="value" ... >}} shortcodes from QMD text.
-
-    Required: id, src. Optional: caption.
-    Shortcodes missing 'id' or 'src' are silently skipped.
-    """
+    """Parse `4d-graph` shortcodes from QMD text."""
     stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
     pattern = r'\{\{<\s*4d-graph\s+(.*?)\s*>\}\}'
     results = []
@@ -426,8 +319,6 @@ def parse_graph_shortcodes(text: str) -> list[dict]:
     return results
 
 
-# ── Cache helpers ─────────────────────────────────────────────────────────────
-
 def is_cache_valid(
     fig_path: Path,
     src_path: Path,
@@ -435,12 +326,7 @@ def is_cache_valid(
     field_path: Path | None = None,
     extra_deps: list[Path] | None = None,
 ) -> bool:
-    """
-    Return True if fig_path exists, is newer than src_path, camera_path,
-    field_path, and all extra_deps (if given and present).
-
-    Returns True (assume valid) if src_path does not exist.
-    """
+    """Return `True` when the cached figure is newer than its dependencies."""
     if not fig_path.exists():
         return False
     fig_mtime = fig_path.stat().st_mtime
@@ -458,13 +344,8 @@ def is_cache_valid(
     return True
 
 
-# -- Style template loading and resolution ------------------------------------
-
 def load_styles(path: Path) -> dict:
-    """
-    Load _4dpaper_styles.yml. Returns {} on missing or malformed file.
-    Never raises — warnings go to stderr.
-    """
+    """Load `_4dpaper_styles.yml` or return `{}`."""
     if not path.exists():
         return {}
     try:
@@ -481,25 +362,18 @@ def load_styles(path: Path) -> dict:
 
 
 def resolve_style(styles_config: dict, style_name: str, field_name: str) -> dict:
-    """
-    Resolve {background, axis_color, cmap} from styles config.
-
-    Pure function — no I/O. Safe to call with empty styles_config.
-    'transparent' background is normalised to 'white' (PyVista limitation).
-    """
+    """Resolve `background`, `axis_color`, and `cmap` from the style config."""
     _HARD = {"background": "white", "axis_color": "black", "cmap": "coolwarm"}
 
     defaults = styles_config.get("defaults", {}) if styles_config else {}
     styles   = styles_config.get("styles",   {}) if styles_config else {}
 
-    # Start from hard defaults, override with file-level defaults
     resolved = {
         "background": defaults.get("background", _HARD["background"]),
         "axis_color": defaults.get("axis_color", _HARD["axis_color"]),
         "cmap":       defaults.get("cmap",       _HARD["cmap"]),
     }
 
-    # Apply named style overrides (skip silently if style_name is "")
     if style_name:
         if style_name not in styles:
             print(
@@ -511,28 +385,18 @@ def resolve_style(styles_config: dict, style_name: str, field_name: str) -> dict
             if "background"  in tmpl: resolved["background"]  = tmpl["background"]
             if "axis_color"  in tmpl: resolved["axis_color"]  = tmpl["axis_color"]
             if "cmap"        in tmpl: resolved["cmap"]        = tmpl["cmap"]
-            # Per-field cmap override
             field_cmaps = tmpl.get("fields", {})
             if field_name and field_name in field_cmaps:
                 resolved["cmap"] = field_cmaps[field_name]
 
-    # Normalise 'transparent' → 'white' (PyVista does not support transparent backgrounds)
     if resolved["background"] == "transparent":
         resolved["background"] = "white"
 
     return resolved
 
 
-# ── Camera orientation transfer ───────────────────────────────────────────────
-
-
 def _apply_camera_from_dict(pl, fig_id: str, camera_data: dict | None) -> None:
-    """
-    Apply camera from a pre-loaded dict (avoids re-reading disk per frame).
-
-    None or missing keys → isometric fallback. Mirrors apply_camera_state()
-    but accepts a dict instead of a Path, for use in video render loops.
-    """
+    """Apply camera data from a dict."""
     if camera_data is None:
         pl.isometric_view()
         return
@@ -549,12 +413,7 @@ def _apply_camera_from_dict(pl, fig_id: str, camera_data: dict | None) -> None:
 
 
 def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None:
-    """
-    Apply saved camera state (from state/camera_<fig_id>.json) to a plotter.
-
-    Handles position, focal point, view up, and parallel scale (zoom).
-    If no camera state exists, falls back to a clean isometric view.
-    """
+    """Apply saved camera state to a plotter."""
     if camera_path is None or not camera_path.exists():
         pl.isometric_view()
         return
@@ -565,14 +424,12 @@ def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None
         pl.camera.focal_point = cam_data["focal_point"]
         pl.camera.up = cam_data["view_up"]
 
-        # Parallel scale is used for zooming in orthographic mode
         if "parallel_scale" in cam_data and cam_data["parallel_scale"] is not None:
             pl.camera.parallel_scale = float(cam_data["parallel_scale"])
             print(f"[4dpaper] Applied saved camera for {fig_id} (scale={pl.camera.parallel_scale:.4f})")
         else:
             print(f"[4dpaper] Applied saved camera for {fig_id}")
 
-        # Ensure projection mode matches (perspective vs parallel/ortho)
         is_parallel = cam_data.get("parallel_projection", 0) == 1
         pl.camera.parallel_projection = is_parallel
 
@@ -580,8 +437,6 @@ def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None
         print(f"[4dpaper] Warning: could not apply camera for {fig_id}: {exc}. Falling back to isometric.")
         pl.isometric_view()
 
-
-# ── Unified controls strip snippet ────────────────────────────────────────────
 
 def _controls_strip_snippet(
     fig_id: str,
@@ -597,17 +452,7 @@ def _controls_strip_snippet(
     time_idx: int = 0,
     time_field: str = "",
 ) -> str:
-    """
-    Return a combined HTML+JS block that adds a right-edge icon strip to a
-    vtk.js figure, with popup panels for camera lock, orientation axes/presets,
-    field switching, and time scrubbing.
-
-    The figure surface has zero UI overlay — all controls live in the strip.
-    Exactly one panel is open at a time; clicking the active icon closes it.
-
-    Replaces _camera_sync_snippet, _field_sync_snippet, _time_sync_snippet,
-    and _orientation_snippet.
-    """
+    """Return the shared controls-strip HTML and JS."""
     fig_id_js = json.dumps(fig_id).replace("</", "<\\/")
     fig_id_safe = fig_id.replace("</", "<\\/").replace('"', '').replace("-", "_")
 
@@ -768,7 +613,6 @@ def _controls_strip_snippet(
         + f'  }};\n'
     )
 
-    # _locked ALWAYS declared (used by _sendCam regardless of show_lock_btn)
     _js.append(f'  var _locked=false;\n')
     _js.append(f'  var _cont=null;\n')
     if show_lock_btn:
@@ -805,7 +649,6 @@ def _controls_strip_snippet(
             f'  }})();\n'
         )
 
-    # postMessage listener (always emitted)
     _js.append(
         f'  window.addEventListener("message",function(e){{\n'
         f'    if(!e.data)return;\n'
@@ -822,7 +665,6 @@ def _controls_strip_snippet(
             f'    if(e.data.type==="4dpaper-lock-ack"&&e.data.fig_id===FIG_ID){{'
             f'if(e.data.status!=="ok")_setLocked(!_locked);}}\n'
         )
-    # Panel-level lock broadcast: always respond regardless of show_lock_btn.
     _js.append(
         f'    if(e.data.type==="4dpaper-lock-all"){{\n'
         f'      _locked=!!e.data.locked;\n'
@@ -844,7 +686,6 @@ def _controls_strip_snippet(
     )
     _js.append(f'  }});\n')
 
-    # sendCam (always emitted)
     _js.append(
         f'  var _camTimer=null;\n'
         f'  function _sendCam(renderer){{\n'
@@ -860,7 +701,6 @@ def _controls_strip_snippet(
         f'  }}\n'
     )
 
-    # Orientation helpers (conditional)
     if show_orientation:
         _iso_lock_gate = (
             f'      if(_locked){{_showLockedBadge();return;}}\n'
@@ -956,7 +796,6 @@ def _controls_strip_snippet(
     else:
         _js.append(f'  var _renderer=null;\n')
 
-    # Renderer polling
     _svg_assign = (
         f'          _svg=document.getElementById("cs-svg-axes-{fig_id_safe}");\n'
     ) if show_orientation else ''
@@ -1145,8 +984,6 @@ def _controls_strip_snippet(
     return html_block + js_block
 
 
-# ── Figure generation (Task 3) ────────────────────────────────────────────────
-
 def generate_png_figure(
     src_path: Path,
     field: str,
@@ -1160,13 +997,7 @@ def generate_png_figure(
     show_colorbar: bool = True,
     decimate: str = "auto",
 ) -> None:
-    """
-    Generate a static PNG figure using PyVista.
-
-    If a saved camera JSON exists at state/camera_<fig_id>.json, the saved
-    camera position is applied; otherwise falls back to isometric view.
-    Used as a fallback for PDF export.
-    """
+    """Generate a static PNG figure with PyVista."""
     import pyvista as pv
     from scripts.data_loader import SimulationData
 

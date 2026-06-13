@@ -7,7 +7,6 @@ from pathlib import Path
 
 _SAFE_FIG_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
-# Curated colormap set shared by dashboard UI and persistence logic.
 VALID_COLORMAPS = frozenset(
     {
         "coolwarm",
@@ -41,17 +40,17 @@ VALID_COLORMAPS = frozenset(
 
 
 def is_safe_fig_id(fig_id: str) -> bool:
-    """Return True when *fig_id* is safe to use in state file names."""
+    """Return `True` when `fig_id` is safe for state-file names."""
     return bool(_SAFE_FIG_ID.fullmatch(fig_id))
 
 
 def preview_state_path(project_root: Path, prefix: str, fig_id: str) -> Path:
-    """Return a preview-only state JSON path like state/preview_<prefix>_<fig_id>.json."""
+    """Return the preview-state path for one figure."""
     return project_root / "state" / f"preview_{prefix}_{fig_id}.json"
 
 
 def load_json_state(path: Path) -> dict:
-    """Load a JSON state file, returning an empty dict for missing/invalid files."""
+    """Load a JSON state file or return `{}`."""
     if not path.exists():
         return {}
     try:
@@ -62,7 +61,7 @@ def load_json_state(path: Path) -> dict:
 
 
 def merge_preview_state(path: Path, payload: dict) -> dict:
-    """Merge *payload* into an on-disk JSON object and write it back."""
+    """Merge `payload` into on-disk preview state."""
     merged = load_json_state(path)
     merged.update(payload)
     path.parent.mkdir(parents=True, exist_ok=True)

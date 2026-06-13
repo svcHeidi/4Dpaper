@@ -1,10 +1,4 @@
-"""
-Panel upload plugin: stage dropped OpenFOAM case folders into `data/`
-and generate a default 4d-image shortcode.
-
-This is intentionally narrow: it only targets default insertion and
-reuses existing core logic (`copy_case_data`, `generate_shortcode`).
-"""
+"""Stage uploaded files and return default shortcodes."""
 from __future__ import annotations
 
 import json
@@ -14,7 +8,6 @@ from pathlib import Path
 
 import tornado.web
 
-# PROJECT_ROOT can be set via environment variable (for Docker) or defaults to parent directory
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 _UPLOAD_ROOT = _PROJECT_ROOT / "state" / "upload_tmp"
 
@@ -27,7 +20,7 @@ def generate_shortcode(
     time: str,
     caption: str,
 ) -> str:
-    """Return a ``{{< 4d-image ... >}}`` shortcode string."""
+    """Build a default `4d-image` shortcode."""
     parts = [f'src="{src}"', f'field="{field}"', f'id="{fig_id}"']
     if time and time != "mid":
         parts.append(f'time="{time}"')
@@ -41,22 +34,11 @@ def create_case_symlink(
     dest_data_dir: Path,
     log_lines: list[str]
 ) -> Path:
-    """
-    Create a symlink to the OpenFOAM case folder (instead of copying).
-
-    This allows data to be auto-updated when simulations re-run on HPC:
-    if the source case is updated, the symlink automatically points to
-    the new results without manual re-configuration.
-
-    Returns the path to the symlink'd .foam marker file.
-
-    Falls back to copy_case_data() if symlink creation fails (e.g., on Windows).
-    """
+    """Symlink a case directory into `data/` and fall back to copy on failure."""
     case_root = foam_path.parent
     case_name = case_root.name
     dest_case = dest_data_dir / case_name
 
-    # Remove existing symlink/directory if present
     if dest_case.exists() or dest_case.is_symlink():
         if dest_case.is_symlink():
             dest_case.unlink()
@@ -64,32 +46,17 @@ def create_case_symlink(
             shutil.rmtree(dest_case)
 
     try:
-        # Create symlink to the case folder
         dest_case.parent.mkdir(parents=True, exist_ok=True)
         dest_case.symlink_to(case_root)
         log_lines.append(f"  Symlinked {case_root} → {dest_case}")
         return dest_case / foam_path.name
     except (OSError, NotImplementedError) as e:
-        # Fallback: if symlink fails (e.g., no permissions, Windows), copy instead
         log_lines.append(f"  Symlink failed ({e}), falling back to copy")
         return copy_case_data(foam_path, dest_data_dir, log_lines)
 
 
 def copy_case_data(foam_path: Path, dest_data_dir: Path, log_lines: list[str]) -> Path:
-    """
-    Copy the minimal OpenFOAM case files required for PyVista rendering into
-    *dest_data_dir*/<case_name>/.
-
-    Copies:
-    - The .foam marker file
-    - constant/polyMesh/
-    - processor*/constant/polyMesh/
-    - processor*/<timestep>/ (all timesteps)
-
-    Returns the path to the new .foam marker file.
-
-    Used as fallback if symlink creation fails, or when copying is explicitly desired.
-    """
+    """Copy the case files required for PyVista rendering."""
     case_root = foam_path.parent
     case_name = case_root.name
     dest_case = dest_data_dir / case_name
@@ -138,16 +105,12 @@ def copy_case_data(foam_path: Path, dest_data_dir: Path, log_lines: list[str]) -
 
 
 def _safe_rel_path(rel_path: str) -> Path | None:
-    """
-    Convert a browser-provided relative path into a safe Path that cannot escape.
-    Rejects absolute paths and any '..' segments.
-    """
+    """Return a safe relative path or `None`."""
     try:
         p = Path(rel_path)
     except Exception:
         return None
 
-    # Reject absolute paths
     if p.is_absolute():
         return None
 
@@ -155,7 +118,6 @@ def _safe_rel_path(rel_path: str) -> Path | None:
     if any(part in ("..", "") for part in parts):
         return None
 
-    # Reject windows drive-like first part (e.g. "C:")
     if parts and len(parts[0]) == 2 and parts[0][1] == ":":
         return None
 
@@ -200,7 +162,6 @@ class UploadFileHandler(tornado.web.RequestHandler):
         dest_path = (staging_dir / safe_rel).resolve()
         staging_res = staging_dir.resolve()
 
-        # Final escape check
         if staging_res != dest_path and staging_res not in dest_path.parents:
             self.set_status(400)
             self.write({"status": "error", "detail": "path traversal detected"})
@@ -221,7 +182,7 @@ class UploadFinishHandler(tornado.web.RequestHandler):
             return
 
         upload_id = body.get("upload_id")
-        mode = body.get("mode", "figure")  # "figure" or "file"
+        mode = body.get("mode", "figure")
 
         if not upload_id:
             self.set_status(400)
@@ -236,7 +197,6 @@ class UploadFinishHandler(tornado.web.RequestHandler):
 
         try:
             if mode == "figure":
-                # Insert Figure: Find .foam file, symlink to data/
                 foam_files = sorted(staging_dir.rglob("*.foam"))
                 if not foam_files:
                     self.set_status(400)
@@ -245,8 +205,6 @@ class UploadFinishHandler(tornado.web.RequestHandler):
 
                 foam_path = foam_files[0]
 
-                # Create symlink to the case (or copy if symlink fails)
-                # This allows data to auto-update when HPC simulations are re-run
                 log_lines: list[str] = []
                 dest_foam = create_case_symlink(
                     foam_path=foam_path,
@@ -256,7 +214,6 @@ class UploadFinishHandler(tornado.web.RequestHandler):
 
                 src = dest_foam.relative_to(_PROJECT_ROOT).as_posix()
 
-                # Default insertion (as requested): keep parity with the form defaults.
                 shortcode = generate_shortcode(
                     src=src,
                     field="Vm",
@@ -275,8 +232,7 @@ class UploadFinishHandler(tornado.web.RequestHandler):
                     }
                 )
 
-            else:  # mode == "file"
-                # Insert File: Copy arbitrary files to data/
+            else:
                 all_files = sorted(staging_dir.rglob("*"))
                 file_list = [f for f in all_files if f.is_file()]
 
@@ -285,30 +241,23 @@ class UploadFinishHandler(tornado.web.RequestHandler):
                     self.write({"status": "error", "detail": "No files found"})
                     return
 
-                # Symlink or copy files to data/
                 copied_paths = []
                 for src_file in file_list:
                     rel_name = src_file.name
                     dest_file = _PROJECT_ROOT / "data" / rel_name
 
-                    # If file already exists with same name, use symlink approach
                     dest_file.parent.mkdir(parents=True, exist_ok=True)
 
-                    # Remove existing if present
                     if dest_file.exists():
                         dest_file.unlink()
 
-                    # Create symlink (or copy if symlink fails)
                     try:
                         dest_file.symlink_to(src_file.resolve())
                     except (OSError, NotImplementedError):
-                        # Fallback to copy if symlink fails
                         shutil.copy2(src_file, dest_file)
 
                     copied_paths.append(str(dest_file.relative_to(_PROJECT_ROOT)))
 
-                # Generate include shortcode for first file
-                # Example: {{< include data/references.bib >}}
                 first_file = copied_paths[0]
                 shortcode = f"{{{{< include {first_file} >}}}}"
 
@@ -319,7 +268,6 @@ class UploadFinishHandler(tornado.web.RequestHandler):
                 })
 
         finally:
-            # Cleanup staging to keep disk usage bounded
             try:
                 shutil.rmtree(staging_dir, ignore_errors=True)
             except Exception:
@@ -330,4 +278,3 @@ ROUTES = [
     (r"/upload/file", UploadFileHandler),
     (r"/upload/finish", UploadFinishHandler),
 ]
-

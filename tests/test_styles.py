@@ -1,4 +1,3 @@
-# tests/test_styles.py
 """Tests for figure style template loading and resolution."""
 from __future__ import annotations
 import importlib.util
@@ -132,7 +131,7 @@ class TestParseShortcodesStyle:
         assert result[0]["style"] == ""
 
     def test_style_key_always_present(self):
-        """Every returned dict must have 'style' key even when omitted."""
+        """Parsed shortcode dicts always include `style`."""
         mod = _load_4dpaper()
         text = '{{< 4d-image src="case.foam" id="fig-vm" >}}'
         result = mod.parse_shortcodes(text)
@@ -141,7 +140,7 @@ class TestParseShortcodesStyle:
 
 class TestGeneratorsAcceptStyleParams:
     def test_generate_png_figure_accepts_style_params(self):
-        """generate_png_figure must accept background, axis_color, cmap kwargs."""
+        """`generate_png_figure` accepts style parameters."""
         import inspect
         mod = _load_4dpaper()
         sig = inspect.signature(mod.generate_png_figure)
@@ -154,7 +153,7 @@ class TestGeneratorsAcceptStyleParams:
         assert params["cmap"].default == "coolwarm"
 
     def test_generate_html_figure_accepts_style_params(self):
-        """generate_html_figure must accept background, axis_color, cmap kwargs."""
+        """`generate_html_figure` accepts style parameters."""
         import inspect
         mod = _load_4dpaper()
         sig = inspect.signature(mod.generate_html_figure)
@@ -167,19 +166,17 @@ class TestGeneratorsAcceptStyleParams:
         assert params["cmap"].default == "coolwarm"
 
     def test_generate_png_figure_hardcoded_values_replaced(self):
-        """generate_png_figure body must not contain hardcoded '#1a1a2e' or cmap='coolwarm'."""
+        """`generate_png_figure` does not hardcode style values."""
         import inspect
         mod = _load_4dpaper()
         source = inspect.getsource(mod.generate_png_figure)
         assert "#1a1a2e" not in source, \
             "Hardcoded background '#1a1a2e' must be replaced with background param"
-        # After fix, body uses `cmap=cmap` (variable). Hardcoded literal would appear as cmap="coolwarm".
-        # Note: the signature default `cmap: str = "coolwarm"` uses ': str =' not '=', so won't match.
         assert 'cmap="coolwarm"' not in source, \
             "Hardcoded cmap='coolwarm' in add_mesh call must be replaced with cmap param"
 
     def test_generate_html_figure_hardcoded_values_replaced(self):
-        """generate_html_figure body must not contain hardcoded '#1a1a2e' or cmap='coolwarm'."""
+        """`generate_html_figure` does not hardcode style values."""
         import inspect
         mod = _load_4dpaper()
         source = inspect.getsource(mod.generate_html_figure)
@@ -191,7 +188,7 @@ class TestGeneratorsAcceptStyleParams:
 
 class TestCacheInvalidationWithStyles:
     def test_styles_yml_change_triggers_regen(self, tmp_path):
-        """Touching _4dpaper_styles.yml should invalidate the figure cache."""
+        """A newer style file invalidates the cache."""
         import time
         mod = _load_4dpaper()
 
@@ -202,9 +199,9 @@ class TestCacheInvalidationWithStyles:
         styles_yml.write_text("defaults:\n  cmap: coolwarm\n")
         src.write_text("x")
         time.sleep(0.02)
-        output.write_text("<html/>")   # output is newest
+        output.write_text("<html/>")
         time.sleep(0.02)
-        styles_yml.touch()             # now styles_yml is newest
+        styles_yml.touch()
 
         result = mod.is_cache_valid(output, src, extra_deps=[styles_yml])
         assert result is False
@@ -220,7 +217,7 @@ class TestCacheInvalidationWithStyles:
         styles_yml.write_text("defaults:\n  cmap: coolwarm\n")
         src.write_text("x")
         time.sleep(0.02)
-        output.write_text("<html/>")   # output is newest
+        output.write_text("<html/>")
 
         result = mod.is_cache_valid(output, src, extra_deps=[styles_yml])
         assert result is True

@@ -49,7 +49,7 @@ class TestControlsStripHtml:
         assert 'id="cs-btn-lock-fig_vm"' not in html
 
     def test_axes_button_absent_when_show_orientation(self):
-        """Axes strip button is replaced by corner cube — must be absent."""
+        """The corner cube replaces the axes strip button."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
         assert 'id="cs-btn-axes-fig_vm"' not in html
@@ -92,11 +92,8 @@ class TestControlsStripHtml:
     def test_popup_panels_present_for_active_features(self):
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True, show_orientation=True)
-        # axes popup gone — must be absent
         assert 'id="cs-pop-axes-fig_vm"' not in html
-        # lock popup still gone
         assert 'id="cs-pop-lock-fig_vm"' not in html
-        # corner cube div must be present
         assert 'id="cs-corner-fig_vm"' in html
 
     def test_axis_widget_svg_present_when_show_orientation(self):
@@ -107,7 +104,7 @@ class TestControlsStripHtml:
         assert 'height="56"' in html
 
     def test_cube_svg_size(self):
-        """Corner div position: fixed bottom-left when show_orientation=True."""
+        """The corner widget stays pinned to the lower-left corner."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
         corner_pos = html.find('id="cs-corner-fig_vm"')
@@ -117,7 +114,7 @@ class TestControlsStripHtml:
         assert "left:4px" in region
 
     def test_axes_popup_absent(self):
-        """cs-pop-axes- must NOT be emitted when show_orientation=True."""
+        """The axes popup is not emitted when orientation is enabled."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
         assert 'id="cs-pop-axes-fig_vm"' not in html

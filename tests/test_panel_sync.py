@@ -51,7 +51,6 @@ class TestParsePanelShortcodes:
         mod = _load_4dpaper()
         text = '{{< 4d-panel id="p1" layout="1x1" camera="wibble" src1="a.foam" id1="f1" field1="Vm" >}}'
         result = mod.parse_panel_shortcodes(text)
-        # Any non-"sync" value keeps the raw value but generate_panel_html treats non-"sync" as independent
         assert "camera_mode" in result[0]
 
 
@@ -108,7 +107,6 @@ class TestSyncPanelCacheInvalidation:
         import inspect
         mod = _load_4dpaper()
         source = inspect.getsource(mod.main)
-        # The panel loop must branch on camera_mode for sync
         assert "camera_mode" in source
         assert "shared_cam" in source
 
@@ -123,7 +121,6 @@ class TestGeneratePanelHtmlWritesManifest:
 
     def test_relay_script_handles_panel_sync(self):
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
-        # Relay script must detect data-panel attribute and broadcast to panel members
         assert 'data-panel' in content
         assert 'querySelectorAll' in content
 
@@ -139,10 +136,8 @@ class TestFourdPanelLua:
 
     def test_fourd_panel_sync_uses_direct_srcdoc_iframes(self):
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
-        # The sync branch uses direct srcdoc iframes with data-panel attribute
-        # (avoids data:text/html;base64 iframes which break vtk.js WebGL rendering)
         assert 'data-panel="' in content
-        assert '"id" .. n' in content  # iterates id1, id2, ... kwargs in sync mode
+        assert '"id" .. n' in content
 
 
 class TestPanelLockToolbar:

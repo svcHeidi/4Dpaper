@@ -1,31 +1,34 @@
 data_extraction_task:
   description: >
-    Analyze the provided directory of {file_type} files. Identify the time-steps 
-    and the key scalar/vector fields available. Create a Python script using 
-    PyVista to load these files efficiently.
+    Analyze the provided directory of {file_type} files. Identify the time-steps, 
+    the key scalar/vector fields available, and verify the path structure. Ensure 
+    the data is accessible to the 4DPapers framework either via a direct relative 
+    path or by defining a shortcut in `_shortcuts.yml`.
   expected_output: >
-    A Python module `data_loader.py` that contains a class for iterating 
-    through 4D simulation states.
+    A summary of the dataset's location, available fields (e.g. 'U', 'p'), and 
+    the correct path format to be used in the Quarto report.
   agent: data_architect
 
 viz_logic_task:
   description: >
-    Using the `data_loader.py`, write the visualization logic. 
-    1. Create a PyVista Plotter. 
-    2. Add an interactive slider for 'Time'.
-    3. Add a toggle for the {scalar_field} visualization.
-    4. Ensure the backend is set to 'panel' for Quarto compatibility.
+    Using the structured data path, define the 3D figures for the report. 
+    1. Select the appropriate 4DPapers shortcode (`4d-image`, `4d-panel`, etc.). 
+    2. Define the `src` attribute pointing to the data.
+    3. Specify the {scalar_field} via the `field` attribute, and configure `time` or `decimate` if needed.
+    4. Ensure no custom PyVista scripting is used; rely purely on the 4DPapers pre-render hook.
   expected_output: >
-    A Python snippet `interactive_viz.py` that renders the 4D state in a browser.
+    A set of formatted `{{< 4d-... >}}` shortcodes ready to be embedded into the report.
   agent: visualization_engineer
 
 report_assembly_task:
   description: >
     Create the final `analysis_report.qmd`. 
-    1. Define the YAML header for a self-contained HTML.
-    2. Write the executive summary.
-    3. Embed the code from `interactive_viz.py` into a Quarto code cell.
-    4. Add a section explaining the physics of the {simulation_goal}.
+    1. Define the YAML front matter for HTML and PDF outputs.
+    2. Write the executive summary and document the physics of the {simulation_goal}.
+    3. Embed the generated `{{< 4d-... >}}` shortcodes in the appropriate sections.
+    4. CRITICAL: All equations, figures, and tables MUST have a reference name/label 
+       (e.g., `{#eq-name}`, `{#fig-name}`, `{#tbl-name}`) so they can be cross-referenced.
+    5. Verify the document compiles cleanly, outputting both interactive web figures and static PDF images.
   expected_output: >
-    A complete `analysis_report.qmd` file ready to be rendered.
+    A complete `analysis_report.qmd` file ready to be compiled by Quarto, with all cross-references correctly labeled.
   agent: technical_writer

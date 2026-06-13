@@ -1,18 +1,20 @@
 services:
   4dpapers:
     build:
-      context: /Users/simaocastro/4Dpapers
+      context: .
       dockerfile: Dockerfile
-    container_name: 4dpapers-editor
     ports:
       - "5006:5006"  # Dashboard UI
     volumes:
       - .:/workspace  # Mounts current directory as the project
-      - /Users/simaocastro/cardiacFoamEP:/Users/simaocastro/cardiacFoamEP  # OpenFOAM data
+      # Mount your data directory so shortcuts can resolve to it inside the container.
+      # Example: - /path/to/your/data:/data
     environment:
       - PORT=5006
       - PYTHONUNBUFFERED=1
       - PROJECT_ROOT=/workspace
+    env_file:
+      - .env
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5006/api/health"]
       interval: 30s
@@ -28,4 +30,3 @@ services:
     #         - driver: nvidia
     #           count: 1
     #           capabilities: [gpu]
-

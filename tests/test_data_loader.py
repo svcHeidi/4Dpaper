@@ -1,4 +1,3 @@
-# tests/test_data_loader.py
 """Tests for scripts/data_loader.py"""
 from __future__ import annotations
 
@@ -16,7 +15,7 @@ from data_loader import SimulationData
 
 
 class TestCacheKeyBugFix:
-    """Existing VTK single/directory loaders stored bare int keys; get_mesh expects tuples."""
+    """VTK caches use tuple keys."""
 
     def test_vtk_single_cache_key_is_tuple(self, tmp_path):
         """load_vtk_single must store mesh under (0, 'default'), not bare 0."""
@@ -35,7 +34,7 @@ class TestCacheKeyBugFix:
         with patch("data_loader.pv.read", return_value=fake_mesh):
             sim.load_vtk_single()
         assert (0, "default") in sim._meshes
-        assert 0 not in sim._meshes  # bare int key must be gone
+        assert 0 not in sim._meshes
 
     def test_vtk_directory_cache_keys_are_tuples(self, tmp_path):
         """load_vtk_directory must store each mesh under (i, 'default')."""
@@ -59,7 +58,7 @@ class TestCacheKeyBugFix:
 
 
 class TestGetMeshFallback:
-    """get_mesh must fall back to (step, 'default') when exact part key is absent."""
+    """`get_mesh` falls back to `(step, "default")`."""
 
     def _make_sim(self, mesh):
         sim = SimulationData.__new__(SimulationData)
@@ -73,10 +72,10 @@ class TestGetMeshFallback:
         return sim
 
     def test_get_mesh_returns_default_when_part_not_found(self):
-        """Calling get_mesh(0) with default part='internalMesh' must return the cached mesh."""
+        """`get_mesh(0)` returns the default cached mesh."""
         fake_mesh = MagicMock()
         sim = self._make_sim(fake_mesh)
-        result = sim.get_mesh(0)  # part defaults to "internalMesh"
+        result = sim.get_mesh(0)
         assert result is fake_mesh
 
     def test_get_mesh_exact_key_takes_priority(self):
@@ -99,14 +98,13 @@ class TestGetMeshFallback:
 
 
 class TestEnableAllArraysGuard:
-    """EnableAllCellArrays must only be called for openfoam formats."""
+    """OpenFOAM array enabling stays scoped to OpenFOAM readers."""
 
     def _make_reader_sim(self, fmt):
         fake_reader = MagicMock()
-        # Make _reader NOT have EnableAllCellArrays to simulate non-OpenFOAM reader
         del fake_reader._reader.EnableAllCellArrays
         fake_mesh = MagicMock()
-        fake_mesh.__class__ = MagicMock  # not a MultiBlock
+        fake_mesh.__class__ = MagicMock
         fake_reader.read.return_value = fake_mesh
 
         sim = SimulationData.__new__(SimulationData)
@@ -140,11 +138,7 @@ class TestDetectFormat:
     """_detect_format() assigns the correct self._format for each extension."""
 
     def _detect(self, suffix):
-        """Helper: create a SimulationData with the given suffix and return _format.
-
-        Path.is_dir is mocked to False so unsupported extensions reliably raise
-        ValueError instead of accidentally matching the directory fallback.
-        """
+        """Create a stub instance and return the detected format."""
         sim = SimulationData.__new__(SimulationData)
         sim.case_path = Path(f"dummy{suffix}")
         sim._reader = None

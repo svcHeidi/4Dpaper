@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-# Make dashboard importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 class TestSaveCameraState:

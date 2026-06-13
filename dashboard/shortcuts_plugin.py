@@ -1,9 +1,4 @@
-"""
-Shortcuts plugin for 4DPapers dashboard.
-
-Provides API endpoints for managing folder shortcuts that point to external data.
-Shortcuts are defined in _shortcuts.yml and allow using @shortcut_name syntax in .qmd files.
-"""
+"""Shortcut management endpoints for the dashboard."""
 from __future__ import annotations
 
 import json
@@ -14,8 +9,6 @@ from pathlib import Path
 import tornado.web
 import yaml
 
-# _APP_DIR is always the directory containing the application code (dashboard/../).
-# Used only to locate the bundled shortcut_resolver module.
 _APP_DIR = Path(__file__).parent.parent
 _extensions_path = _APP_DIR / "_extensions" / "4dpaper"
 if str(_extensions_path) not in sys.path:
@@ -23,10 +16,8 @@ if str(_extensions_path) not in sys.path:
 
 from shortcut_resolver import ShortcutResolver
 
-# PROJECT_ROOT is where the user's paper lives (set via env in Docker, inferred locally).
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(_APP_DIR)))
 
-# Initialize the shortcut resolver (same instance as 4dpaper.py)
 _shortcut_resolver = ShortcutResolver(
     config_path=_PROJECT_ROOT / "_shortcuts.yml",
     project_root=_PROJECT_ROOT
@@ -60,7 +51,6 @@ class ShortcutsListHandler(tornado.web.RequestHandler):
         path = data.get("path", "").strip()
         description = data.get("description", "").strip()
 
-        # Validate name
         if not name:
             self.set_status(400)
             self.write({"error": "Missing 'name'"})
@@ -73,13 +63,11 @@ class ShortcutsListHandler(tornado.web.RequestHandler):
             })
             return
 
-        # Validate path
         if not path:
             self.set_status(400)
             self.write({"error": "Missing 'path'"})
             return
 
-        # Check if path exists
         p = Path(path)
         if not p.is_absolute():
             p = _PROJECT_ROOT / p
@@ -89,7 +77,6 @@ class ShortcutsListHandler(tornado.web.RequestHandler):
             self.write({"error": f"Path does not exist: {p}"})
             return
 
-        # Update config file
         config_path = _PROJECT_ROOT / "_shortcuts.yml"
         try:
             if config_path.exists():
@@ -106,11 +93,9 @@ class ShortcutsListHandler(tornado.web.RequestHandler):
                 "description": description
             }
 
-            # Write back to file
             with open(config_path, "w") as f:
                 yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
-            # Reload resolver
             _shortcut_resolver._load_config()
 
             self.write({

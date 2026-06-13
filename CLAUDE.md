@@ -1,7 +1,7 @@
 # 4Dpapers — Agent Reference
 
 Machine-readable reference for AI agents working with this codebase.
-Last updated: 2026-04-18
+Last updated: 2026-04-19
 
 ---
 
@@ -74,7 +74,7 @@ All shortcodes are written inside `.qmd` files. Attribute values are always quot
 | Attribute  | Required | Default  | Description |
 |------------|----------|----------|-------------|
 | `id`       | yes      | —        | Unique figure identifier. Used for all state file names. Must match `[A-Za-z0-9_-]+`. |
-| `src`      | yes      | —        | Path to data file. Supports `@shortcut/subpath` syntax. Accepted formats: `.foam`, `.vtu`, `.vtp`, `.vtk`, `.pvd`, `.stl`, `.obj`, `.ply`, `.case`, `.cgns`, `.exo`, `.xdmf`. |
+| `src`      | yes      | —        | Path to data file. Supports `@shortcut/subpath` syntax. Accepted formats: `.foam`, `.vtu`, `.vtp`, `.vtk`, `.pvd`, `.stl`, `.obj`, `.ply`, `.case`, `.cgns`, `.exo`, `.xdmf`, `.vtk.series`. |
 | `field`    | no       | `""`     | Scalar field name to colour the mesh (e.g. `"U"`, `"p"`, `"Vm"`). |
 | `fields`   | no       | `""`     | Comma-separated list of fields available in the live field switcher (e.g. `"U,p,T"`). |
 | `time`     | no       | `"mid"`  | Timestep selector: `"first"`, `"last"`, `"mid"`, or integer index. |
@@ -88,6 +88,8 @@ All shortcodes are written inside `.qmd` files. Attribute values are always quot
 {{< 4d-image id="fig-wall" src="data/wall.vtu" field="WSS" decimate="0.8" >}}
 {{< 4d-image id="fig-geo" src="data/geometry.stl" decimate="none" >}}
 ```
+
+**Play button:** When the source has multiple timesteps, a ▶ play button appears automatically in the top bar. All timestep scalar arrays are pre-decoded at page load into `DECODED_FRAMES[]` for frame-perfect animation via `requestAnimationFrame`. No extra shortcode attribute is needed — the button is present whenever `sim.n_steps > 1`.
 
 **Output:** `state/figures/<id>.html` (interactive) + `state/figures/<id>.png` (PDF).
 
@@ -182,6 +184,8 @@ The pre-render hook applies RDP polyline simplification (ε = 0.1% of normalised
 | `fps`     | no       | `"10"`   | Frames per second. |
 | `time`    | no       | `"mid"`  | Starting timestep. |
 
+> **Note:** Prefer `4d-image` with a multi-timestep source over `4d-video`. The built-in ▶ play button in `4d-image` provides equivalent animation without video encoding, works in PDF export, and allows free camera rotation during playback.
+
 ---
 
 ## 4. Source Path Syntax
@@ -205,7 +209,24 @@ Shortcuts are managed via the dashboard (`GET/POST /api/shortcuts`) or by editin
 
 ---
 
-## 5. Supported Data Formats
+## 5. Agent Exposure Policy
+
+Agent-facing repository guidance is intentionally separated from user-facing
+paper content:
+
+| File | Purpose | App exposure |
+|------|---------|--------------|
+| `CLAUDE.md` | Full machine-readable codebase reference for coding agents | Hidden from `/api/files` and blocked by `/api/file` |
+| `AGENTS.md` | Short neutral pointer for agent tools | Hidden from `/api/files` and blocked by `/api/file` |
+| `agents.yaml` | Curated role metadata (`data_architect`, `visualization_engineer`, `technical_writer`) | Exposed only through `/api/agents` when `FOURD_EXPOSE_AGENTS=1` |
+
+Do not link raw agent files from published reports. If app clients need agent
+metadata, expose the curated `/api/agents` endpoint behind the normal server auth
+configuration instead of making the source files browsable.
+
+---
+
+## 6. Supported Data Formats
 
 Handled by `scripts/data_loader.py` (`SimulationData` class):
 
@@ -221,10 +242,11 @@ Handled by `scripts/data_loader.py` (`SimulationData` class):
 | `.cgns` | CGNS | Time-series |
 | `.exo`, `.e`, `.ex2` | Exodus II | FEA time-series |
 | `.xdmf`, `.xmf` | XDMF/HDF5 | Companion `.h5` required |
+| `.vtk.series` | ParaView JSON time-series | JSON envelope listing individual `.vtk` files with timestamps; used for non-OpenFOAM solvers |
 
 ---
 
-## 6. State Files
+## 7. State Files
 
 All runtime state lives in `state/`. These files are created by user interaction in the browser and read by the pre-render hook on next compile.
 
@@ -257,7 +279,7 @@ All runtime state lives in `state/`. These files are created by user interaction
 
 ---
 
-## 7. Cache Invalidation
+## 8. Cache Invalidation
 
 The pre-render hook (`4dpaper.py`) uses mtime-based caching. A cached figure is regenerated if any of the following is newer than `state/figures/<id>.html`:
 
@@ -271,11 +293,11 @@ To force a full regeneration: `touch <src_file>` or delete `state/figures/`.
 
 ---
 
-## 8. Backend REST API
+## 9. Backend REST API
 
 All endpoints are served by the Panel/Tornado process on port 5006.
 
-### 8.1 Camera (`dashboard/camera_plugin.py`)
+### 9.1 Camera (`dashboard/camera_plugin.py`)
 
 | Method | Path | Body / Params | Response |
 |--------|------|---------------|----------|
@@ -285,21 +307,21 @@ All endpoints are served by the Panel/Tornado process on port 5006.
 
 `fig_id` must match `[A-Za-z0-9_-]+`.
 
-### 8.2 Field state (`dashboard/field_plugin.py`)
+### 9.2 Field state (`dashboard/field_plugin.py`)
 
 | Method | Path | Body | Response |
 |--------|------|------|----------|
 | `GET`  | `/field/<fig_id>` | — | `{field: str, time: str}` |
 | `POST` | `/field/<fig_id>` | `{field?: str, time?: str}` | `{status: "ok"}` |
 
-### 8.3 Colour preview (`dashboard/color_plugin.py`)
+### 9.3 Colour preview (`dashboard/color_plugin.py`)
 
 | Method | Path | Body | Response |
 |--------|------|------|----------|
 | `GET`  | `/color/<fig_id>` | — | `{vmin: float, vmax: float, cmap: str}` |
 | `POST` | `/color/<fig_id>` | `{vmin: float, vmax: float, cmap?: str}` | `{status: "ok"}` |
 
-### 8.4 Compile & export (`dashboard/compile_plugin.py`)
+### 9.4 Compile & export (`dashboard/compile_plugin.py`)
 
 | Method | Path | Body | Response |
 |--------|------|------|----------|
@@ -309,27 +331,30 @@ All endpoints are served by the Panel/Tornado process on port 5006.
 
 `/api/compile` with `format="pdf"` renders the paperview Quarto profile (static HTML with saved-camera PNGs) then converts via WeasyPrint. `/api/export` does the same and streams the PDF directly.
 
-### 8.5 File tree (`dashboard/file_plugin.py`)
+### 9.5 File tree and agent metadata (`dashboard/file_plugin.py`)
 
 | Method | Path | Body / Params | Response |
 |--------|------|---------------|----------|
 | `GET`  | `/api/files` | — | `{files: [{path, is_dir, size, type}], count}` |
 | `GET`  | `/api/file?path=<rel>` | — | File content as `text/plain` |
 | `POST` | `/api/file` | `{path: str, content: str}` | `{status: "saved", path}` |
+| `GET`  | `/api/agents` | requires `FOURD_EXPOSE_AGENTS=1` | `{source, agents}` |
 
-Hidden from file tree: `.venv`, `__pycache__`, `.git`, `dashboard`, `_extensions`, `_freeze`, `scripts`, `tests`, `state/*.json`, `*_files/` build artifact directories, root-level `.html` files.
+Hidden from file tree and blocked by direct `/api/file` access: `.venv`, `__pycache__`, `.git`, `dashboard`, `_extensions`, `_freeze`, `scripts`, `tests`, `state/*.json`, `*_files/` build artifact directories, root-level `.html` files, `.env*`, private key/certificate files, `_shortcuts.yml`, `AGENTS.md`, `CLAUDE.md`, and `agents.yaml`.
 
-### 8.6 Shortcuts (`dashboard/shortcuts_plugin.py`)
+### 9.6 Shortcuts (`dashboard/shortcuts_plugin.py`)
 
 | Method | Path | Body / Params | Response |
 |--------|------|---------------|----------|
 | `GET`  | `/api/shortcuts` | — | `{shortcuts: [name], descriptions: {name: desc}, count}` |
 | `POST` | `/api/shortcuts` | `{name, path, description?}` | `{status, name, path}` |
+| `GET`  | `/api/shortcuts/check?path=<abs>` | — | `{exists: bool, resolved: str}` |
 | `GET`  | `/api/shortcuts/resolve?src=@name/sub` | — | `{src, resolved, exists}` |
+| `DELETE` | `/api/shortcuts/<name>` | — | `{status: "ok", deleted: name}` |
 
-Shortcut names must match `[a-z0-9_]+`.
+Shortcut names must match `[a-z0-9_]+`. The `/check` endpoint is used by the dashboard "Add Shortcut" modal for live path validation (400ms debounce).
 
-### 8.7 Upload (`dashboard/upload_plugin.py`)
+### 9.7 Upload (`dashboard/upload_plugin.py`)
 
 | Method | Path | Body | Response |
 |--------|------|------|----------|
@@ -338,7 +363,7 @@ Shortcut names must match `[a-z0-9_]+`.
 
 `mode="figure"`: expects a `.foam` case folder, creates a symlink under `data/`, returns a ready `{{< 4d-image >}}` shortcode. `mode="file"`: copies arbitrary files to `data/`, returns an `{{< include >}}` shortcode.
 
-### 8.8 Static files
+### 9.8 Static files
 
 | Path | Serves |
 |------|--------|
@@ -347,7 +372,7 @@ Shortcut names must match `[a-z0-9_]+`.
 
 ---
 
-## 9. postMessage Protocol (browser → backend)
+## 10. postMessage Protocol (browser → backend)
 
 Figures are embedded as `srcdoc` iframes. Communication from iframe to backend goes through `relay.js` in the parent page.
 
@@ -363,7 +388,7 @@ Figures are embedded as `srcdoc` iframes. Communication from iframe to backend g
 
 ---
 
-## 10. Key Python Functions
+## 11. Key Python Functions
 
 ### `_extensions/4dpaper/4dpaper.py`
 
@@ -376,7 +401,7 @@ def generate_html_figure(
     decimate: str = "auto",
 ) -> None
 ```
-Generates a self-contained vtk.js HTML figure. Applies mesh decimation, embeds field-switcher data and per-timestep scalar arrays. Injects controls strip (lock button, orientation widget, time slider).
+Generates a self-contained vtk.js HTML figure. Applies mesh decimation, embeds field-switcher data and per-timestep scalar arrays. Injects a unified **top bar** (26 px, `position:fixed`) containing: lock icon, field `<select>`, play ▶ button, time slider, and time value label. When `sim.n_steps > 1`, all timestep arrays are base64-embedded and pre-decoded at page load into `DECODED_FRAMES[]`; the ▶ button drives a `requestAnimationFrame` loop at `_PLAY_FPS=10`.
 
 ```python
 def generate_png_figure(
@@ -412,6 +437,7 @@ Returns `True` if `fig_path` exists and is newer than all provided dependency pa
 class SimulationData:
     def __init__(self, case_path: str) -> None
     def load(self) -> SimulationData          # detects format, returns self
+    def load_vtk_series(self) -> None         # parses .vtk.series JSON, eager-loads each VTK file
     def get_mesh(self, time_index: int) -> pyvista.DataSet | None
     @property
     def n_steps(self) -> int
@@ -420,6 +446,8 @@ class SimulationData:
     @property
     def available_fields(self) -> list[str]
 ```
+
+`.vtk.series` format: `{"files": [{"name": "frame_001.vtk", "time": 0.0}, ...]}`. Files sorted by `time` key; each loaded via `pv.read()` and stored in `self._meshes[(i, "default")]`.
 
 ### `dashboard/utils.py`
 
