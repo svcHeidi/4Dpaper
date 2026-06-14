@@ -1,0 +1,80 @@
+# Results
+
+## Transmembrane Potential
+
+The figure below shows the transmembrane potential $V_m$ at mid-activation.
+In the HTML version this is a fully interactive 3D viewer — you can rotate,
+zoom, and inspect the mesh. In the PDF version it is a high-resolution static
+render from the camera angle you locked in the dashboard.
+
+{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam" field="Vm" fields="Vm,activationTime,activationVelocity" id="fig-vm" style="vm-dark" caption="Transmembrane potential $V_m$ at mid-activation" >}}
+
+## Activation Time
+
+{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam" field="activationTime" id="fig-at" time="last" caption="Activation time distribution" >}}
+
+## Transmembrane Potential Animation
+
+In the HTML output this is a fully interactive scrubber. In the PDF, videos cannot be embedded — use
+`{{< 4d-timeseries >}}` instead (see @sec-timeseries) for a static multi-frame strip.
+
+{{< 4d-video src="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam" field="Vm" fps="10" id="vid-vm" caption="Transmembrane potential $V_m$ over time (HTML only)" >}}
+
+## Activation Time-Series (HTML + PDF) {#sec-timeseries}
+
+The timeseries shortcode generates N equally-spaced snapshots from the simulation. In the HTML output
+each snapshot is a fully interactive 3D viewer sharing a single synchronised camera (rotating one
+panel rotates all). In the PDF export a composite PNG strip is rendered from the locked camera angle.
+
+Use the 🔓 padlock button on any panel to lock the camera before exporting.
+
+{{< 4d-timeseries src="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam" field="Vm" id="ts-vm" steps="4" height="300px" caption="$V_m$ at four equally-spaced time steps — synced camera, HTML and PDF compatible" >}}
+
+## Side-by-Side Comparison (independent cameras)
+
+Each panel retains its own independent camera. The 🔓 padlock button in each viewer lets you lock its
+camera angle before running Export PDF.
+
+{{< 4d-panel id="panel-compare" layout="2x1" height="500px"
+    caption="$V_m$ (left) vs activation time (right) — independent cameras."
+    src1="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam"
+    id1="fig-vm" field1="Vm" fields1="Vm,activationTime,activationVelocity"
+    src2="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam"
+    id2="fig-at" field2="activationTime" fields2="Vm,activationTime,activationVelocity" >}}
+
+## Side-by-Side Comparison (synchronised camera)
+
+With `camera="sync"` all subfigures share one camera file. Rotating any panel rotates all; the camera
+ack badge appears on every viewer simultaneously.
+
+{{< 4d-panel id="panel-sync" layout="2x1" height="500px" camera="sync"
+    caption="$V_m$ (left) vs activation time (right) — synchronised camera."
+    src1="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam"
+    id1="fig-vm-sync" field1="Vm"
+    src2="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam"
+    id2="fig-at-sync" field2="activationTime" >}}
+
+## ParaView Pipeline Figure
+
+`{{< 4d-pvsm >}}` renders a full ParaView state file (`.pvsm`) rather than a raw OpenFOAM case.
+`pvpython` executes the pipeline, writes an intermediate `.vtu`, and PyVista then exports an
+interactive vtk.js viewer. This lets you embed any ParaView filter chain — clipping planes,
+streamlines, isovolumes — directly in the paper.
+
+{{< 4d-pvsm src="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/example_state.pvsm" data="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam" id="fig-pvsm-vm" caption="Transmembrane voltage rendered via ParaView pipeline" >}}
+
+## Interactive 2D/3D Data Graphs (Plotly JSON)
+
+You can now easily embed high-quality declarative data visualization charts using Plotly's standard `.json` export feature (`fig.write_json()`).
+
+These interactive JavaScript-powered graphs handle their own zooming, panning, and toggling tools, taking the computational load off your HTML bundle. More importantly, when building a static PDF, these are automatically rasterized via the Kaleido engine into ultra-high-resolution images keeping the compilation process robust and decoupled.
+
+{{< 4d-graph src="media/example_graph.json" id="fig-plotly-surface" caption="Example mathematical 3D surface seamlessly exported as a Plotly JSON graph." >}}
+
+## Traditional Static Figures (PNG/JPG)
+
+You absolutely don't need a `4d-` shortcode for normal static screenshots or diagram files like PNGs or JPGs. Because 4Dpaper is essentially a customized Quarto framework under the hood, you can just use standard Markdown image syntax!
+
+It will reliably scale appropriately in both the dashboard HTML preview and the compiled exported PDF.
+
+![A classic Matplotlib graph embedded as a standard PNG image.](media/static_example.png){#fig-static-example width="80%"}
