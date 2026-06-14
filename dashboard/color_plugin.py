@@ -17,6 +17,7 @@ import os
 
 import tornado.web
 
+from dashboard.auth import SecureMixin
 from dashboard.figure_state import (
     is_safe_fig_id,
     merge_preview_state,
@@ -28,17 +29,17 @@ from dashboard.figure_state import (
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 
 
-class ColorHandler(tornado.web.RequestHandler):
+class ColorHandler(SecureMixin, tornado.web.RequestHandler):
     def set_default_headers(self) -> None:
-        self.set_header("Access-Control-Allow-Origin", "*")
+        self.apply_cors_headers(methods="POST, OPTIONS")
         self.set_header("Content-Type", "application/json")
 
     def options(self, fig_id: str) -> None:
-        self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-        self.set_header("Access-Control-Allow-Headers", "Content-Type")
         self.finish()
 
     def post(self, fig_id: str) -> None:
+        if not self.check_auth():
+            return
         if not is_safe_fig_id(fig_id):
             self.set_status(400)
             self.write({"status": "error", "detail": "invalid fig_id"})

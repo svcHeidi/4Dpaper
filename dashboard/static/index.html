@@ -10,6 +10,7 @@
             darkMode: 'class',
             theme: {
                 extend: {
+                    
                     colors: {
                         app: {
                             bg: '#141725',
@@ -17,7 +18,7 @@
                             sidebar: '#1A1E2F',
                             editorBg: '#0D1117',
                             panelBg: '#1B1F30',
-                            accent: '#3B82F6',
+                            accent: '#138a7c',
                             text: '#9CA3AF',
                             textLight: '#E5E7EB',
                             border: '#2A3047',
@@ -36,7 +37,7 @@
                         }
                     },
                     fontFamily: {
-                        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                        sans: ['Outfit', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
                         mono: ['JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
                     }
                 }
@@ -184,7 +185,7 @@
 
         .editor-content {
             font-family: 'JetBrains Mono', monospace !important;
-            font-size: 13px !important;
+            font-size: 11px !important;
             color: #E5E7EB !important;
             background-color: #0D1117 !important;
             border: none !important;
@@ -196,7 +197,7 @@
 
         .CodeMirror {
             font-family: 'JetBrains Mono', monospace !important;
-            font-size: 13px !important;
+            font-size: 11px !important;
             height: 100% !important;
             background-color: #0D1117 !important;
             color: #E5E7EB !important;
@@ -398,7 +399,7 @@
         }
 
     </style>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <!-- MathJax for LaTeX rendering -->
@@ -422,10 +423,10 @@
 
 <div class="app-container">
     <!-- Header -->
-    <header class="h-16 bg-app-nav border-b border-app-border flex items-center justify-between px-4 flex-shrink-0 z-10" data-purpose="top-navigation">
+    <header class="h-16 bg-app-nav/80 backdrop-blur-md border-b border-app-border flex items-center justify-between px-4 flex-shrink-0 z-10" data-purpose="top-navigation">
         <div class="flex items-center space-x-3">
             <div class="w-8 h-8 flex items-center justify-center">
-                <i class="ph ph-cube text-app-accent text-xl"></i>
+                <i class="ph-duotone ph-cube text-app-accent text-xl"></i>
             </div>
             <div>
                 <h1 class="text-app-textLight font-semibold text-lg leading-tight">4DPaper</h1>
@@ -438,7 +439,7 @@
                 <span>Compile</span>
             </button>
             <button class="bg-transparent hover:bg-app-bg border border-app-border text-app-textLight px-4 py-1.5 rounded-md text-sm font-medium flex items-center space-x-2 transition-colors shadow-sm" data-purpose="export-button">
-                <i class="ph ph-download-simple"></i>
+                <i class="ph-duotone ph-download-simple"></i>
                 <span>Export</span>
             </button>
         </div>
@@ -447,26 +448,26 @@
     <!-- Main Workspace -->
     <div class="flex-1 flex overflow-hidden">
         <!-- Left Activity Bar -->
-        <nav class="w-14 bg-app-sidebar border-r border-app-border flex flex-col items-center py-4 flex-shrink-0 z-10" data-purpose="activity-bar">
+        <nav class="w-14 bg-app-sidebar/80 backdrop-blur-md border-r border-app-border flex flex-col items-center py-4 flex-shrink-0 z-10" data-purpose="activity-bar">
             <!-- Top Icons -->
             <div class="flex flex-col space-y-4 w-full">
                 <!-- Explorer (Active) -->
                 <div class="relative w-full flex justify-center group cursor-pointer" data-activity="explorer">
                     <div class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-8 bg-app-accent rounded-r"></div>
                     <div class="p-2.5 bg-app-tabBg rounded-lg text-app-textLight hover:text-app-accent transition-colors">
-                        <i class="ph ph-folder-simple text-xl"></i>
+                        <i class="ph-duotone ph-folder-simple text-xl"></i>
                     </div>
                 </div>
-                <!-- Search -->
-                <div class="w-full flex justify-center group cursor-pointer hover:text-app-textLight transition-colors" data-activity="search">
+                <!-- Papers -->
+                <div class="w-full flex justify-center group cursor-pointer hover:text-app-textLight transition-colors" data-activity="papers">
                     <div class="p-2.5">
-                        <i class="ph ph-magnifying-glass text-xl"></i>
+                        <i class="ph-duotone ph-files text-xl"></i>
                     </div>
                 </div>
                 <!-- AI Chat -->
                 <div class="w-full flex justify-center group cursor-pointer hover:text-app-textLight transition-colors" data-activity="chat">
                     <div class="p-2.5">
-                        <i class="ph ph-robot text-xl"></i>
+                        <i class="ph-duotone ph-robot text-xl"></i>
                     </div>
                 </div>
             </div>
@@ -474,7 +475,7 @@
             <div class="mt-auto flex flex-col space-y-4 w-full pb-2">
                 <div class="w-full flex justify-center group cursor-pointer hover:text-app-textLight transition-colors" data-activity="settings">
                     <div class="p-2.5">
-                        <i class="ph ph-gear text-xl"></i>
+                        <i class="ph-duotone ph-gear text-xl"></i>
                     </div>
                 </div>
             </div>
@@ -493,13 +494,13 @@
                     class="flex-1 text-xs px-2 py-1.5 rounded hover:bg-app-accent/20 transition-colors"
                     onclick="showInsertFigureModal()"
                     title="Drag OpenFOAM case or click to select">
-                    <i class="ph ph-chart-line" style="margin-right: 4px;"></i>Figure
+                    <i class="ph-duotone ph-chart-line" style="margin-right: 4px;"></i>Figure
                 </button>
                 <button id="btn-insert-file"
                     class="flex-1 text-xs px-2 py-1.5 rounded hover:bg-app-accent/20 transition-colors"
                     onclick="showInsertFileModal()"
                     title="Drag files or click to select">
-                    <i class="ph ph-file-plus" style="margin-right: 4px;"></i>File
+                    <i class="ph-duotone ph-file-plus" style="margin-right: 4px;"></i>File
                 </button>
             </div>
 
@@ -507,26 +508,57 @@
             <div class="flex-1 overflow-auto custom-scrollbar p-2" id="fileTreeContent" data-view="explorer">
                 <div class="text-xs text-app-text p-4 text-center">Loading files...</div>
             </div>
+
+            <!-- Papers View -->
+            <div class="flex-1 overflow-auto custom-scrollbar p-2 hidden" id="papersContent" data-view="papers">
+                <div class="text-xs text-app-textLight font-semibold uppercase tracking-wider px-2 py-1 mb-2">Papers</div>
+                <div id="papersList" class="space-y-1">
+                    <div class="text-xs text-app-text p-4 text-center">Loading papers...</div>
+                </div>
+            </div>
             
             <!-- AI Chat View -->
             <div class="flex-1 flex flex-col hidden" id="chatContent" data-view="chat">
-                <div class="p-4 border-b border-app-border flex-shrink-0 flex items-center justify-between">
-                    <select id="agentPersonaSelect" class="bg-app-bg border border-app-border rounded px-2 py-1 text-sm text-app-textLight w-full mr-2">
-                        <!-- Dynamic agent personas will be loaded here -->
-                        <option value="data_architect">Data Architect</option>
-                        <option value="visualization_engineer">Visualization Engineer</option>
-                        <option value="technical_writer">Technical Writer</option>
-                    </select>
-                    <button class="hover:text-app-accent transition-colors" onclick="openChatSettings()" title="AI Settings">
-                        <i class="ph ph-gear"></i>
+
+                <!-- Persona + settings toggle -->
+                <div class="p-3 border-b border-app-border flex-shrink-0 flex items-center justify-between">
+                    <span class="text-sm font-medium text-app-textLight">AI Assistant</span>
+                    <button id="aiSettingsToggle"
+                            class="flex-shrink-0 p-1.5 rounded hover:bg-app-tabBg hover:text-app-accent transition-colors"
+                            title="AI provider settings">
+                        <i class="ph-duotone ph-sliders-horizontal text-base"></i>
                     </button>
                 </div>
-                
+
+                <!-- Inline settings panel (hidden until toggle) -->
+                <div id="aiSettingsPanel" class="hidden border-b border-app-border bg-app-panelBg px-3 py-2 flex-shrink-0 space-y-2 text-xs text-app-text">
+                    <div class="flex items-center gap-2">
+                        <label class="w-16 flex-shrink-0 text-app-textLight font-medium" for="aiProviderSelect">Provider</label>
+                        <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                            <!-- status dot -->
+                            <span id="aiProviderStatus" class="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" title="Provider status"></span>
+                            <select id="aiProviderSelect"
+                                    class="flex-1 bg-app-bg border border-app-border rounded px-2 py-1 text-xs text-app-textLight">
+                                <!-- Populated by chat.js from /api/providers -->
+                                <option value="ollama" data-default-model="llama3">Ollama (Local)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="w-16 flex-shrink-0 text-app-textLight font-medium" for="aiModelInput">Model</label>
+                        <input id="aiModelInput"
+                               type="text"
+                               value="llama3"
+                               placeholder="e.g. llama3, gpt-4o"
+                               class="flex-1 bg-app-bg border border-app-border rounded px-2 py-1 text-xs text-app-textLight" />
+                    </div>
+                </div>
+
                 <!-- Messages Area -->
                 <div id="chatMessages" class="flex-1 overflow-auto custom-scrollbar p-4 space-y-4 text-sm text-app-textLight">
                     <div class="text-xs text-app-text text-center mt-4">Start chatting with the agent...</div>
                 </div>
-                
+
                 <!-- Input Area -->
                 <div class="p-3 border-t border-app-border flex-shrink-0 bg-app-tabBg">
                     <div class="flex items-end bg-app-bg border border-app-border rounded-lg overflow-hidden focus-within:border-app-accent transition-colors">
@@ -552,15 +584,15 @@
                     <i class="ph-fill ph-file-code text-blue-400"></i>
                     analysis_report.qmd
                     <button class="ml-2 hover:bg-gray-700 rounded p-0.5" onclick="this.parentElement.remove()">
-                        <i class="ph ph-x text-xs"></i>
+                        <i class="ph-duotone ph-x text-xs"></i>
                     </button>
                 </div>
                 <div class="tab">
-                    <i class="ph ph-file-text text-gray-400"></i>
+                    <i class="ph-duotone ph-file-text text-gray-400"></i>
                     simulation_setup.qmd
                 </div>
                 <div class="tab">
-                    <i class="ph ph-file-text text-gray-400"></i>
+                    <i class="ph-duotone ph-file-text text-gray-400"></i>
                     introduction.qmd
                 </div>
             </div>
@@ -981,11 +1013,11 @@ jupyter: python3
                 const toggleEl = document.createElement('span');
                 toggleEl.style.cursor = 'pointer';
                 toggleEl.style.marginRight = '6px';
-                toggleEl.innerHTML = '<i class="ph ph-caret-right"></i>';
+                toggleEl.innerHTML = '<i class="ph-duotone ph-caret-right"></i>';
 
                 const labelEl = document.createElement('span');
                 labelEl.style.cursor = 'pointer';
-                labelEl.innerHTML = `<i class="ph ph-folder" style="margin-right:6px;"></i>${name}`;
+                labelEl.innerHTML = `<i class="ph-duotone ph-folder" style="margin-right:6px;"></i>${name}`;
 
                 item.appendChild(toggleEl);
                 item.appendChild(labelEl);
@@ -1014,8 +1046,8 @@ jupyter: python3
                     const isOpen = childrenDiv.style.display !== 'none';
                     childrenDiv.style.display = isOpen ? 'none' : 'block';
                     toggleEl.innerHTML = isOpen ?
-                        '<i class="ph ph-caret-right"></i>' :
-                        '<i class="ph ph-caret-down"></i>';
+                        '<i class="ph-duotone ph-caret-right"></i>' :
+                        '<i class="ph-duotone ph-caret-down"></i>';
                     item.classList.toggle('expanded', !isOpen);
                 };
 
@@ -1033,7 +1065,7 @@ jupyter: python3
                 // File
                 item.classList.add('file');
                 item.classList.add(node.ext);
-                item.innerHTML = `<i class="ph ph-file" style="margin-right:6px;"></i>${name}`;
+                item.innerHTML = `<i class="ph-duotone ph-file" style="margin-right:6px;"></i>${name}`;
                 item.addEventListener('click', () => openFile(node.path));
             }
 
@@ -1103,7 +1135,7 @@ jupyter: python3
                 <i class="ph ${icon} ${color}"></i>
                 <span>${tab.name}</span>
                 <button class="ml-2 hover:bg-gray-700 rounded p-0.5" onclick="event.stopPropagation(); closeTab('${tab.path}')">
-                    <i class="ph ph-x text-xs"></i>
+                    <i class="ph-duotone ph-x text-xs"></i>
                 </button>
             `;
             tabEl.addEventListener('click', () => activateTab(tab.path));
@@ -1262,7 +1294,7 @@ jupyter: python3
             alert('Export failed: ' + error.message);
         } finally {
             btn.disabled = false;
-            btn.innerHTML = '<i class="ph ph-download-simple"></i><span>Export</span>';
+            btn.innerHTML = '<i class="ph-duotone ph-download-simple"></i><span>Export</span>';
         }
     });
 
@@ -1324,51 +1356,123 @@ jupyter: python3
             });
         });
 
-        // Activity bar
+        // Activity bar — with collapse toggle
+        let currentActivity = 'explorer'; // track the currently active panel
+
+        function setActivityPanel(activity, forceOpen) {
+            const panel = document.getElementById('fileTreePanel');
+            const splitHandle = document.querySelector('.split-handle[data-split="filetree"]');
+
+            const activityChanged = (activity !== currentActivity);
+
+            // If clicking the already-active icon, toggle collapse
+            if (!activityChanged && !forceOpen) {
+                const isCollapsed = panel.style.display === 'none' || panel.dataset.collapsed === '1';
+                if (isCollapsed) {
+                    // Expand
+                    panel.style.display = 'flex';
+                    panel.dataset.collapsed = '0';
+                    if (splitHandle) splitHandle.style.display = '';
+                } else {
+                    // Collapse
+                    panel.style.display = 'none';
+                    panel.dataset.collapsed = '1';
+                    if (splitHandle) splitHandle.style.display = 'none';
+                }
+            } else {
+                // Switching to a different activity — always open panel
+                currentActivity = activity;
+                panel.style.display = 'flex';
+                panel.dataset.collapsed = '0';
+                if (splitHandle) splitHandle.style.display = '';
+            }
+
+            const currentIsCollapsed = panel.style.display === 'none' || panel.dataset.collapsed === '1';
+
+            // Update active indicator on buttons
+            document.querySelectorAll('[data-activity]').forEach(b => {
+                const iconContainer = b.querySelector('div[class*="p-2.5"]');
+                const activeBar = b.querySelector('.absolute.left-0.bg-app-accent');
+
+                if (b.dataset.activity === currentActivity && !currentIsCollapsed) {
+                    if (iconContainer) iconContainer.classList.add('bg-app-tabBg', 'text-app-textLight');
+                    if (!activeBar) {
+                        const bar = document.createElement('div');
+                        bar.className = 'absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-8 bg-app-accent rounded-r';
+                        b.classList.add('relative');
+                        b.insertBefore(bar, b.firstChild);
+                    }
+                } else {
+                    if (iconContainer) iconContainer.classList.remove('bg-app-tabBg', 'text-app-textLight');
+                    if (activeBar) activeBar.remove();
+                }
+            });
+
+            // Update views
+            document.querySelectorAll('[data-view]').forEach(view => {
+                if (view.dataset.view === currentActivity) {
+                    view.classList.remove('hidden');
+                } else {
+                    view.classList.add('hidden');
+                }
+            });
+
+            // Show/hide insert toolbar
+            const insertToolbar = document.querySelector('.flex.gap-1.p-2.border-b');
+            if (insertToolbar) {
+                insertToolbar.style.display = currentActivity === 'explorer' ? 'flex' : 'none';
+            }
+
+            // Update panel title
+            const sidebarTitle = document.querySelector('#fileTreePanel .text-xs.font-semibold.uppercase');
+            if (sidebarTitle) {
+                const titles = { explorer: 'Explorer', chat: 'AI Agent', papers: 'Papers', settings: 'Settings' };
+                sidebarTitle.textContent = titles[currentActivity] || currentActivity;
+            }
+
+            // If switching to papers panel, load the paper list
+            if (activityChanged && activity === 'papers') {
+                loadPapersList();
+            }
+        }
+
+        function loadPapersList() {
+            const listEl = document.getElementById('papersList');
+            if (!listEl) return;
+            fetch('/api/files')
+                .then(r => r.json())
+                .then(data => {
+                    const files = data.files || data || [];
+                    // The API returns a flat list of files. Filter for main documents only (root level)
+                    const qmds = files.filter(f => !f.is_dir && f.path && f.path.endsWith('.qmd') && !f.path.includes('/'));
+                    if (qmds.length === 0) {
+                        listEl.innerHTML = '<div class="text-xs text-app-text p-4 text-center">No .qmd papers found in workspace.</div>';
+                        return;
+                    }
+                    listEl.innerHTML = qmds.map(f => {
+                        const path = f.path;
+                        const name = path.split('/').pop();
+                        return `<div class="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-app-tabBg group paper-item" data-path="${path}" title="${path}">
+                            <i class="ph-duotone ph-file-text text-app-accent flex-shrink-0"></i>
+                            <span class="text-xs text-app-textLight truncate flex-1">${name}</span>
+                        </div>`;
+                    }).join('');
+                    // Click to open paper in editor
+                    listEl.querySelectorAll('.paper-item').forEach(item => {
+                        item.addEventListener('click', () => {
+                            const path = item.dataset.path;
+                            openFile(path);
+                        });
+                    });
+                })
+                .catch(() => {
+                    listEl.innerHTML = '<div class="text-xs text-app-text p-4 text-center">Could not load papers.</div>';
+                });
+        }
+
         document.querySelectorAll('[data-activity]').forEach(btn => {
             btn.addEventListener('click', () => {
-                const activity = btn.dataset.activity;
-                console.log('Activity:', activity);
-                
-                // Update active state on buttons
-                document.querySelectorAll('[data-activity]').forEach(b => {
-                    const iconContainer = b.querySelector('div.p-2\\.5');
-                    const activeBar = b.querySelector('.bg-app-accent');
-                    
-                    if (b === btn) {
-                        if (iconContainer) iconContainer.classList.add('bg-app-tabBg', 'text-app-textLight');
-                        if (!activeBar && b.querySelector('i')) {
-                            // Add the active bar indicator
-                            const bar = document.createElement('div');
-                            bar.className = 'absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-8 bg-app-accent rounded-r';
-                            b.classList.add('relative');
-                            b.insertBefore(bar, b.firstChild);
-                        }
-                    } else {
-                        if (iconContainer) iconContainer.classList.remove('bg-app-tabBg', 'text-app-textLight');
-                        if (activeBar) activeBar.remove();
-                    }
-                });
-
-                // Update views
-                document.querySelectorAll('[data-view]').forEach(view => {
-                    if (view.dataset.view === activity) {
-                        view.classList.remove('hidden');
-                        // Hide the insert toolbar if not in explorer
-                        const insertToolbar = document.querySelector('.flex.gap-1.p-2.border-b');
-                        if (insertToolbar) {
-                            insertToolbar.style.display = activity === 'explorer' ? 'flex' : 'none';
-                        }
-                        // Update panel title
-                        const sidebarTitle = document.querySelector('#fileTreePanel .text-xs.font-semibold.uppercase');
-                        if (sidebarTitle) {
-                            sidebarTitle.textContent = activity === 'explorer' ? 'Explorer' : 
-                                                       activity === 'chat' ? 'AI Agent' : activity;
-                        }
-                    } else {
-                        view.classList.add('hidden');
-                    }
-                });
+                setActivityPanel(btn.dataset.activity);
             });
         });
 

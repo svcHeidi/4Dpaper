@@ -3,13 +3,37 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
+import urllib.parse
 from pathlib import Path
 
 import tornado.web
 
+from dashboard.auth import SecureMixin
+
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 _UPLOAD_ROOT = _PROJECT_ROOT / "state" / "upload_tmp"
+
+# upload_id must be a safe alphanumeric token (prevents staging-dir injection).
+_SAFE_UPLOAD_ID = re.compile(r"^[A-Za-z0-9_-]{4,128}$")
+
+# Maximum bytes allowed for a single uploaded file (5 GB).
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024
+
+# Permitted extensions for uploaded simulation data files.
+_ALLOWED_UPLOAD_EXTENSIONS = frozenset({
+    ".foam", ".openfoam",
+    ".vtu", ".vtp", ".vtk", ".pvd",
+    ".stl", ".obj", ".ply",
+    ".case",
+    ".cgns",
+    ".exo", ".e", ".ex2",
+    ".xdmf", ".xmf", ".h5", ".hdf5",
+    ".json",    # vtk.series + Plotly JSON
+    ".series",
+    ".bib", ".qmd", ".md", ".csv", ".txt",  # generic file-mode uploads
+})
 
 
 def generate_shortcode(
@@ -48,7 +72,7 @@ def create_case_symlink(
     try:
         dest_case.parent.mkdir(parents=True, exist_ok=True)
         dest_case.symlink_to(case_root)
-        log_lines.append(f"  Symlinked {case_root} → {dest_case}")
+        log_lines.append(f"  Symlinked {case_root.name} → data/{case_name}")
         return dest_case / foam_path.name
     except (OSError, NotImplementedError) as e:
         log_lines.append(f"  Symlink failed ({e}), falling back to copy")
@@ -124,56 +148,94 @@ def _safe_rel_path(rel_path: str) -> Path | None:
     return Path(*parts)
 
 
-class UploadFileHandler(tornado.web.RequestHandler):
-    def post(self) -> None:
-        upload_id = self.get_body_argument("upload_id", default=None)
-        rel_path = self.get_body_argument("rel_path", default=None)
+@tornado.web.stream_request_body
+class UploadFileHandler(SecureMixin, tornado.web.RequestHandler):
 
-        if not upload_id or not rel_path:
-            self.set_status(400)
-            self.write({"status": "error", "detail": "missing upload_id or rel_path"})
+    def set_default_headers(self) -> None:
+        self.apply_cors_headers(methods="POST, OPTIONS")
+        self.set_header("Content-Type", "application/json")
+
+    def options(self) -> None:
+        self.finish()
+
+    def prepare(self) -> None:
+        # Auth check first
+        if not self.check_auth():
             return
 
+        upload_id = self.request.headers.get("X-Upload-Id", "")
+        rel_path_encoded = self.request.headers.get("X-Rel-Path", "")
+
+        if not upload_id or not rel_path_encoded:
+            self.set_status(400)
+            self.finish({"status": "error", "detail": "missing X-Upload-Id or X-Rel-Path header"})
+            return
+
+        # Validate upload_id: must be a safe alphanumeric token
+        if not _SAFE_UPLOAD_ID.fullmatch(upload_id):
+            self.set_status(400)
+            self.finish({"status": "error", "detail": "invalid upload_id format"})
+            return
+
+        rel_path = urllib.parse.unquote(rel_path_encoded)
         safe_rel = _safe_rel_path(rel_path)
         if safe_rel is None:
             self.set_status(400)
-            self.write({"status": "error", "detail": "invalid rel_path"})
+            self.finish({"status": "error", "detail": "invalid rel_path"})
             return
 
-        if not self.request.files or "file" not in self.request.files:
+        # Extension allowlist for uploaded files
+        ext = safe_rel.suffix.lower()
+        if ext and ext not in _ALLOWED_UPLOAD_EXTENSIONS:
             self.set_status(400)
-            self.write({"status": "error", "detail": "missing multipart file"})
+            self.finish({"status": "error", "detail": f"file type '{ext}' is not permitted"})
             return
 
-        file_list = self.request.files["file"]
-        if not file_list:
-            self.set_status(400)
-            self.write({"status": "error", "detail": "empty file upload"})
-            return
-
-        file_info = file_list[0]
-        body = file_info.get("body")
-        if body is None:
-            self.set_status(400)
-            self.write({"status": "error", "detail": "empty file body"})
-            return
-
-        staging_dir = _UPLOAD_ROOT / str(upload_id)
-        dest_path = (staging_dir / safe_rel).resolve()
+        staging_dir = _UPLOAD_ROOT / upload_id  # upload_id is now validated safe
+        self.dest_path = (staging_dir / safe_rel).resolve()
         staging_res = staging_dir.resolve()
 
-        if staging_res != dest_path and staging_res not in dest_path.parents:
+        if staging_res != self.dest_path and staging_res not in self.dest_path.parents:
             self.set_status(400)
-            self.write({"status": "error", "detail": "path traversal detected"})
+            self.finish({"status": "error", "detail": "path traversal detected"})
             return
 
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-        dest_path.write_bytes(body)
+        self.dest_path.parent.mkdir(parents=True, exist_ok=True)
+        self._bytes_written: int = 0
+        self.file_handle = open(self.dest_path, "wb")
+
+    def data_received(self, chunk: bytes) -> None:
+        if hasattr(self, "file_handle") and not self.file_handle.closed:
+            self._bytes_written = getattr(self, "_bytes_written", 0) + len(chunk)
+            if self._bytes_written > _MAX_UPLOAD_BYTES:
+                self.file_handle.close()
+                try:
+                    self.dest_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                self.set_status(413)
+                self.finish({"status": "error", "detail": "upload exceeds 5 GB limit"})
+                return
+            self.file_handle.write(chunk)
+
+    def post(self) -> None:
+        if hasattr(self, "file_handle") and not self.file_handle.closed:
+            self.file_handle.close()
         self.write({"status": "ok"})
 
 
-class UploadFinishHandler(tornado.web.RequestHandler):
+class UploadFinishHandler(SecureMixin, tornado.web.RequestHandler):
+
+    def set_default_headers(self) -> None:
+        self.apply_cors_headers(methods="POST, OPTIONS")
+        self.set_header("Content-Type", "application/json")
+
+    def options(self) -> None:
+        self.finish()
+
     def post(self) -> None:
+        if not self.check_auth():
+            return
         try:
             body = json.loads(self.request.body or b"{}")
         except json.JSONDecodeError:
@@ -181,12 +243,18 @@ class UploadFinishHandler(tornado.web.RequestHandler):
             self.write({"status": "error", "detail": "invalid JSON"})
             return
 
-        upload_id = body.get("upload_id")
+        upload_id = body.get("upload_id", "")
         mode = body.get("mode", "figure")
 
         if not upload_id:
             self.set_status(400)
             self.write({"status": "error", "detail": "missing upload_id"})
+            return
+
+        # Validate upload_id before using it in a path
+        if not _SAFE_UPLOAD_ID.fullmatch(str(upload_id)):
+            self.set_status(400)
+            self.write({"status": "error", "detail": "invalid upload_id format"})
             return
 
         staging_dir = _UPLOAD_ROOT / str(upload_id)

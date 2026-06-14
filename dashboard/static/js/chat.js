@@ -1,119 +1,198 @@
 /**
  * Chatbox logic for 4Dpapers AI Agent integration.
+ *
+ * On load:
+ *   1. GET /api/providers  → populate provider <select>, mark unavailable ones
+ *   2. GET /api/agents     → populate persona <select>
+ *
+ * No API keys are ever sent from the client — they live in server env vars.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-    const chatInput = document.getElementById('chatInput');
-    const chatSendBtn = document.getElementById('chatSendBtn');
-    const chatMessages = document.getElementById('chatMessages');
-    const agentPersonaSelect = document.getElementById('agentPersonaSelect');
-    
+    // ── DOM refs ────────────────────────────────────────────────────────── //
+    const chatInput          = document.getElementById('chatInput');
+    const chatSendBtn        = document.getElementById('chatSendBtn');
+    const chatMessages       = document.getElementById('chatMessages');
+    const providerSelect     = document.getElementById('aiProviderSelect');
+    const modelInput         = document.getElementById('aiModelInput');
+    const settingsToggle     = document.getElementById('aiSettingsToggle');
+    const settingsPanel      = document.getElementById('aiSettingsPanel');
+    const providerStatus     = document.getElementById('aiProviderStatus');
+
     let chatHistory = [];
     let isWaitingForResponse = false;
 
-    // Default configuration (saved in localStorage)
+    // Persisted config (no API key — that's server-side now)
     let aiConfig = JSON.parse(localStorage.getItem('4dpaper_ai_config')) || {
-        provider: 'ollama', // 'ollama' or 'openai'
-        model: 'llama3',    // Default ollama model
-        apiKey: ''          // Empty by default
+        provider: 'ollama',
+        model:    'llama3',
     };
 
     function saveConfig() {
         localStorage.setItem('4dpaper_ai_config', JSON.stringify(aiConfig));
     }
 
-    // Modal settings integration
-    window.openChatSettings = function() {
-        const provider = prompt("Select Provider (ollama or openai):", aiConfig.provider);
-        if (provider) {
-            aiConfig.provider = provider.toLowerCase();
-            const model = prompt("Enter model name (e.g. llama3, gpt-4o):", aiConfig.model);
-            if (model) {
-                aiConfig.model = model;
+    // ── Settings panel toggle ────────────────────────────────────────────── //
+    if (settingsToggle && settingsPanel) {
+        settingsToggle.addEventListener('click', () => {
+            settingsPanel.classList.toggle('hidden');
+        });
+    }
+
+    // ── Provider select change ───────────────────────────────────────────── //
+    if (providerSelect) {
+        providerSelect.addEventListener('change', () => {
+            aiConfig.provider = providerSelect.value;
+            // Auto-fill model with the first known default for that provider
+            const selected = providerSelect.options[providerSelect.selectedIndex];
+            const defaultModel = selected?.dataset?.defaultModel || '';
+            if (defaultModel) {
+                aiConfig.model = defaultModel;
+                if (modelInput) modelInput.value = defaultModel;
             }
-            if (aiConfig.provider === 'openai') {
-                const key = prompt("Enter your OpenAI API Key:");
-                if (key) {
-                    aiConfig.apiKey = key;
+            updateProviderStatus();
+            saveConfig();
+        });
+    }
+
+    if (modelInput) {
+        modelInput.addEventListener('change', () => {
+            aiConfig.model = modelInput.value.trim();
+            saveConfig();
+        });
+    }
+
+    // ── Load providers from server ───────────────────────────────────────── //
+    async function loadProviders() {
+        if (!providerSelect) return;
+
+        try {
+            const resp = await fetch('/api/providers');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+
+            providerSelect.innerHTML = '';
+            let selectedFound = false;
+
+            for (const p of data.providers || []) {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.available ? p.name : `${p.name} (not configured)`;
+                opt.disabled = !p.available;
+                opt.dataset.defaultModel = p.default_model || (p.models?.[0] ?? '');
+                if (p.id === aiConfig.provider && p.available) {
+                    opt.selected = true;
+                    selectedFound = true;
+                }
+                providerSelect.appendChild(opt);
+            }
+
+            // If saved provider is gone/disabled, fall back to first available
+            if (!selectedFound) {
+                const firstAvail = Array.from(providerSelect.options).find(o => !o.disabled);
+                if (firstAvail) {
+                    firstAvail.selected = true;
+                    aiConfig.provider = firstAvail.value;
+                    aiConfig.model    = firstAvail.dataset.defaultModel || aiConfig.model;
+                    saveConfig();
                 }
             }
-            saveConfig();
-            alert("AI settings saved!");
-        }
-    };
 
+            // Populate model input
+            if (modelInput) modelInput.value = aiConfig.model;
+            updateProviderStatus();
+
+        } catch (err) {
+            console.warn('Could not load providers:', err);
+            // Leave the select as-is; it may already have a fallback option
+            updateProviderStatus();
+        }
+    }
+
+    function updateProviderStatus() {
+        if (!providerStatus || !providerSelect) return;
+        const selected = providerSelect.options[providerSelect.selectedIndex];
+        const available = selected && !selected.disabled;
+        providerStatus.title = available
+            ? `${selected.textContent} is configured`
+            : 'Provider not configured on this server';
+        providerStatus.className = available
+            ? 'w-2 h-2 rounded-full bg-green-400 flex-shrink-0'
+            : 'w-2 h-2 rounded-full bg-red-400 flex-shrink-0';
+    }
+
+
+    // ── Message rendering ────────────────────────────────────────────────── //
     function appendMessage(role, content) {
         const msgDiv = document.createElement('div');
         msgDiv.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'} w-full mb-4`;
 
         const bubble = document.createElement('div');
         bubble.className = `max-w-[85%] rounded-lg p-3 ${
-            role === 'user' 
-                ? 'bg-app-accent text-white rounded-br-none' 
+            role === 'user'
+                ? 'bg-app-accent text-white rounded-br-none'
                 : 'bg-app-tabBg text-app-textLight rounded-bl-none border border-app-border'
         }`;
-        
-        // Simple line breaks for now. Can use marked.js later if imported.
+
         bubble.innerHTML = content.replace(/\n/g, '<br>');
-        
         msgDiv.appendChild(bubble);
         chatMessages.appendChild(msgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
+
         return bubble;
     }
 
+    // ── Send message ─────────────────────────────────────────────────────── //
     async function sendMessage() {
         if (isWaitingForResponse) return;
-        
+
         const message = chatInput.value.trim();
         if (!message) return;
-        
-        // Add user message
+
         chatInput.value = '';
-        chatInput.style.height = 'auto'; // Reset textarea height
-        
-        // Remove empty state text
+        chatInput.style.height = 'auto';
+
+        // Remove empty-state placeholder
         const emptyState = chatMessages.querySelector('.text-center.mt-4');
         if (emptyState) emptyState.remove();
 
         appendMessage('user', message);
         chatHistory.push({ role: 'user', content: message });
-        
+
         isWaitingForResponse = true;
         chatSendBtn.innerHTML = '<i class="ph-fill ph-spinner animate-spin text-lg"></i>';
-        
+
         const aiBubble = appendMessage('assistant', '<span class="animate-pulse">...</span>');
-        
+
         try {
-            const persona = agentPersonaSelect.value;
-            
+            const persona  = 'default';
+            const provider = providerSelect?.value     || aiConfig.provider;
+            const model    = modelInput?.value.trim()  || aiConfig.model;
+
             const response = await fetch('/api/ai/chat', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     messages: chatHistory,
-                    persona: persona,
-                    config: aiConfig
-                })
+                    persona,
+                    provider,
+                    model,
+                }),
             });
-            
+
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.detail || 'Failed to fetch AI response');
             }
-            
+
             const data = await response.json();
             aiBubble.innerHTML = data.reply.replace(/\n/g, '<br>');
             chatHistory.push({ role: 'assistant', content: data.reply });
-            
+
         } catch (err) {
             console.error('Chat error:', err);
             aiBubble.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
-            // Remove the failed user message from history so they can try again
-            chatHistory.pop();
+            chatHistory.pop(); // Remove failed user message so they can retry
         } finally {
             isWaitingForResponse = false;
             chatSendBtn.innerHTML = '<i class="ph-fill ph-paper-plane-right text-lg"></i>';
@@ -122,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     chatSendBtn.addEventListener('click', sendMessage);
-    
+
     chatInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -131,13 +210,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Auto-resize textarea
-    chatInput.addEventListener('input', function() {
+    chatInput.addEventListener('input', function () {
         this.style.height = 'auto';
-        this.style.height = (this.scrollHeight) + 'px';
-        if (this.scrollHeight > parseInt(getComputedStyle(this).maxHeight)) {
-            this.style.overflowY = 'auto';
-        } else {
-            this.style.overflowY = 'hidden';
-        }
+        this.style.height = this.scrollHeight + 'px';
+        this.style.overflowY =
+            this.scrollHeight > parseInt(getComputedStyle(this).maxHeight)
+                ? 'auto'
+                : 'hidden';
     });
+
+    // ── Boot ─────────────────────────────────────────────────────────────── //
+    loadProviders();
 });

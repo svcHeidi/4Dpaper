@@ -540,3 +540,20 @@ weasyprint.HTML(filename=paperview_html).write_pdf()
     ↓
 Stream PDF bytes to client
 ```
+
+---
+
+## 15. Paper Structure & Agent Authoring Paradigm
+
+4Dpapers projects use a **Render-by-Choice** mechanism to assemble documents. Content is strictly separated into standalone entry wrappers (papers) and reusable content blocks (atoms).
+
+1. **Root Wrappers (Main Flows):**
+   A paper is defined exclusively by a `.qmd` file sitting at the **project root** (e.g., `main.qmd`, `paperI_methods.qmd`). These files are thin wrappers containing YAML metadata and `{{< include ... >}}` statements. The UI's "Papers" panel detects these automatically by filtering for `.qmd` files that have no directory separator in their path.
+2. **Subdirectories (Atoms):**
+   Actual prose, figures, and calculations must be written as reusable atoms inside subdirectories (e.g., `sections/`, `appendices/`). Atoms are never duplicated. If an atom (like an equations recap) is needed in multiple papers, it is included by reference.
+
+When an AI agent is tasked with building a new paper:
+- **Do not** modify existing root `.qmd` wrappers unless specifically asked.
+- **Do** create a new root `.qmd` wrapper for the new paper.
+- **Do** place all new content into logical subdirectories (e.g., `sections/partIV_new/`).
+- **Do** use `{{< include ... >}}` to assemble the new paper from both new and existing atoms.

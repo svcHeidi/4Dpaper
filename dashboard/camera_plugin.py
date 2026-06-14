@@ -8,25 +8,26 @@ from pathlib import Path
 
 import tornado.web
 
+from dashboard.auth import SecureMixin
 from dashboard.utils import save_camera_state
 
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 _SAFE_FIG_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
-class CameraHandler(tornado.web.RequestHandler):
+class CameraHandler(SecureMixin, tornado.web.RequestHandler):
     """Persist camera state for one figure."""
 
     def set_default_headers(self) -> None:
-        self.set_header("Access-Control-Allow-Origin", "*")
+        self.apply_cors_headers(methods="POST, OPTIONS")
         self.set_header("Content-Type", "application/json")
 
     def options(self, fig_id: str) -> None:
-        self.set_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-        self.set_header("Access-Control-Allow-Headers", "Content-Type")
         self.finish()
 
     def post(self, fig_id: str) -> None:
+        if not self.check_auth():
+            return
         if not _SAFE_FIG_ID.fullmatch(fig_id):
             self.set_status(400)
             self.write({"status": "error", "detail": "invalid fig_id"})
@@ -53,19 +54,19 @@ class CameraHandler(tornado.web.RequestHandler):
         self.write({"status": "ok"})
 
 
-class CameraLockHandler(tornado.web.RequestHandler):
+class CameraLockHandler(SecureMixin, tornado.web.RequestHandler):
     """Read or write the lock state for one figure."""
 
     def set_default_headers(self) -> None:
-        self.set_header("Access-Control-Allow-Origin", "*")
+        self.apply_cors_headers(methods="GET, POST, OPTIONS")
         self.set_header("Content-Type", "application/json")
 
     def options(self, fig_id: str) -> None:
-        self.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.set_header("Access-Control-Allow-Headers", "Content-Type")
         self.finish()
 
     def get(self, fig_id: str) -> None:
+        if not self.check_auth():
+            return
         if not _SAFE_FIG_ID.fullmatch(fig_id):
             self.set_status(400)
             self.write({"status": "error"})
@@ -77,6 +78,8 @@ class CameraLockHandler(tornado.web.RequestHandler):
             self.write({"locked": False})
 
     def post(self, fig_id: str) -> None:
+        if not self.check_auth():
+            return
         if not _SAFE_FIG_ID.fullmatch(fig_id):
             self.set_status(400)
             self.write({"status": "error"})

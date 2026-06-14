@@ -1,5 +1,20 @@
 (function(){
 
+  /* ── Allowed postMessage origin: the server that served this page ──── */
+  var _SELF_ORIGIN = window.location.origin;
+
+  /**
+   * Return true if a postMessage event should be trusted.
+   * We accept:
+   *   - same origin (standard case)
+   *   - "null" origin (srcdoc iframes, which are the vtk.js figure iframes)
+   *
+   * All other origins are silently ignored.
+   */
+  function _isTrustedOrigin(e) {
+    return e.origin === _SELF_ORIGIN || e.origin === "null";
+  }
+
   /* ── Camera overlay: lives in this document (paper preview) ──────── */
   if (!document.getElementById('fourd-cam-overlay')) {
     function _mk(t,c,h){var e=document.createElement(t);if(c)e.style.cssText=c;if(h)e.innerHTML=h;return e;}
@@ -39,7 +54,10 @@
 
   /* ── Message handler: camera open, camera sync, field update, locking ── */
   window.addEventListener("message",function(e){
-    if(!e.data)return;
+    if(!e.data) return;
+
+    /* Ignore messages from untrusted origins to prevent cross-site drive-by. */
+    if(!_isTrustedOrigin(e)) return;
 
     if(e.data.type==="4dpaper-open-camera"){
       var _o=document.getElementById('fourd-cam-overlay');
@@ -76,24 +94,24 @@
           var ack={type:'4dpaper-camera-ack',fig_id:'*',status:r.ok?'ok':'error'};
           var pFrames=document.querySelectorAll('iframe[data-panel="'+panelId+'"]');
           for(var _pj=0;_pj<pFrames.length;_pj++){
-            pFrames[_pj].contentWindow.postMessage({type:'4dpaper-camera-apply',camera:e.data.camera},'*');
-            pFrames[_pj].contentWindow.postMessage(ack,'*');
+            pFrames[_pj].contentWindow.postMessage({type:'4dpaper-camera-apply',camera:e.data.camera},_SELF_ORIGIN);
+            pFrames[_pj].contentWindow.postMessage(ack,_SELF_ORIGIN);
           }
         } else {
           var ack2={type:'4dpaper-camera-ack',fig_id:camId,status:r.ok?'ok':'error'};
-          if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack2,'*');
-          if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack2,'*');
+          if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack2,"*"); // srcdoc iframe → origin is "null"
+          if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack2,"*"); // srcdoc iframe
         }
       }).catch(function(){
         if(_ss2){_ss2.textContent='\u2717 Save failed (network error)';_ss2.style.color='#f44336';}
         if(panelId){
           var ack3={type:'4dpaper-camera-ack',fig_id:'*',status:'error'};
           var pFrames2=document.querySelectorAll('iframe[data-panel="'+panelId+'"]');
-          for(var _pk=0;_pk<pFrames2.length;_pk++){pFrames2[_pk].contentWindow.postMessage(ack3,'*');}
+          for(var _pk=0;_pk<pFrames2.length;_pk++){pFrames2[_pk].contentWindow.postMessage(ack3,_SELF_ORIGIN);}
         } else {
           var ack4={type:'4dpaper-camera-ack',fig_id:camId,status:'error'};
-          if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack4,'*');
-          if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack4,'*');
+          if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack4,"*"); // srcdoc iframe
+          if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack4,"*"); // srcdoc iframe
         }
       });
 
@@ -103,9 +121,9 @@
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(e.data.data)
       }).then(function(r){
-        if(r.ok&&e.source)e.source.postMessage({type:'4dpaper-field-ack',fig_id:figId2,status:'ok'},'*');
+        if(r.ok&&e.source)e.source.postMessage({type:'4dpaper-field-ack',fig_id:figId2,status:'ok'},"*"); // srcdoc iframe
       }).catch(function(){
-        if(e.source)e.source.postMessage({type:'4dpaper-field-ack',fig_id:figId2,status:'error'},'*');
+        if(e.source)e.source.postMessage({type:'4dpaper-field-ack',fig_id:figId2,status:'error'},"*"); // srcdoc iframe
       });
 
     } else if(e.data.type==="4dpaper-lock-query"){
@@ -114,10 +132,10 @@
         .then(function(r){return r.json();})
         .then(function(d){
           if(e.source)e.source.postMessage(
-            {type:"4dpaper-lock-state",fig_id:lockFigId,locked:!!d.locked},"*");
+            {type:"4dpaper-lock-state",fig_id:lockFigId,locked:!!d.locked},"*"); // srcdoc iframe
         }).catch(function(){
           if(e.source)e.source.postMessage(
-            {type:"4dpaper-lock-state",fig_id:lockFigId,locked:false},"*");
+            {type:"4dpaper-lock-state",fig_id:lockFigId,locked:false},"*"); // srcdoc iframe
         });
 
     } else if(e.data.type==="4dpaper-lock-toggle"){
@@ -127,10 +145,10 @@
         body:JSON.stringify({locked:!!e.data.locked})
       }).then(function(r){
         if(e.source)e.source.postMessage(
-          {type:"4dpaper-lock-ack",fig_id:lockFigId2,status:r.ok?"ok":"error"},"*");
+          {type:"4dpaper-lock-ack",fig_id:lockFigId2,status:r.ok?"ok":"error"},"*"); // srcdoc iframe
       }).catch(function(){
         if(e.source)e.source.postMessage(
-          {type:"4dpaper-lock-ack",fig_id:lockFigId2,status:"error"},"*");
+          {type:"4dpaper-lock-ack",fig_id:lockFigId2,status:"error"},"*"); // srcdoc iframe
       });
     }
   });

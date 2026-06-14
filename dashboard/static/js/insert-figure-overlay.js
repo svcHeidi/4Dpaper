@@ -41,12 +41,14 @@
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
       var rel = f.webkitRelativePath || f.name;
-      var fd = new FormData();
-      fd.append("upload_id", uploadId);
-      fd.append("rel_path", rel);
-      fd.append("file", f, f.name);
-
-      var resp = await fetch("/upload/file", { method: "POST", body: fd });
+      var resp = await fetch("/upload/file", { 
+        method: "POST",
+        headers: {
+          "X-Upload-Id": uploadId,
+          "X-Rel-Path": encodeURIComponent(rel)
+        },
+        body: f 
+      });
       if (!resp.ok) {
         throw new Error("Upload failed at " + (i + 1) + "/" + total + " (" + resp.status + ")");
       }

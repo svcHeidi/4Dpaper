@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Quarto build outputs
+_output/
+_freeze/
+*_files/
+
+# Runtime state (created at serve time)
+state/
+
+# Local machine-specific config (contains absolute paths)
+dashboard/config.yaml
+
+# Secrets — never commit these
+.env
+*.pem
+*.key
+*.crt
+
+# macOS
+.DS_Store
+
+/.luarc.json
+
+/.quarto/
+**/*.quarto_ipynb
+
+# Local brainstorming workspace
+.superpowers/
