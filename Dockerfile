@@ -36,7 +36,8 @@ RUN pip install --no-cache-dir \
     trame-vtk \
     trame-vuetify \
     quarto>=0.1.0 \
-    "weasyprint>=60.0"
+    "weasyprint>=60.0" \
+    "cryptography>=41.0.0"
 
 # Copy application code (changes more frequently — after pip for cache efficiency)
 COPY dashboard /app/dashboard

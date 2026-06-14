@@ -96,3 +96,25 @@ class TestRunQuartoRenderPaperview:
         assert captured["cmd"][profile_idx + 1] == "paperview"
         assert captured["env"].get("FOURD_PAPER_VIEW") == "1"
         assert captured["env"].get("FOURD_APP_MODE") == "1"
+
+
+class TestMaybeSignRenderedHtml:
+    def test_appends_log_when_signing_occurs(self, tmp_path):
+        from unittest.mock import patch
+        from dashboard.utils import maybe_sign_rendered_html
+
+        html = tmp_path / "paper.html"
+        html.write_text("<html></html>")
+        log_lines = []
+
+        with patch("dashboard.utils.sign_html_file_if_configured", return_value=True):
+            signed = maybe_sign_rendered_html(html, log_lines)
+
+        assert signed is True
+        assert log_lines == ["[4dpaper] Signed HTML output: paper.html"]
+
+    def test_raises_when_rendered_html_is_missing(self, tmp_path):
+        from dashboard.utils import maybe_sign_rendered_html
+
+        with pytest.raises(FileNotFoundError):
+            maybe_sign_rendered_html(tmp_path / "missing.html", [])

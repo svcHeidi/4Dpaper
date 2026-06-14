@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-import yaml
+from dashboard.document_signing import sign_html_file_if_configured
 
 
 def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str = "html") -> int:
@@ -58,9 +58,24 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
 
     thread = threading.Thread(target=_read, daemon=True)
     thread.start()
-    proc.wait()
+    try:
+        proc.wait(timeout=300)
+    except subprocess.TimeoutExpired:
+        proc.terminate()
+        log_lines.append("CRITICAL ERROR: Quarto render timed out after 300 seconds.")
+        return 1
     thread.join()
     return proc.returncode
+
+
+def maybe_sign_rendered_html(html_path: Path, log_lines: list[str]) -> bool:
+    """Sign a rendered HTML output when signing is configured."""
+    if not html_path.exists():
+        raise FileNotFoundError(f"Rendered HTML not found: {html_path}")
+    if sign_html_file_if_configured(html_path):
+        log_lines.append(f"[4dpaper] Signed HTML output: {html_path.name}")
+        return True
+    return False
 
 
 def save_camera_state(

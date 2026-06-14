@@ -14,6 +14,8 @@ from pathlib import Path
 
 import tornado.web
 
+from dashboard.auth import SecureMixin
+
 # PROJECT_ROOT can be set via environment variable (for Docker) or defaults to parent directory
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 
@@ -24,6 +26,24 @@ _HIDDEN_DIRS = {
     "dashboard", "_extensions", "_freeze", "scripts", "tests",
     "Library",  # macOS
 }
+
+# Directories that are always blocked from writes, regardless of path-containment checks.
+_WRITE_BLOCKED_DIRS = {
+    "dashboard", "_extensions", "scripts", "tests", ".venv", ".git",
+    "__pycache__", ".github",
+}
+
+# Extensions that are permitted for write operations.
+# Anything not in this set is rejected by POST /api/file and POST /api/compile.
+_WRITE_ALLOWED_EXTENSIONS = frozenset({
+    ".qmd", ".md", ".bib",
+    ".yml", ".yaml",
+    ".json",
+    ".txt", ".csv",
+    ".html", ".css", ".js",
+    ".tex",
+    "",     # extensionless files (e.g. Makefile, .foam marker files)
+})
 
 
 def _should_include(path: Path) -> bool:
@@ -46,14 +66,57 @@ def _should_include(path: Path) -> bool:
     return True
 
 
-class FilesHandler(tornado.web.RequestHandler):
+def _is_write_allowed(path: Path) -> tuple[bool, str]:
+    """
+    Return ``(True, "")`` when a write to *path* is permitted.
+    Return ``(False, reason)`` otherwise.
+
+    Checks (in order):
+    1. Path must be inside PROJECT_ROOT (traversal guard).
+    2. No path component may be in the write-blocked-dirs set.
+    3. The file extension must be in the write-allowed set.
+    4. The _should_include display filter must pass (catches dotfiles, etc.).
+    """
+    resolved = path.resolve()
+    root_resolved = _PROJECT_ROOT.resolve()
+
+    if not resolved.is_relative_to(root_resolved):
+        return False, "path traversal detected"
+
+    # Block writes into sensitive top-level directories
+    try:
+        rel = resolved.relative_to(root_resolved)
+    except ValueError:
+        return False, "path traversal detected"
+
+    if rel.parts and rel.parts[0] in _WRITE_BLOCKED_DIRS:
+        return False, f"writes to '{rel.parts[0]}/' are not permitted"
+
+    # Extension allowlist
+    ext = resolved.suffix.lower()
+    if ext not in _WRITE_ALLOWED_EXTENSIONS:
+        return False, f"file type '{ext}' is not permitted for write"
+
+    # Display-filter (catches dotfiles and other system files)
+    if not _should_include(path):
+        return False, "access denied"
+
+    return True, ""
+
+
+class FilesHandler(SecureMixin, tornado.web.RequestHandler):
     """List user-facing files and folders only. Hides backend/system code."""
 
     def set_default_headers(self) -> None:
-        self.set_header("Access-Control-Allow-Origin", "*")
+        self.apply_cors_headers(methods="GET, OPTIONS")
         self.set_header("Content-Type", "application/json")
 
+    def options(self) -> None:
+        self.finish()
+
     def get(self) -> None:
+        if not self.check_auth():
+            return
         try:
             files = []
             for path in _PROJECT_ROOT.rglob("*"):
@@ -73,19 +136,19 @@ class FilesHandler(tornado.web.RequestHandler):
             self.write({"error": str(exc)})
 
 
-class FileHandler(tornado.web.RequestHandler):
+class FileHandler(SecureMixin, tornado.web.RequestHandler):
     """Read or write a single project file."""
 
     def set_default_headers(self) -> None:
-        self.set_header("Access-Control-Allow-Origin", "*")
-        self.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.set_header("Access-Control-Allow-Headers", "Content-Type")
+        self.apply_cors_headers(methods="GET, POST, OPTIONS")
         self.set_header("Content-Type", "text/plain")
 
     def options(self) -> None:
         self.finish()
 
     def get(self) -> None:
+        if not self.check_auth():
+            return
         try:
             file_path_param = self.get_argument("path", default="")
             if not file_path_param:
@@ -96,6 +159,12 @@ class FileHandler(tornado.web.RequestHandler):
 
             file_path = _PROJECT_ROOT / file_path_param
             if not file_path.resolve().is_relative_to(_PROJECT_ROOT.resolve()):
+                self.set_status(403)
+                self.set_header("Content-Type", "application/json")
+                self.write({"error": "Access denied"})
+                return
+
+            if not _should_include(file_path):
                 self.set_status(403)
                 self.set_header("Content-Type", "application/json")
                 self.write({"error": "Access denied"})
@@ -116,6 +185,8 @@ class FileHandler(tornado.web.RequestHandler):
             self.write({"error": str(exc)})
 
     async def post(self) -> None:
+        if not self.check_auth():
+            return
         try:
             self.set_header("Content-Type", "application/json")
             body = json.loads(self.request.body)
@@ -127,10 +198,17 @@ class FileHandler(tornado.web.RequestHandler):
                 self.write({"error": "path required"})
                 return
 
+            # Enforce content size limit (10 MB)
+            if len(content.encode("utf-8")) > 10 * 1024 * 1024:
+                self.set_status(413)
+                self.write({"error": "content exceeds 10 MB limit"})
+                return
+
             file_path = _PROJECT_ROOT / file_path_param
-            if not file_path.resolve().is_relative_to(_PROJECT_ROOT.resolve()):
+            allowed, reason = _is_write_allowed(file_path)
+            if not allowed:
                 self.set_status(403)
-                self.write({"error": "Access denied"})
+                self.write({"error": f"Write denied: {reason}"})
                 return
 
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -141,6 +219,9 @@ class FileHandler(tornado.web.RequestHandler):
             self.set_status(500)
             self.write({"error": str(exc)})
 
+
+# Export helpers for use in compile_plugin
+__all__ = ["_should_include", "_is_write_allowed", "FilesHandler", "FileHandler", "ROUTES"]
 
 ROUTES = [
     (r"/api/files", FilesHandler),

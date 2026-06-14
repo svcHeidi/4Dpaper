@@ -26,7 +26,7 @@ cd "$PROJECT_ROOT"
 echo -e "${GREEN}✓ Workspace: $PROJECT_ROOT${NC}"
 
 # 2. Check if this is a new project or existing one
-if [ -f "$PROJECT_ROOT/main.qmd" ] || [ -f "$PROJECT_ROOT/analysis_report.qmd" ]; then
+if [ -f "$PROJECT_ROOT/main.qmd" ] || [ -f "$PROJECT_ROOT/analysis_report.qmd" ] || [ -f "$PROJECT_ROOT/_quarto.yml" ] || compgen -G "$PROJECT_ROOT/*.qmd" > /dev/null; then
     echo -e "${GREEN}✓ Existing project detected${NC}"
     EXISTING_PROJECT=true
 else
@@ -89,6 +89,8 @@ project:
   output-dir: _output
   pre-render:
     - _extensions/4dpaper/4dpaper.py
+  post-render:
+    - _extensions/4dpaper/sign_rendered_html.py
 EOF
 
     # Create references.bib
@@ -184,6 +186,8 @@ project:
   output-dir: _output
   pre-render:
     - _extensions/4dpaper/4dpaper.py
+  post-render:
+    - _extensions/4dpaper/sign_rendered_html.py
 EOF
     echo -e "${GREEN}✓ Created _quarto.yml${NC}"
 fi

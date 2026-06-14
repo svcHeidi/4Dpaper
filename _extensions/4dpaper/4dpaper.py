@@ -23,7 +23,19 @@ if (
     and not _under_pytest
     and Path(sys.executable).resolve() != _venv_python.resolve()
 ):
-    os.execv(str(_venv_python), [str(_venv_python)] + sys.argv)
+    # Safety: assert the resolved venv python lives inside the project root before
+    # handing control to it.  Prevents a crafted PROJECT_ROOT env var from
+    # redirecting execv to an arbitrary binary.
+    _venv_resolved = _venv_python.resolve()
+    _root_resolved = _project_root.resolve()
+    if _venv_resolved.is_relative_to(_root_resolved):
+        os.execv(str(_venv_python), [str(_venv_python)] + sys.argv)
+    else:
+        print(
+            f"[4dpaper] WARNING: venv python '{_venv_resolved}' is outside project root "
+            f"'{_root_resolved}' — skipping execv re-launch for safety.",
+            file=sys.stderr,
+        )
 
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
@@ -34,10 +46,18 @@ _sr_mod = _ilu.module_from_spec(_sr_spec)
 _sr_spec.loader.exec_module(_sr_mod)
 ShortcutResolver = _sr_mod.ShortcutResolver
 
+from dashboard.document_signing import sign_html_file_if_configured
+
 _shortcut_resolver = ShortcutResolver(
     config_path=_project_root / "_shortcuts.yml",
     project_root=_project_root
 )
+
+
+def _maybe_sign_output_html(output_path: Path) -> None:
+    """Apply a trailing signature block when HTML signing is configured."""
+    if sign_html_file_if_configured(output_path):
+        print(f"[4dpaper] Signed HTML: {output_path}", file=sys.stderr)
 
 
 def resolve_src_path(src_str: str) -> Path:
@@ -108,10 +128,15 @@ def _rdp_simplify_xy(
 _DECIMATE_TARGET_FACES = 150_000
 
 
+def _surface_cell_count(surface) -> int:
+    """Return a stable cell count across PyVista versions."""
+    return int(getattr(surface, "n_cells", 0))
+
+
 def _decimate_surface(surface, target_faces: int = _DECIMATE_TARGET_FACES,
                       target_reduction: float | None = None):
     """Decimate a surface when it exceeds the face target."""
-    n_faces = int(surface.n_faces)
+    n_faces = _surface_cell_count(surface)
     if target_reduction is not None:
         ratio = float(target_reduction)
     else:
@@ -152,9 +177,9 @@ def _apply_decimation(surface, decimate_spec: str, label: str = ""):
         except ValueError:
             pass
 
-    n_before = int(surface.n_faces)
+    n_before = _surface_cell_count(surface)
     result = _decimate_surface(surface, target_reduction=target_reduction)
-    n_after = int(result.n_faces)
+    n_after = _surface_cell_count(result)
     if n_after < n_before and n_before > 0:
         pct = 100.0 * (1.0 - n_after / n_before)
         print(
@@ -1252,7 +1277,8 @@ def generate_html_figure(
                     time_field=field,
                 ) + "\n</body>"
             html = html.replace("</body>", inj_html, 1)
-    output_path.write_text(html)
+    output_path.write_text(html, encoding="utf-8")
+    _maybe_sign_output_html(output_path)
 
     print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
 
@@ -1384,7 +1410,8 @@ window.addEventListener("message",function(e){
     )
 
     out_path = figures_dir / f"{panel['id']}.html"
-    out_path.write_text(composite)
+    out_path.write_text(composite, encoding="utf-8")
+    _maybe_sign_output_html(out_path)
     print(f"[4dpaper] Generated panel (HTML): {out_path}", file=sys.stderr)
 
     # Write manifest so Lua can embed subfigures as direct srcdoc iframes
@@ -1653,7 +1680,8 @@ def generate_video_figure(
     b64 = base64.b64encode(mp4_path.read_bytes()).decode("ascii")
     video_html = _build_video_html_fragment(b64, fig_id)
     video_html_path.parent.mkdir(parents=True, exist_ok=True)
-    video_html_path.write_text(video_html)
+    video_html_path.write_text(video_html, encoding="utf-8")
+    _maybe_sign_output_html(video_html_path)
     print(f"[4dpaper] Generated (video HTML): {video_html_path}", file=sys.stderr)
 
 
@@ -1997,6 +2025,7 @@ def main() -> None:
                 html_content += inj_html
                 
             out_html.write_text(html_content, encoding="utf-8")
+            _maybe_sign_output_html(out_html)
         except Exception as exc:
             print(f"[4dpaper] ERROR generating Graph figure {fig_id}: {exc}", file=sys.stderr)
             sys.exit(1)

@@ -9,10 +9,16 @@ services:
       - .:/workspace  # Mounts current directory as the project
       # Mount your data directory so shortcuts can resolve to it inside the container.
       # Example: - /path/to/your/data:/data
+      # Optional: mount signing keys read-only and set FOURD_SIGNING_* env vars.
+      # Example host dir: /absolute/host/path/4dpapers-keys
+      - ${FOURD_SIGNING_KEYS_HOST_DIR:-/private/tmp/4dpapers-no-signing}:/run/secrets/4dpapers:ro
     environment:
       - PORT=5006
       - PYTHONUNBUFFERED=1
       - PROJECT_ROOT=/workspace
+      - FOURD_SIGNING_PRIVATE_KEY_PATH=${FOURD_SIGNING_PRIVATE_KEY_PATH:-}
+      - FOURD_SIGNING_PUBLIC_KEY_PATH=${FOURD_SIGNING_PUBLIC_KEY_PATH:-}
+      - FOURD_SIGNING_KEY_ID=${FOURD_SIGNING_KEY_ID:-default}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:

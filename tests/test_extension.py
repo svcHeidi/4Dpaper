@@ -254,6 +254,20 @@ class TestGeneratePanelHtml:
         assert any("unique-fig-a" in d for d in decoded)
         assert any("unique-fig-b" in d for d in decoded)
 
+    def test_composite_html_is_passed_to_signing_hook(self, tmp_path):
+        from unittest.mock import patch
+        mod = _load_4dpaper()
+
+        def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
+            output_path.write_text("<html>x</html>")
+
+        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html), patch.object(
+            mod, "_maybe_sign_output_html"
+        ) as mock_sign:
+            mod.generate_panel_html(self._make_panel(), tmp_path)
+
+        mock_sign.assert_called_once_with(tmp_path / "panel-test.html")
+
     def test_invalid_layout_raises(self, tmp_path):
         from unittest.mock import patch
         mod = _load_4dpaper()
