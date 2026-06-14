@@ -1,355 +1,372 @@
 #!/usr/bin/env python3
-"""
-4DPaper pre-render hook — run by Quarto before rendering.
-
-Scans the .qmd for {{< 4d-image >}} shortcodes and generates
-figure files in state/figures/ (HTML for web, PNG for PDF).
-
-Quarto calls this script before rendering. It reads QUARTO_DOCUMENT_PATH
-and QUARTO_OUTPUT_FORMAT from the environment.
-"""
+"""Render 4DPaper shortcode assets before Quarto runs."""
 from __future__ import annotations
 
 import array as _array
 import base64 as _b64
 import json
 import os
-import platform
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
-# ── Environment & Paths ───────────────────────────────────────────────────────
 _here = Path(__file__).resolve()
-_ext_dir = _here.parent
-_assets_dir = _ext_dir / "assets"
-_project_root = _ext_dir.parent.parent if _ext_dir.name == "4dpaper" else _ext_dir.parent
+_project_root = Path(
+    os.environ.get("PROJECT_ROOT")
+    or os.environ.get("QUARTO_PROJECT_DIR")
+    or str(_here.parent.parent.parent)
+)
+
+
+def _resolve_app_root() -> Path | None:
+    """Locate the 4Dpapers app root that provides `dashboard` and `scripts`."""
+    candidates: list[Path] = []
+    for raw in (
+        os.environ.get("FOURD_APP_ROOT"),
+        str(_here.parent.parent.parent),
+        "/app",
+    ):
+        if not raw:
+            continue
+        candidate = Path(raw)
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    for candidate in candidates:
+        if (candidate / "dashboard").is_dir() and (candidate / "scripts").is_dir():
+            return candidate
+    return None
+
+
+_app_root = _resolve_app_root()
 _venv_python = _project_root / ".venv" / "bin" / "python"
-
-# Figures and state directory (relative to project root usually, or CWD)
-# In Quarto, CWD is the project root during pre-render.
-STATE_DIR = Path("state")
-FIGURES_DIR = STATE_DIR / "figures"
-FIGURES_DIR.mkdir(parents=True, exist_ok=True)
-
 _under_pytest = "pytest" in sys.modules or any("pytest" in a for a in sys.argv)
 if (
     _venv_python.exists()
     and not _under_pytest
-    and sys.prefix != str(_project_root / ".venv")
+    and Path(sys.executable).resolve() != _venv_python.resolve()
 ):
-    os.execv(str(_venv_python), [str(_venv_python)] + sys.argv)
+    # Safety: assert the resolved venv python lives inside the project root before
+    # handing control to it.  Prevents a crafted PROJECT_ROOT env var from
+    # redirecting execv to an arbitrary binary.
+    _venv_resolved = _venv_python.resolve()
+    _root_resolved = _project_root.resolve()
+    if _venv_resolved.is_relative_to(_root_resolved):
+        os.execv(str(_venv_python), [str(_venv_python)] + sys.argv)
+    else:
+        print(
+            f"[4dpaper] WARNING: venv python '{_venv_resolved}' is outside project root "
+            f"'{_root_resolved}' — skipping execv re-launch for safety.",
+            file=sys.stderr,
+)
 
-# Add project root to path for scripts/
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
+for _path in (_app_root, _project_root):
+    if _path is not None and str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
-def _log(msg: str, level: str = "INFO") -> None:
-    """Standardized logging with prefix and stderr routing."""
-    print(f"[4dpaper] {level}: {msg}", file=sys.stderr)
+import importlib.util as _ilu
+_sr_spec = _ilu.spec_from_file_location("shortcut_resolver", _here.parent / "shortcut_resolver.py")
+_sr_mod = _ilu.module_from_spec(_sr_spec)
+_sr_spec.loader.exec_module(_sr_mod)
+ShortcutResolver = _sr_mod.ShortcutResolver
 
-def find_pvpython() -> Path | None:
-    """
-    Search for pvpython in:
-    1. FOURD_PVPYTHON env var
-    2. System PATH
-    3. Standard installation paths
-    """
-    # 1. Env var
-    env_path = os.environ.get("FOURD_PVPYTHON")
-    if env_path:
-        p = Path(env_path)
-        if p.exists(): return p
+from dashboard.document_signing import sign_html_file_if_configured
 
-    # 2. PATH
-    sys_path = shutil.which("pvpython")
-    if sys_path: return Path(sys_path)
-
-    # 3. Standard paths (Mac/Linux)
-    standards = [
-        Path("/Applications/ParaView-6.0.1.app/Contents/bin/pvpython"),
-        Path("/Applications/ParaView-5.11.0.app/Contents/bin/pvpython"),
-        Path("/usr/local/bin/pvpython"),
-        Path("/usr/bin/pvpython"),
-    ]
-    for p in standards:
-        if p.exists(): return p
-
-    return None
-
-def get_asset(name: str) -> str:
-    """Read an asset file from the extensions/assets directory."""
-    path = _assets_dir / name
-    if not path.exists():
-        _log(f"Asset '{name}' not found at {path}", level="WARN")
-        return ""
-    return path.read_text(encoding="utf-8")
+_shortcut_resolver = ShortcutResolver(
+    config_path=_project_root / "_shortcuts.yml",
+    project_root=_project_root
+)
 
 
-def _parse_general_shortcodes(text: str, tag: str, defaults: dict[str, str]) -> list[dict]:
-    """Generic shortcode parser for {{< tag key="value" ... >}}."""
-    stripped = re.sub(r'(`{1,3}).*?\1', '', text, flags=re.DOTALL)
-    pattern = rf'\{{\{{<\s*{tag}\s+(.*?)\s*>\}}\}}'
+def _maybe_sign_output_html(output_path: Path) -> None:
+    """Apply a trailing signature block when HTML signing is configured."""
+    if sign_html_file_if_configured(output_path):
+        print(f"[4dpaper] Signed HTML: {output_path}", file=sys.stderr)
+
+
+def resolve_src_path(src_str: str) -> Path:
+    """Resolve a source path with optional `@shortcut` syntax."""
+    try:
+        return _shortcut_resolver.resolve(src_str)
+    except ValueError as exc:
+        print(f"[4dpaper] Warning: {exc}", file=sys.stderr)
+        path = Path(src_str)
+        return path if path.is_absolute() else _project_root / path
+
+
+def _rdp_simplify_xy(
+    xs: list,
+    ys: list,
+    epsilon_fraction: float = 0.001,
+) -> tuple[list, list]:
+    """Simplify an `(x, y)` polyline with iterative RDP."""
+    import numpy as np
+
+    try:
+        x = np.asarray(xs, dtype=float)
+        y = np.asarray(ys, dtype=float)
+    except (TypeError, ValueError):
+        return xs, ys
+
+    n = len(x)
+    if n != len(y) or n < 3:
+        return xs, ys
+
+    x_rng = x.max() - x.min()
+    y_rng = y.max() - y.min()
+    xn = (x - x.min()) / x_rng if x_rng > 0 else np.zeros(n)
+    yn = (y - y.min()) / y_rng if y_rng > 0 else np.zeros(n)
+
+    pts = np.column_stack([xn, yn])
+    eps = float(epsilon_fraction)
+
+    keep = np.zeros(n, dtype=bool)
+    keep[0] = True
+    keep[-1] = True
+
+    stack = [(0, n - 1)]
+    while stack:
+        start, end = stack.pop()
+        if end - start < 2:
+            continue
+        p1 = pts[start]
+        p2 = pts[end]
+        d = p2 - p1
+        norm = np.linalg.norm(d)
+        seg = pts[start + 1:end]
+        if norm == 0:
+            dists = np.linalg.norm(seg - p1, axis=1)
+        else:
+            dists = np.abs(np.cross(d, seg - p1)) / norm
+        max_local = int(np.argmax(dists))
+        if dists[max_local] > eps:
+            mid = start + 1 + max_local
+            keep[mid] = True
+            stack.append((start, mid))
+            stack.append((mid, end))
+
+    idx = np.where(keep)[0]
+    return x[idx].tolist(), y[idx].tolist()
+
+
+_DECIMATE_TARGET_FACES = 150_000
+
+
+def _surface_cell_count(surface) -> int:
+    """Return a stable cell count across PyVista versions."""
+    return int(getattr(surface, "n_cells", 0))
+
+
+def _decimate_surface(surface, target_faces: int = _DECIMATE_TARGET_FACES,
+                      target_reduction: float | None = None):
+    """Decimate a surface when it exceeds the face target."""
+    n_faces = _surface_cell_count(surface)
+    if target_reduction is not None:
+        ratio = float(target_reduction)
+    else:
+        if n_faces <= target_faces:
+            return surface
+        ratio = 1.0 - target_faces / n_faces
+
+    ratio = max(0.0, min(ratio, 0.99))
+    try:
+        return surface.decimate_pro(
+            ratio,
+            feature_angle=15.0,
+            splitting=True,
+            boundary_vertex_deletion=False,
+            preserve_topology=False,
+        )
+    except Exception as exc:
+        print(
+            f"[4dpaper] WARNING: decimate_pro failed ({exc}) — using original surface.",
+            file=sys.stderr,
+        )
+        return surface
+
+
+def _apply_decimation(surface, decimate_spec: str, label: str = ""):
+    """Apply the parsed `decimate` shortcode setting."""
+    spec = (decimate_spec or "auto").strip().lower()
+    if spec in ("0", "none", "off", "false", "no"):
+        return surface
+
+    target_reduction: float | None = None
+    if spec != "auto":
+        try:
+            val = float(spec)
+            if val <= 0.0:
+                return surface
+            target_reduction = min(val, 0.99)
+        except ValueError:
+            pass
+
+    n_before = _surface_cell_count(surface)
+    result = _decimate_surface(surface, target_reduction=target_reduction)
+    n_after = _surface_cell_count(result)
+    if n_after < n_before and n_before > 0:
+        pct = 100.0 * (1.0 - n_after / n_before)
+        print(
+            f"[4dpaper] {label}: decimated {n_before:,} → {n_after:,} faces ({pct:.1f}% reduction)",
+            file=sys.stderr,
+        )
+    return result
+
+
+def parse_video_shortcodes(text: str) -> list[dict]:
+    """Parse `4d-video` shortcodes from QMD text."""
+    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    pattern = r'\{\{<\s*4d-video\s+(.*?)\s*>\}\}'
     results = []
     for match in re.finditer(pattern, stripped, re.DOTALL):
         raw = match.group(1)
-        kwargs = defaults.copy()
+        kwargs: dict[str, str] = {}
         for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
             kwargs[key] = val
-        
-        if "id" not in kwargs:
-            _log(f"{tag} shortcode missing 'id' — skipping.", level="WARN")
+        if "id" not in kwargs or "src" not in kwargs:
             continue
-        if tag in ["4d-image", "4d-video", "4d-timeseries", "4d-pvsm", "4d-graph"] and "src" not in kwargs:
-            _log(f"{tag} shortcode missing 'src' — skipping.", level="WARN")
-            continue
-            
+        kwargs.setdefault("fps", "10")
+        kwargs.setdefault("time", "mid")
+        kwargs.setdefault("field", "")
         results.append(kwargs)
     return results
 
-def parse_timeseries_shortcodes(text: str) -> list[dict]:
-    raw_ts = _parse_general_shortcodes(text, "4d-timeseries", {
-        "height": "400px", "caption": "", "field": "", "steps": "4", "times": ""
-    })
-    results = []
-    for ts in raw_ts:
-        results.append({
-            "id": ts["id"], "src": ts["src"], "height": ts["height"],
-            "caption": ts["caption"], "camera_mode": "sync", "timeseries": True,
-            "field": ts["field"], "steps": ts["steps"], "times": ts["times"],
-            "subfigures": []
-        })
-    return results
-
-def parse_video_shortcodes(text: str) -> list[dict]:
-    return _parse_general_shortcodes(text, "4d-video", {
-        "fps": "10", 
-        "time": "mid", 
-        "field": ""
-    })
 
 def parse_shortcodes(text: str) -> list[dict]:
-    return _parse_general_shortcodes(text, "4d-image", {
-        "time": "mid",
-        "field": "",
-        "fields": "",
-        "style": ""
-    })
+    """Parse `4d-image` shortcodes from QMD text."""
+    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+
+    pattern = r'\{\{<\s*4d-image\s+(.*?)\s*>\}\}'
+    results = []
+    for match in re.finditer(pattern, stripped, re.DOTALL):
+        raw = match.group(1)
+        kwargs: dict[str, str] = {}
+        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+            kwargs[key] = val
+        if "id" not in kwargs or "src" not in kwargs:
+            continue
+        kwargs.setdefault("time", "mid")
+        kwargs.setdefault("field", "")
+        kwargs.setdefault("fields", "")
+        kwargs.setdefault("style", "")
+        kwargs.setdefault("decimate", "auto")
+        results.append(kwargs)
+    return results
+
 
 def parse_panel_shortcodes(text: str) -> list[dict]:
-    raw_panels = _parse_general_shortcodes(text, "4d-panel", {
-        "layout": "1x1", "height": "800px", "caption": "", "camera": "independent"
-    })
-    
+    """Parse `4d-panel` shortcodes from QMD text."""
+    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    pattern = r'\{\{<\s*4d-panel\s+(.*?)\s*>\}\}'
     results = []
-    for p in raw_panels:
+    for match in re.finditer(pattern, stripped, re.DOTALL):
+        raw = match.group(1)
+        kwargs: dict[str, str] = {}
+        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+            kwargs[key] = val
+        if "id" not in kwargs:
+            print("[4dpaper] Warning: 4d-panel shortcode missing 'id' — skipping.", file=sys.stderr)
+            continue
         subfigures = []
         n = 1
-        while f"src{n}" in p:
+        while f"src{n}" in kwargs:
             subfigures.append({
-                "src":    p[f"src{n}"],
-                "id":     p.get(f"id{n}", f"panel-sub-{n}"),
-                "field":  p.get(f"field{n}", ""),
-                "time":   p.get(f"time{n}", "mid"),
-                "fields": p.get(f"fields{n}", ""),
+                "src":    kwargs[f"src{n}"],
+                "id":     kwargs.get(f"id{n}", f"panel-sub-{n}"),
+                "field":  kwargs.get(f"field{n}", ""),
+                "time":   kwargs.get(f"time{n}", "mid"),
+                "fields": kwargs.get(f"fields{n}", ""),
             })
             n += 1
-            
         if not subfigures:
-            _log(f"4d-panel '{p['id']}' has no sub-figures — skipping.", level="WARN")
+            print(f"[4dpaper] Warning: 4d-panel '{kwargs['id']}' has no sub-figures — skipping.", file=sys.stderr)
             continue
-            
         results.append({
-            "id":          p["id"],
-            "layout":      p["layout"],
-            "height":      p["height"],
-            "caption":     p["caption"],
-            "camera_mode": p["camera"],
+            "id":          kwargs["id"],
+            "layout":      kwargs.get("layout", "1x1"),
+            "height":      kwargs.get("height", "800px"),
+            "caption":     kwargs.get("caption", ""),
+            "camera_mode": kwargs.get("camera", "independent"),
             "subfigures":  subfigures,
         })
     return results
 
+
+def parse_timeseries_shortcodes(text: str) -> list[dict]:
+    """Parse `4d-timeseries` shortcodes from QMD text."""
+    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    pattern = r'\{\{<\s*4d-timeseries\s+(.*?)\s*>\}\}'
+    results = []
+    for match in re.finditer(pattern, stripped, re.DOTALL):
+        raw = match.group(1)
+        kwargs: dict[str, str] = {}
+        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+            kwargs[key] = val
+        if "id" not in kwargs:
+            print("[4dpaper] Warning: 4d-timeseries shortcode missing 'id' — skipping.", file=sys.stderr)
+            continue
+        if "src" not in kwargs:
+            print("[4dpaper] Warning: 4d-timeseries shortcode missing 'src' — skipping.", file=sys.stderr)
+            continue
+        results.append({
+            "id":          kwargs["id"],
+            "layout":      None,
+            "height":      kwargs.get("height", "400px"),
+            "caption":     kwargs.get("caption", ""),
+            "camera_mode": "sync",
+            "timeseries":  True,
+            "src":         kwargs["src"],
+            "field":       kwargs.get("field", ""),
+            "steps":       kwargs.get("steps", "4"),
+            "times":       kwargs.get("times", ""),
+            "subfigures":  [],
+        })
+    return results
+
+
 def _expand_timeseries_steps(ts: dict, n_steps: int) -> list[int]:
-    """Expand steps/times string to list of integer step indices."""
+    """Expand `steps` or `times` into step indices."""
     if ts["times"]:
         result = []
         for tok in ts["times"].split(","):
             tok = tok.strip()
-            if tok == "first": result.append(0)
-            elif tok == "last": result.append(max(0, n_steps - 1))
+            if tok == "first":
+                result.append(0)
+            elif tok == "last":
+                result.append(max(0, n_steps - 1))
             else:
-                try: result.append(max(0, min(int(tok), n_steps - 1)))
-                except ValueError: pass
-        if result: return result
-
+                try:
+                    result.append(max(0, min(int(tok), n_steps - 1)))
+                except ValueError:
+                    pass
+        if result:
+            return result
     if n_steps <= 1:
-        _log(f"Timeseries '{ts['id']}' source has only {n_steps} step(s) — generating single frame.", level="WARN")
+        print(
+            f"[4dpaper] WARNING: timeseries '{ts['id']}' source has only {n_steps} step(s) "
+            "— generating single frame.", file=sys.stderr
+        )
         return [0]
     N = max(2, int(ts.get("steps", "4")))
     return [round(i * (n_steps - 1) / (N - 1)) for i in range(N)]
 
 
-def check_paraview_version(min_ver: str = "5.10.0", pvpython_path: Path | None = None) -> bool:
-    """Check if pvpython meets the minimum version requirement."""
-    import subprocess
-    pv_exe = pvpython_path or find_pvpython()
-    if not pv_exe:
-        _log("ParaView (pvpython) not found. Required for PVSM rendering.", level="ERROR")
-        return False
-    try:
-        out = subprocess.check_output([str(pv_exe), "--version"], stderr=subprocess.STDOUT, text=True)
-        m = re.search(r"version\s+([\d\.]+)", out)
-        if not m:
-            _log(f"Could not parse ParaView version from: {out.strip()}", level="WARN")
-            return False
-        
-        ver = m.group(1)
-        v_tup = lambda v: tuple(map(int, v.split(".")))
-        if v_tup(ver) < v_tup(min_ver):
-            _log(f"ParaView version {ver} is < required {min_ver}", level="ERROR")
-            return False
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        _log(f"ParaView version check failed: {exc}", level="ERROR")
-        return False
-
-# -- PVSM parsing ---------------------------------------------------------------
-
-def parse_pvsm_shortcodes(text: str) -> list[dict]:
-    return _parse_general_shortcodes(text, "4d-pvsm", {
-        "data": "",
-        "time": "",
-        "caption": ""
-    })
-
 def parse_graph_shortcodes(text: str) -> list[dict]:
-    return _parse_general_shortcodes(text, "4d-graph", {
-        "caption": ""
-    })
+    """Parse `4d-graph` shortcodes from QMD text."""
+    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    pattern = r'\{\{<\s*4d-graph\s+(.*?)\s*>\}\}'
+    results = []
+    for match in re.finditer(pattern, stripped, re.DOTALL):
+        raw = match.group(1)
+        kwargs: dict[str, str] = {}
+        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+            kwargs[key] = val
+        if "id" not in kwargs or "src" not in kwargs:
+            continue
+        kwargs.setdefault("caption", "")
+        results.append(kwargs)
+    return results
 
-
-def parse_pvsm_color_info(pvsm_path: Path) -> dict:
-    """
-    Extract color/scalar info from a ParaView state (.pvsm) XML file.
-    Uses manual XML parsing (robust against complex pipelines).
-    """
-    import xml.etree.ElementTree as ET
-    from matplotlib.colors import LinearSegmentedColormap
-
-    _PRESET_MAP = {
-        "Cool to Warm":               "coolwarm",
-        "Cool to Warm (Extended)":    "coolwarm",
-        "Viridis (matplotlib)":       "viridis",
-        "Plasma (matplotlib)":        "plasma",
-        "Inferno (matplotlib)":       "inferno",
-        "Magma (matplotlib)":         "magma",
-        "Rainbow Desaturated":        "rainbow",
-        "Blue to Red Rainbow":        "jet",
-        "erdc_iceFire_H":             "coolwarm",
-    }
-
-    _FALLBACK = {
-        "scalar_name": "",
-        "field_association": "point",
-        "vmin": 0.0,
-        "vmax": 1.0,
-        "cmap": "coolwarm",
-    }
-
-    if not pvsm_path.exists():
-        return _FALLBACK.copy()
-
-    try:
-        tree = ET.parse(str(pvsm_path))
-        root = tree.getroot()
-        sms = root.find("ServerManagerState")
-        if sms is None:
-            return _FALLBACK.copy()
-
-        # 1. Find the RenderView to see what's actually visible
-        render_view = sms.find("Proxy[@group='views'][@type='RenderView']")
-        visible_rep_ids = []
-        if render_view is not None:
-            reps_prop = render_view.find("Property[@name='Representations']")
-            if reps_prop is not None:
-                visible_rep_ids = [p.get("value") for p in reps_prop.findall("Proxy")]
-
-        # 2. Find the leaf representation (the one whose Visibility is 1 or is in the view)
-        # We pick the last visible representation in the XML as our 'terminal' source heuristic.
-        leaf_rep_proxy = None
-        for proxy in sms.findall("Proxy[@group='representations']"):
-            proxy_id = proxy.get("id")
-            # If we identified visible reps from the view, filter by them
-            if visible_rep_ids and proxy_id not in visible_rep_ids:
-                continue
-            
-            # Check for ColorArrayName property - if it's not coloring by something, it's likely a glyph/outline
-            color_prop = proxy.find("Property[@name='ColorArrayName']")
-            if color_prop is not None:
-                leaf_rep_proxy = proxy
-
-        if leaf_rep_proxy is None:
-            return _FALLBACK.copy()
-
-        assoc_val = "1"
-        scalar_name = ""
-        color_prop = leaf_rep_proxy.find("Property[@name='ColorArrayName']")
-        if color_prop is not None:
-            elems = color_prop.findall("Element")
-            if len(elems) >= 5:
-                assoc_val = elems[3].get("value", "1")
-                scalar_name = elems[4].get("value", "")
-
-        lut_id = ""
-        lut_prop = leaf_rep_proxy.find("Property[@name='LookupTable']")
-        if lut_prop is not None:
-            lut_proxy_elem = lut_prop.find("Proxy")
-            if lut_proxy_elem is not None:
-                lut_id = lut_proxy_elem.get("value", "")
-
-        vmin, vmax = 0.0, 1.0
-        cmap = "coolwarm"
-
-        if lut_id:
-            lut_proxy = sms.find(f"Proxy[@id='{lut_id}']")
-            if lut_proxy is not None:
-                rgb_prop = lut_proxy.find("Property[@name='RGBPoints']")
-                if rgb_prop is not None:
-                    vals = [float(e.get("value", 0)) for e in rgb_prop.findall("Element")]
-                    if len(vals) >= 8:
-                        groups = [vals[i:i+4] for i in range(0, len(vals), 4)]
-                        vmin, vmax = groups[0][0], groups[-1][0]
-                        
-                        preset_name = ""
-                        preset_prop = lut_proxy.find("Property[@name='NameOfLastPresetApplied']")
-                        if preset_prop is not None:
-                            elem = preset_prop.find("Element")
-                            if elem is not None: preset_name = elem.get("value", "")
-
-                        if preset_name in _PRESET_MAP:
-                            cmap = _PRESET_MAP[preset_name]
-                        else:
-                            span = max(1e-10, vmax - vmin)
-                            norm_colors = [((g[0]-vmin)/span, (g[1],g[2],g[3])) for g in groups]
-                            cmap = LinearSegmentedColormap.from_list("pvsm", norm_colors)
-
-        return {
-            "scalar_name": scalar_name,
-            "field_association": "point" if assoc_val == "1" else "cell",
-            "vmin": vmin, "vmax": vmax, "cmap": cmap,
-        }
-    except Exception as exc:
-        print(f"[4dpaper] Warning: PVSM parsing failed for {pvsm_path.name} ({exc})", file=sys.stderr)
-        return _FALLBACK.copy()
-
-    except Exception as exc:
-        print(f"[4dpaper] WARNING: PVSM color parsing failed ({exc}); using defaults.", file=sys.stderr)
-        return _FALLBACK.copy()
-
-
-# ── Cache helpers ─────────────────────────────────────────────────────────────
 
 def is_cache_valid(
     fig_path: Path,
@@ -358,37 +375,26 @@ def is_cache_valid(
     field_path: Path | None = None,
     extra_deps: list[Path] | None = None,
 ) -> bool:
-    """
-    Returns True if fig_path exists and is newer than all dependencies.
-    Dependencies include: source, camera, fields, additional deps, and the extension itself.
-    """
-    if not fig_path.exists(): return False
-    
-    deps = [src_path]
-    if camera_path and camera_path.exists(): deps.append(camera_path)
-    if field_path and field_path.exists(): deps.append(field_path)
-    if extra_deps: deps.extend(extra_deps)
-    
-    # Global extension dependencies: the script itself and all assets.
-    deps.append(_here)
-    if _assets_dir.exists():
-        for asset in _assets_dir.iterdir():
-            if asset.is_file(): deps.append(asset)
-    
+    """Return `True` when the cached figure is newer than its dependencies."""
+    if not fig_path.exists():
+        return False
     fig_mtime = fig_path.stat().st_mtime
-    for d in deps:
-        if d.exists() and d.stat().st_mtime > fig_mtime:
+    if src_path.exists() and fig_mtime <= src_path.stat().st_mtime:
+        return False
+    if camera_path is not None and camera_path.exists():
+        if fig_mtime <= camera_path.stat().st_mtime:
+            return False
+    if field_path is not None and field_path.exists():
+        if fig_mtime <= field_path.stat().st_mtime:
+            return False
+    for dep in (extra_deps or []):
+        if dep.exists() and fig_mtime <= dep.stat().st_mtime:
             return False
     return True
 
 
-# -- Style template loading and resolution ------------------------------------
-
 def load_styles(path: Path) -> dict:
-    """
-    Load _4dpaper_styles.yml. Returns {} on missing or malformed file.
-    Never raises — warnings go to stderr.
-    """
+    """Load `_4dpaper_styles.yml` or return `{}`."""
     if not path.exists():
         return {}
     try:
@@ -405,25 +411,18 @@ def load_styles(path: Path) -> dict:
 
 
 def resolve_style(styles_config: dict, style_name: str, field_name: str) -> dict:
-    """
-    Resolve {background, axis_color, cmap} from styles config.
-
-    Pure function — no I/O. Safe to call with empty styles_config.
-    'transparent' background is normalised to 'white' (PyVista limitation).
-    """
+    """Resolve `background`, `axis_color`, and `cmap` from the style config."""
     _HARD = {"background": "white", "axis_color": "black", "cmap": "coolwarm"}
 
     defaults = styles_config.get("defaults", {}) if styles_config else {}
     styles   = styles_config.get("styles",   {}) if styles_config else {}
 
-    # Start from hard defaults, override with file-level defaults
     resolved = {
         "background": defaults.get("background", _HARD["background"]),
         "axis_color": defaults.get("axis_color", _HARD["axis_color"]),
         "cmap":       defaults.get("cmap",       _HARD["cmap"]),
     }
 
-    # Apply named style overrides (skip silently if style_name is "")
     if style_name:
         if style_name not in styles:
             print(
@@ -435,28 +434,18 @@ def resolve_style(styles_config: dict, style_name: str, field_name: str) -> dict
             if "background"  in tmpl: resolved["background"]  = tmpl["background"]
             if "axis_color"  in tmpl: resolved["axis_color"]  = tmpl["axis_color"]
             if "cmap"        in tmpl: resolved["cmap"]        = tmpl["cmap"]
-            # Per-field cmap override
             field_cmaps = tmpl.get("fields", {})
             if field_name and field_name in field_cmaps:
                 resolved["cmap"] = field_cmaps[field_name]
 
-    # Normalise 'transparent' → 'white' (PyVista does not support transparent backgrounds)
     if resolved["background"] == "transparent":
         resolved["background"] = "white"
 
     return resolved
 
 
-# ── Camera orientation transfer ───────────────────────────────────────────────
-
-
 def _apply_camera_from_dict(pl, fig_id: str, camera_data: dict | None) -> None:
-    """
-    Apply camera from a pre-loaded dict (avoids re-reading disk per frame).
-
-    None or missing keys → isometric fallback. Mirrors apply_camera_state()
-    but accepts a dict instead of a Path, for use in video render loops.
-    """
+    """Apply camera data from a dict."""
     if camera_data is None:
         pl.isometric_view()
         return
@@ -473,12 +462,7 @@ def _apply_camera_from_dict(pl, fig_id: str, camera_data: dict | None) -> None:
 
 
 def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None:
-    """
-    Apply saved camera state (from state/camera_<fig_id>.json) to a plotter.
-
-    Handles position, focal point, view up, and parallel scale (zoom).
-    If no camera state exists, falls back to a clean isometric view.
-    """
+    """Apply saved camera state to a plotter."""
     if camera_path is None or not camera_path.exists():
         pl.isometric_view()
         return
@@ -489,14 +473,12 @@ def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None
         pl.camera.focal_point = cam_data["focal_point"]
         pl.camera.up = cam_data["view_up"]
 
-        # Parallel scale is used for zooming in orthographic mode
         if "parallel_scale" in cam_data and cam_data["parallel_scale"] is not None:
             pl.camera.parallel_scale = float(cam_data["parallel_scale"])
             print(f"[4dpaper] Applied saved camera for {fig_id} (scale={pl.camera.parallel_scale:.4f})")
         else:
             print(f"[4dpaper] Applied saved camera for {fig_id}")
 
-        # Ensure projection mode matches (perspective vs parallel/ortho)
         is_parallel = cam_data.get("parallel_projection", 0) == 1
         pl.camera.parallel_projection = is_parallel
 
@@ -505,39 +487,27 @@ def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None
         pl.isometric_view()
 
 
-# ── Unified controls strip snippet ────────────────────────────────────────────
-
 def _controls_strip_snippet(
     fig_id: str,
     show_lock_btn: bool = True,
     show_orientation: bool = True,
     fields_to_embed: list[str] | None = None,
     active_field: str = "",
-    field_data: dict | None = None,
+    field_data_b64: dict | None = None,
     field_ranges: dict | None = None,
     time_labels: list[str] | None = None,
-    time_data: list[str] | None = None,
+    time_data_b64: list[str] | None = None,
     time_global_range: list[float] | None = None,
     time_idx: int = 0,
     time_field: str = "",
 ) -> str:
-    """
-    Return a combined HTML+JS block that adds a right-edge icon strip to a
-    vtk.js figure, with popup panels for camera lock, orientation axes/presets,
-    field switching, and time scrubbing.
-
-    The figure surface has zero UI overlay — all controls live in the strip.
-    Exactly one panel is open at a time; clicking the active icon closes it.
-
-    Replaces _camera_sync_snippet, _field_sync_snippet, _time_sync_snippet,
-    and _orientation_snippet.
-    """
+    """Return the shared controls-strip HTML and JS."""
     fig_id_js = json.dumps(fig_id).replace("</", "<\\/")
     fig_id_safe = fig_id.replace("</", "<\\/").replace('"', '').replace("-", "_")
 
     has_fields = bool(fields_to_embed and len(fields_to_embed) > 1)
-    has_time = bool(time_labels and len(time_labels) > 1 and time_data)
-    n_time = len(time_data) if time_data else 0
+    has_time = bool(time_labels and len(time_labels) > 1 and time_data_b64)
+    n_time = len(time_data_b64) if time_data_b64 else 0
 
     BTN = (
         "width:26px;height:26px;background:rgba(20,20,30,0.72);"
@@ -572,43 +542,496 @@ def _controls_strip_snippet(
     if not strip_btns and not show_orientation and not show_lock_btn:
         return ""
 
-    # ── UI Presentation Layer ────────────────────────────────────────────────
-    # Load the pure-HTML skeleton (placeholders-free)
-    html_skeleton = get_asset("viewer_controls.html") or "<!-- viewer_controls.html missing -->"
-    
-    # Load the premium styling
-    premium_css = get_asset("viewer.css") or ""
-    css_block = f'<style>\n{premium_css}\n</style>\n'
-    
-    # Prepare the Data Contract
-    config = {
-        "figureId": fig_id,
-        "activeField": active_field,
-        "availableFields": fields_to_embed or [],
-        "fieldData": field_data or {},
-        "fieldRanges": field_ranges or {},
-        "timeIdx": time_idx,
-        "timeLabels": time_labels or [],
-        "timeData": time_data or [],
-        "timeGlobalRange": time_global_range or [0, 1],
-        "showLockBtn": show_lock_btn,
-        "showOrientation": show_orientation
-    }
-    config_json = json.dumps(config).replace("</", "<\\/")
-    
-    # Load the logic asset
-    logic_js = get_asset("viewer_logic.js") or "console.error('viewer_logic.js not found');"
-    
-    # Combined output
-    # Note: we can still append the legacy strip_btns if they were generated,
-    # but the new logic expects them to be part of the contract or standard IDs.
-    html_block = html_skeleton
-    js_block = f'<script>\nwindow.FOURD_CONFIG = {config_json};\n{logic_js}\n</script>\n'
-    
-    return css_block + html_block + js_block
+    corner_widget = ""
+    if show_orientation:
+        corner_widget = (
+            f'<div id="cs-corner-{fig_id_safe}"'
+            f' style="position:fixed;bottom:4px;left:4px;z-index:9999;'
+            f'display:flex;align-items:center;gap:6px;">\n'
+            f'  <svg id="cs-svg-axes-{fig_id_safe}" width="56" height="56"'
+            f' style="background:transparent;border:none;border-radius:0;'
+            f'display:block;cursor:pointer;overflow:visible;"'
+            f' title="Click axis tip: ortho view \u00b7 Click axis tail: opposite view"></svg>\n'
+            f'  <span id="cs-iso-flash-{fig_id_safe}"'
+            f' style="font-size:9px;color:#ffe033;font-family:monospace;min-width:60px;"></span>\n'
+            f'</div>\n'
+        )
 
+    lock_widget = ""
+    lock_badge = ""
+    lock_shield = ""
+    if show_lock_btn:
+        lock_widget = (
+            f'<div id="cs-lock-widget-{fig_id_safe}"'
+            f' style="position:fixed;top:4px;right:4px;z-index:9999;'
+            f'width:26px;height:26px;background:rgba(20,20,30,0.72);'
+            f'border:1px solid rgba(255,255,255,0.18);border-radius:5px;'
+            f'cursor:pointer;font-size:13px;'
+            f'display:flex;align-items:center;justify-content:center;color:#fff;"'
+            f' title="Lock / unlock figure">&#x1F513;</div>\n'
+        )
+        lock_badge = (
+            f'<div id="cs-lock-badge-{fig_id_safe}"'
+            f' style="display:none;position:fixed;top:4px;right:36px;z-index:9999;'
+            f'background:rgba(20,20,30,0.88);'
+            f'border:1px solid rgba(255,255,255,0.12);'
+            f'border-radius:4px;padding:2px 6px;'
+            f'font-family:monospace;font-size:10px;color:#f88;">locked</div>\n'
+        )
+        lock_shield = (
+            f'<div id="cs-lock-shield-{fig_id_safe}"'
+            f' style="display:none;position:fixed;inset:0;z-index:9998;'
+            f'background:transparent;cursor:not-allowed;"></div>\n'
+        )
 
-# ── Figure generation (Task 3) ────────────────────────────────────────────────
+    field_pop = ""
+    if has_fields:
+        field_opts = "".join(
+            f'<option value="{f}"{"  selected" if f == active_field else ""}>{f}</option>'
+            for f in (fields_to_embed or [])
+        )
+        field_pop = (
+            f'<div id="cs-pop-field-{fig_id_safe}" style="{POP}">\n'
+            f'  <label style="display:flex;flex-direction:column;gap:4px;">Field:\n'
+            f'    <select id="cs-field-sel-{fig_id_safe}"'
+            f' style="background:#333;color:#fff;border:1px solid #555;border-radius:3px;">\n'
+            f'      {field_opts}\n'
+            f'    </select>\n'
+            f'  </label>\n'
+            f'  <span id="cs-field-badge-{fig_id_safe}"'
+            f' style="display:none;padding:2px 6px;border-radius:2px;font-size:10px;"></span>\n'
+            f'</div>\n'
+        )
+
+    time_pop = ""
+    if has_time:
+        initial_label = (
+            time_labels[time_idx] if time_idx < len(time_labels) else str(time_idx)
+        )
+        time_pop = (
+            f'<div id="cs-pop-time-{fig_id_safe}" style="{POP}">\n'
+            f'  <div style="display:flex;justify-content:space-between;gap:8px;">\n'
+            f'    <span style="color:#aaa;">t&nbsp;=&nbsp;'
+            f'<span id="cs-time-val-{fig_id_safe}">{initial_label}</span></span>\n'
+            f'    <span style="color:#666;font-size:10px;">'
+            f'<span id="cs-time-idx-{fig_id_safe}">{time_idx}</span>/{n_time - 1}</span>\n'
+            f'  </div>\n'
+            f'  <input type="range" id="cs-time-slider-{fig_id_safe}"'
+            f' min="0" max="{n_time - 1}" value="{time_idx}"\n'
+            f'    style="width:160px;cursor:pointer;accent-color:#4a9eff;">\n'
+            f'</div>\n'
+        )
+
+    html_block = ""
+    if strip_btns:
+        html_block += (
+            f'<div id="cs-strip-{fig_id_safe}" style="position:fixed;right:4px;top:50%;'
+            f'transform:translateY(-50%);z-index:9999;display:flex;flex-direction:column;gap:4px;">\n'
+            + strip_btns
+            + f'</div>\n'
+        )
+    html_block += lock_shield + lock_widget + lock_badge + field_pop + time_pop + corner_widget
+
+    active_field_js = json.dumps(active_field).replace("</", "<\\/")
+    field_data_js = json.dumps(field_data_b64 or {}).replace("</", "<\\/")
+    field_ranges_js = json.dumps(field_ranges or {}).replace("</", "<\\/")
+    time_field_js = json.dumps(time_field or active_field).replace("</", "<\\/")
+    time_data_js = json.dumps(time_data_b64 or []).replace("</", "<\\/")
+    time_labels_js = json.dumps(time_labels or []).replace("</", "<\\/")
+    global_range_js = json.dumps(time_global_range or [0.0, 1.0])
+
+    _js = []
+
+    _js.append(f'  var FIG_ID={fig_id_js};\n')
+
+    if show_orientation:
+        _js.append(f'  var _iact=null;\n')
+
+    _locked_gate = (
+        f'    if(_locked){{_showLockedBadge();return;}}\n'
+    ) if show_lock_btn else ''
+    _js.append(
+        f'  var _CS_ALL=["axes","field","time"];\n'
+        f'  window.csToggle_{fig_id_safe}=function(name){{\n'
+        + _locked_gate
+        + f'    for(var _i=0;_i<_CS_ALL.length;_i++){{\n'
+        f'      var _el=document.getElementById("cs-pop-"+_CS_ALL[_i]+"-{fig_id_safe}");\n'
+        f'      if(!_el)continue;\n'
+        f'      _el.style.display=(_CS_ALL[_i]===name&&_el.style.display==="none")?"flex":"none";\n'
+        f'    }}\n'
+        + f'  }};\n'
+    )
+
+    _js.append(f'  var _locked=false;\n')
+    _js.append(f'  var _cont=null;\n')
+    if show_lock_btn:
+        _js.append(
+            f'  var _lockBadgeTimer=null;\n'
+            f'  function _showLockedBadge(){{\n'
+            f'    var b=document.getElementById("cs-lock-badge-{fig_id_safe}");\n'
+            f'    if(!b)return;\n'
+            f'    b.style.display="block";\n'
+            f'    clearTimeout(_lockBadgeTimer);\n'
+            f'    _lockBadgeTimer=setTimeout(function(){{b.style.display="none";}},1500);\n'
+            f'  }}\n'
+            f'  function _setLocked(v){{\n'
+            f'    _locked=v;\n'
+            f'    var w=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
+            f'    if(w)w.textContent=v?"\U0001F512":"\U0001F513";\n'
+            f'    var s=document.getElementById("cs-lock-shield-{fig_id_safe}");\n'
+            f'    if(s)s.style.display=v?"block":"none";\n'
+            f'    var rw=window.renderWindow;\n'
+            f'    var i=_iact||(rw&&rw.getInteractor?rw.getInteractor():null);\n'
+            f'    if(i&&i.setEnabled)i.setEnabled(v?0:1);\n'
+            f'    var c=_cont||(i&&i.getContainer?i.getContainer():null);\n'
+            f'    if(c&&c.style){{c.style.pointerEvents=v?"none":"";c.style.touchAction=v?"none":"";}}\n'
+            f'    if(v&&i&&i.stopAnimating)i.stopAnimating();\n'
+            f'  }}\n'
+            f'  parent.postMessage({{type:"4dpaper-lock-query",fig_id:FIG_ID}},"*");\n'
+            f'  (function(){{\n'
+            f'    var _lw=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
+            f'    if(_lw)_lw.addEventListener("click",function(){{\n'
+            f'      var nv=!_locked;\n'
+            f'      _setLocked(nv);\n'
+            f'      parent.postMessage({{type:"4dpaper-lock-toggle",fig_id:FIG_ID,locked:nv}},"*");\n'
+            f'    }});\n'
+            f'  }})();\n'
+        )
+
+    _js.append(
+        f'  window.addEventListener("message",function(e){{\n'
+        f'    if(!e.data)return;\n'
+    )
+    _js.append(
+        f'    if(e.data.type==="4dpaper-camera-ack"){{\n'
+        f'      if(e.data.fig_id!==FIG_ID&&e.data.fig_id!=="*")return;\n'
+        f'    }}\n'
+    )
+    if show_lock_btn:
+        _js.append(
+            f'    if(e.data.type==="4dpaper-lock-state"&&e.data.fig_id===FIG_ID)'
+            f'_setLocked(!!e.data.locked);\n'
+            f'    if(e.data.type==="4dpaper-lock-ack"&&e.data.fig_id===FIG_ID){{'
+            f'if(e.data.status!=="ok")_setLocked(!_locked);}}\n'
+        )
+    _js.append(
+        f'    if(e.data.type==="4dpaper-lock-all"){{\n'
+        f'      _locked=!!e.data.locked;\n'
+        f'      var _rw=window.renderWindow;\n'
+        f'      var _li=_rw&&_rw.getInteractor?_rw.getInteractor():null;\n'
+        f'      if(_li&&_li.setEnabled)_li.setEnabled(_locked?0:1);\n'
+        f'      var _lc=_cont||(_li&&_li.getContainer?_li.getContainer():null);\n'
+        f'      if(_lc&&_lc.style){{_lc.style.pointerEvents=_locked?"none":"";_lc.style.touchAction=_locked?"none":"";}}\n'
+        f'      if(_locked&&_li&&_li.stopAnimating)_li.stopAnimating();\n'
+        f'      var _lw=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
+        f'      if(_lw)_lw.textContent=_locked?"\U0001F512":"\U0001F513";\n'
+        f'      var _ls=document.getElementById("cs-lock-shield-{fig_id_safe}");\n'
+        f'      if(_ls)_ls.style.display=_locked?"block":"none";\n'
+        f'    }}\n'
+        f'    if(e.data.type==="4dpaper-hide-lock-btn"){{\n'
+        f'      var _lhw=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
+        f'      if(_lhw)_lhw.style.display="none";\n'
+        f'    }}\n'
+    )
+    _js.append(f'  }});\n')
+
+    _js.append(
+        f'  var _camTimer=null;\n'
+        f'  function _sendCam(renderer){{\n'
+        f'    if(_locked)return;\n'
+        f'    clearTimeout(_camTimer);\n'
+        f'    _camTimer=setTimeout(function(){{\n'
+        f'      var cam=renderer.getActiveCamera();\n'
+        f'      var camData={{position:cam.getPosition(),focal_point:cam.getFocalPoint(),'
+        f'view_up:cam.getViewUp(),parallel_scale:cam.getParallelScale(),'
+        f'parallel_projection:cam.getParallelProjection()?1:0}};\n'
+        f'      parent.postMessage({{type:"4dpaper-camera",fig_id:FIG_ID,camera:camData}},"*");\n'
+        f'    }},300);\n'
+        f'  }}\n'
+    )
+
+    if show_orientation:
+        _iso_lock_gate = (
+            f'      if(_locked){{_showLockedBadge();return;}}\n'
+        ) if show_lock_btn else ''
+        _js.append(
+            f'  var _renderer=null;\n'
+            f'  function _n3(v){{var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);'
+            f'return l<1e-10?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}}\n'
+            f'  function _cr(a,b){{return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}}\n'
+            f'  function _dt(a,b){{return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}}\n'
+            f'  function _rot(v,axis,deg){{\n'
+            f'    var a=_n3(axis),x=v[0],y=v[1],z=v[2];\n'
+            f'    var c=Math.cos(deg*Math.PI/180),s=Math.sin(deg*Math.PI/180);\n'
+            f'    var d=a[0]*x+a[1]*y+a[2]*z;\n'
+            f'    return [\n'
+            f'      x*c+(a[1]*z-a[2]*y)*s+a[0]*d*(1-c),\n'
+            f'      y*c+(a[2]*x-a[0]*z)*s+a[1]*d*(1-c),\n'
+            f'      z*c+(a[0]*y-a[1]*x)*s+a[2]*d*(1-c)\n'
+            f'    ];\n'
+            f'  }}\n'
+            f'  var _svg=null;\n'
+            f'  function _drawAxes(){{\n'
+            f'    if(!_renderer||!_svg)return;\n'
+            f'    var cam=_renderer.getActiveCamera();\n'
+            f'    var pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp();\n'
+            f'    var vd=_n3([fp[0]-pos[0],fp[1]-pos[1],fp[2]-pos[2]]);\n'
+            f'    var right=_n3(_cr(vd,vup));\n'
+            f'    var up=_cr(right,vd);\n'
+            f'    var cx=28,cy=28,R=22;\n'
+            f'    function proj(v){{return[cx+R*_dt(v,right),cy-R*_dt(v,up)];}}\n'
+            f'    var axes=[\n'
+            f'      {{w:[1,0,0],col:"#ff6666",lcol:"#ff9999",lbl:"X",'
+            f'hpd:\'data-dir="1,0,0"\',hnd:\'data-dir="-1,0,0"\'}},\n'
+            f'      {{w:[0,1,0],col:"#66cc66",lcol:"#99cc99",lbl:"Y",'
+            f'hpd:\'data-dir="0,1,0"\',hnd:\'data-dir="0,-1,0"\'}},\n'
+            f'      {{w:[0,0,1],col:"#6699ff",lcol:"#99aaff",lbl:"Z",'
+            f'hpd:\'data-dir="0,0,1"\',hnd:\'data-dir="0,0,-1"\'}}\n'
+            f'    ];\n'
+            f'    var html="";\n'
+            f'    axes.forEach(function(ax){{\n'
+            f'      var tip=proj(ax.w);\n'
+            f'      var tail=proj([-0.4*ax.w[0],-0.4*ax.w[1],-0.4*ax.w[2]]);\n'
+            f'      var tx=tip[0].toFixed(1),ty=tip[1].toFixed(1);\n'
+            f'      var dx=tip[0]-cx,dy=tip[1]-cy,len=Math.sqrt(dx*dx+dy*dy)||1;\n'
+            f'      var nx=-dy/len*3.5,ny=dx/len*3.5;\n'
+            f'      var bx1=(tip[0]-dx/len*7+nx).toFixed(1),by1=(tip[1]-dy/len*7+ny).toFixed(1);\n'
+            f'      var bx2=(tip[0]-dx/len*7-nx).toFixed(1),by2=(tip[1]-dy/len*7-ny).toFixed(1);\n'
+            f'      html+=\'<line x1="\'+cx+\'" y1="\'+cy+\'" x2="\'+tx+\'" y2="\'+ty+\'"\'\n'
+            f'           +\' \'+ax.hpd+\' stroke="\'+ax.col+\'" stroke-width="2.5"/>\';\n'
+            f'      html+=\'<polygon points="\'+tx+","+ty+" "+bx1+","+by1+" "+bx2+","+by2+\'"\'\n'
+            f'           +\' \'+ax.hpd+\' fill="\'+ax.col+\'"/>\';\n'
+            f'      html+=\'<text x="\'+( tip[0]+dx/len*5).toFixed(1)+\'" y="\'+( tip[1]+dy/len*5+3).toFixed(1)+\'"\'\n'
+            f'           +\' \'+ax.hpd+\' font-size="9" fill="\'+ax.lcol+\'" font-family="monospace">\'\n'
+            f'           +ax.lbl+\'</text>\';\n'
+            f'    }});\n'
+            f'    _svg.innerHTML=html;\n'
+            f'  }}\n'
+            f'  function _axLoop(){{_drawAxes();requestAnimationFrame(_axLoop);}}\n'
+            f'  var _ISO_VIEWS=[[1,1,1],[-1,1,1],[-1,-1,1],[1,-1,1]];\n'
+            f'  var _ISO_NAMES=["+X+Y+Z","-X+Y+Z","-X-Y+Z","+X-Y+Z"];\n'
+            f'  var _isoIdx=0;\n'
+            f'  var _isoT;\n'
+            f'  window.csSetView_{fig_id_safe}=function(dir,vup){{\n'
+            f'    if(!_renderer)return;\n'
+            f'    var cam=_renderer.getActiveCamera();\n'
+            f'    var fp=cam.getFocalPoint(),dist=cam.getDistance();\n'
+            f'    var pn=_n3(dir);\n'
+            f'    var up=vup?_n3(vup):((Math.abs(pn[2])>0.9)?[0,1,0]:[0,0,1]);\n'
+            f'    cam.setPosition(fp[0]+pn[0]*dist,fp[1]+pn[1]*dist,fp[2]+pn[2]*dist);\n'
+            f'    cam.setViewUp(up[0],up[1],up[2]);\n'
+            f'    cam.setFocalPoint(fp[0],fp[1],fp[2]);\n'
+            f'    _renderer.resetCameraClippingRange();\n'
+            f'    if(_iact)_iact.setEnabled(1);\n'
+            f'    if(window.renderWindow)window.renderWindow.render();\n'
+            f'    _sendCam(_renderer);\n'
+            f'  }};\n'
+            f'  window.csRotate_{fig_id_safe}=function(dx,dy){{\n'
+            f'    if(!_renderer)return;\n'
+            f'    var cam=_renderer.getActiveCamera();\n'
+            f'    var pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp();\n'
+            f'    var rel=[pos[0]-fp[0],pos[1]-fp[1],pos[2]-fp[2]];\n'
+            f'    var right=_n3(_cr(rel,vup));\n'
+            f'    var pitch=_rot(rel,right,dy);\n'
+            f'    var yawAxis=_n3(vup);\n'
+            f'    var yaw=_rot(pitch,yawAxis,dx);\n'
+            f'    cam.setPosition(fp[0]+yaw[0],fp[1]+yaw[1],fp[2]+yaw[2]);\n'
+            f'    cam.setViewUp(vup[0],vup[1],vup[2]);\n'
+            f'    _renderer.resetCameraClippingRange();\n'
+            f'    if(window.renderWindow)window.renderWindow.render();\n'
+            f'    _sendCam(_renderer);\n'
+            f'  }};\n'
+        )
+    else:
+        _js.append(f'  var _renderer=null;\n')
+
+    _svg_assign = (
+        f'          _svg=document.getElementById("cs-svg-axes-{fig_id_safe}");\n'
+    ) if show_orientation else ''
+    _svg_click_listener = (
+        f'          _svg.addEventListener("click",function(e){{\n'
+        f'            var dv=e.target.getAttribute("data-dir");if(!dv)return;\n'
+        + (f'            if(_locked){{_showLockedBadge();return;}}\n' if show_lock_btn else '')
+        + f'            csSetView_{fig_id_safe}(dv.split(",").map(Number));\n'
+        f'          }});\n'
+    ) if show_orientation else ''
+    _axLoop_call = f'          _axLoop();\n' if show_orientation else ''
+    _iact_lock = (
+        f'          _iact=window.renderWindow.getInteractor();\n'
+        f'          if(_iact)_iact.setEnabled(_locked?0:1);\n'
+    ) if show_orientation else ''
+    _lock_refresh = (
+        f'          _setLocked(_locked);\n'
+    ) if show_lock_btn else ''
+    _js.append(
+        f'  var _renderer=null, _isHovered=false;\n'
+        f'  (function _wR(){{\n'
+        f'    var rw=window.renderWindow;\n'
+        f'    if(rw&&rw.getRenderers){{\n'
+        f'      var rs=rw.getRenderers();\n'
+        f'      for(var _ri=0;_ri<rs.length;_ri++){{\n'
+        f'        var _r=rs[_ri];\n'
+        f'        if(_r&&_r.getActors&&_r.getActors().length>0){{\n'
+        f'          _renderer=_r;\n'
+        f'          _cont=window.renderWindow.getInteractor().getContainer();\n'
+        f'          if(_cont){{\n'
+        f'            _cont.addEventListener("mouseenter",function(){{_isHovered=true;window.focus();}});\n'
+        f'            _cont.addEventListener("mouseleave",function(){{_isHovered=false;}});\n'
+        f'            _cont.addEventListener("wheel",function(e){{e.preventDefault();}},{{passive:false}});\n'
+        f'          }}\n'
+        + _lock_refresh
+        + _svg_assign
+        + _svg_click_listener
+        + _axLoop_call
+        + _iact_lock
+        + f'          document.addEventListener("pointerup",function(){{_sendCam(_renderer);}});\n'
+        f'          document.addEventListener("mouseup",function(){{_sendCam(_renderer);}});\n'
+        f'          document.addEventListener("touchend",function(){{_sendCam(_renderer);}});\n'
+        f'          window.addEventListener("message",function(e){{\n'
+        f'            if(!_renderer || _locked || !e.data || e.data.type!=="4dpaper-camera-apply")return;\n'
+        f'            var cam=e.data.camera;if(!cam)return;\n'
+        f'            var c=_renderer.getActiveCamera();\n'
+        f'            if(cam.position)c.setPosition(cam.position[0],cam.position[1],cam.position[2]);\n'
+        f'            if(cam.focal_point)c.setFocalPoint(cam.focal_point[0],cam.focal_point[1],cam.focal_point[2]);\n'
+        f'            if(cam.view_up)c.setViewUp(cam.view_up[0],cam.view_up[1],cam.view_up[2]);\n'
+        f'            if(cam.parallel_scale!=null)c.setParallelScale(cam.parallel_scale);\n'
+        f'            if(cam.parallel_projection!=null)c.setParallelProjection(!!cam.parallel_projection);\n'
+        f'            window.renderWindow.render();\n'
+        f'          }});\n'
+        f'          return;\n'
+        f'        }}\n'
+        f'      }}\n'
+        f'    }}\n'
+        f'    setTimeout(_wR,200);\n'
+        f'  }})();\n'
+    )
+
+    if has_fields:
+        _js.append(
+            f'  var FIELD_DATA={field_data_js};\n'
+            f'  var FIELD_RANGES={field_ranges_js};\n'
+            f'  var ORIG_FIELD={active_field_js};\n'
+            f'  var _fSel=document.getElementById("cs-field-sel-{fig_id_safe}");\n'
+            f'  var _fBadge=document.getElementById("cs-field-badge-{fig_id_safe}");\n'
+            f'  function _decF(b64){{var bin=atob(b64);var by=new Uint8Array(bin.length);'
+            f'for(var i=0;i<bin.length;i++)by[i]=bin.charCodeAt(i);return new Float32Array(by.buffer);}}\n'
+            f'  (function _wM(){{\n'
+            f'    var rw=window.renderWindow;\n'
+            f'    if(rw&&rw.getRenderers){{\n'
+            f'      var rs=rw.getRenderers();\n'
+            f'      for(var _ri=0;_ri<rs.length;_ri++){{\n'
+            f'        var _r=rs[_ri];if(!_r||!_r.getActors)continue;\n'
+            f'        var acts=_r.getActors();\n'
+            f'        for(var _ai=0;_ai<acts.length;_ai++){{\n'
+            f'          var act=acts[_ai];if(!act||!act.getMapper)continue;\n'
+            f'          var mp=act.getMapper();if(!mp||!mp.getInputData)continue;\n'
+            f'          var pd=mp.getInputData();\n'
+            f'          if(pd&&pd.getPointData&&pd.getPointData().getArrayByName(ORIG_FIELD)){{\n'
+            f'            if(_fSel)_fSel.addEventListener("change",function(){{\n'
+            f'              var f=_fSel.value;\n'
+            f'              if(!FIELD_DATA[f]&&f!==ORIG_FIELD)return;\n'
+            f'              try{{\n'
+            f'                if(_fBadge){{_fBadge.innerHTML="&#8230;";'
+            f'_fBadge.style.background="#555";_fBadge.style.display="inline-block";}}\n'
+            f'                var arr=pd.getPointData().getArrayByName(ORIG_FIELD);\n'
+            f'                if(FIELD_DATA[f])arr.setData(_decF(FIELD_DATA[f]),1);\n'
+            f'                arr.modified();pd.modified();\n'
+            f'                var rng=FIELD_RANGES[f];\n'
+            f'                if(rng)mp.setScalarRange(rng[0],rng[1]);\n'
+            f'                try{{var a2=_r.getActors2D?_r.getActors2D():[];'
+            f'for(var k=0;k<a2.length;k++)if(a2[k].setTitle)a2[k].setTitle(f);}}'
+            f'catch(e2){{}}\n'
+            f'                window.renderWindow.render();\n'
+            f'                if(_fBadge){{_fBadge.innerHTML="&#10003; "+f;'
+            f'_fBadge.style.background="rgba(0,140,0,0.85)";'
+            f'setTimeout(function(){{_fBadge.style.display="none";}},2000);}}\n'
+            f'                try{{parent.postMessage({{type:"4dpaper-field-update",'
+            f'fig_id:FIG_ID,data:{{field:f}}}},"*");}}'
+            f'catch(e3){{}}\n'
+            f'              }}catch(err){{\n'
+            f'                if(_fBadge){{_fBadge.innerHTML="&#10007; error";'
+            f'_fBadge.style.background="rgba(180,0,0,0.85)";'
+            f'_fBadge.style.display="inline-block";}}\n'
+            f'                console.error("[4dpaper] field switch error:",err);\n'
+            f'              }}\n'
+            f'            }});\n'
+            f'            return;\n'
+            f'          }}\n'
+            f'        }}\n'
+            f'      }}\n'
+            f'    }}\n'
+            f'    setTimeout(_wM,200);\n'
+            f'  }})();\n'
+        )
+
+    if has_time:
+        _js.append(
+            f'  var TIME_DATA={time_data_js};\n'
+            f'  var TIME_LABELS={time_labels_js};\n'
+            f'  var GLOBAL_RANGE={global_range_js};\n'
+            f'  var TIME_FIELD={time_field_js};\n'
+            f'  var _tSlider=document.getElementById("cs-time-slider-{fig_id_safe}");\n'
+            f'  var _tVal=document.getElementById("cs-time-val-{fig_id_safe}");\n'
+            f'  var _tIdx=document.getElementById("cs-time-idx-{fig_id_safe}");\n'
+            f'  var _tTimer=null;\n'
+            f'  function _decT(b64){{var bin=atob(b64);var by=new Uint8Array(bin.length);'
+            f'for(var i=0;i<bin.length;i++)by[i]=bin.charCodeAt(i);return new Float32Array(by.buffer);}}\n'
+            f'  (function _wT(){{\n'
+            f'    var rw=window.renderWindow;\n'
+            f'    if(rw&&rw.getRenderers){{\n'
+            f'      var rs=rw.getRenderers();\n'
+            f'      for(var _ri=0;_ri<rs.length;_ri++){{\n'
+            f'        var _r=rs[_ri];if(!_r||!_r.getActors)continue;\n'
+            f'        var acts=_r.getActors();\n'
+            f'        for(var _ai=0;_ai<acts.length;_ai++){{\n'
+            f'          var act=acts[_ai];if(!act||!act.getMapper)continue;\n'
+            f'          var mp=act.getMapper();if(!mp||!mp.getInputData)continue;\n'
+            f'          var pd=mp.getInputData();\n'
+            f'          if(pd&&pd.getPointData&&pd.getPointData().getArrayByName(TIME_FIELD)){{\n'
+            f'            if(_tSlider)_tSlider.addEventListener("input",function(){{\n'
+            f'              var idx=parseInt(_tSlider.value);\n'
+            f'              if(_tVal&&TIME_LABELS[idx]!==undefined)_tVal.textContent=TIME_LABELS[idx];\n'
+            f'              if(_tIdx)_tIdx.textContent=idx;\n'
+            f'              clearTimeout(_tTimer);\n'
+            f'              var b64=TIME_DATA[idx];if(!b64)return;\n'
+            f'              try{{var a=pd.getPointData().getArrayByName(TIME_FIELD);\n'
+            f'a.setData(_decT(b64),1);a.modified();pd.modified();\n'
+            f'mp.setScalarRange(GLOBAL_RANGE[0],GLOBAL_RANGE[1]);\n'
+            f'window.renderWindow.render();}}'
+            f'catch(e1){{console.error("[4dp] t-step:",e1);}}\n'
+            f'              _tTimer=setTimeout(function(){{\n'
+            f'                try{{parent.postMessage({{type:"4dpaper-field-update",'
+            f'fig_id:FIG_ID,data:{{time:String(idx)}}}},"*");}}'
+            f'catch(e2){{}}\n'
+            f'              }},100);\n'
+            f'            }});\n'
+            f'            return;\n'
+            f'          }}\n'
+            f'        }}\n'
+            f'      }}\n'
+            f'    }}\n'
+            f'    setTimeout(_wT,200);\n'
+            f'  }})();\n'
+        )
+    _js.append(
+        f'  window.addEventListener("keydown",function(e){{\n'
+        f'    if(!_renderer || !_isHovered)return;\n'
+        f'    var k=e.key.toLowerCase();\n'
+        f'    if(k==="x"){{csSetView_{fig_id_safe}([1,0,0],[0,0,1]);}}\n'
+        f'    else if(k==="y"){{csSetView_{fig_id_safe}([0,1,0],[0,0,1]);}}\n'
+        f'    else if(k==="z"){{csSetView_{fig_id_safe}([0,0,1],[0,1,0]);}}\n'
+        f'    else if(k==="i"){{csSetView_{fig_id_safe}([1,1,1],[0,0,1]);}}\n'
+        f'    else if(e.key==="ArrowUp"){{csRotate_{fig_id_safe}(0,-90);}}\n'
+        f'    else if(e.key==="ArrowDown"){{csRotate_{fig_id_safe}(0,90);}}\n'
+        f'    else if(e.key==="ArrowLeft"){{csRotate_{fig_id_safe}(-90,0);}}\n'
+        f'    else if(e.key==="ArrowRight"){{csRotate_{fig_id_safe}(90,0);}}\n'
+        f'    if(e.key.startsWith("Arrow")){{e.preventDefault();}}\n'
+        f'  }});\n'
+    )
+
+    js_block = f'<script>\n(function(){{\n' + "".join(_js) + f'}})();\n</script>\n'
+    return html_block + js_block
+
 
 def generate_png_figure(
     src_path: Path,
@@ -621,14 +1044,9 @@ def generate_png_figure(
     axis_color: str = "black",
     cmap: str = "coolwarm",
     show_colorbar: bool = True,
+    decimate: str = "auto",
 ) -> None:
-    """
-    Generate a static PNG figure using PyVista.
-
-    If a saved camera JSON exists at state/camera_<fig_id>.json, the saved
-    camera position is applied; otherwise falls back to isometric view.
-    Used as a fallback for PDF export.
-    """
+    """Generate a static PNG figure with PyVista."""
     import pyvista as pv
     from scripts.data_loader import SimulationData
 
@@ -655,6 +1073,7 @@ def generate_png_figure(
         raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
 
     surface = mesh.extract_surface(algorithm='dataset_surface')
+    surface = _apply_decimation(surface, decimate, label=f"{fig_id or 'fig'}.png")
 
     pl = pv.Plotter(off_screen=True, window_size=(900, 600))
     pl.background_color = background if background != "transparent" else "white"
@@ -701,6 +1120,7 @@ def generate_html_figure(
     show_colorbar: bool = True,
     show_lock_btn: bool = True,
     show_orientation: bool = True,
+    decimate: str = "auto",
 ) -> None:
     """
     Generate a self-contained vtk.js HTML figure using PyVista.
@@ -736,6 +1156,7 @@ def generate_html_figure(
         raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
 
     surface = mesh.extract_surface(algorithm='dataset_surface')
+    surface = _apply_decimation(surface, decimate, label=f"{fig_id or 'fig'}.html")
 
     pl = pv.Plotter(off_screen=True, window_size=(900, 600))
     pl.background_color = background if background != "transparent" else "white"
@@ -762,19 +1183,16 @@ def generate_html_figure(
     apply_camera_state(pl, fig_id or "unnamed", camera_path)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    data_dir = output_path.parent / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    
     pl.export_html(str(output_path))
     pl.close()
 
     # ── Prepare field data blobs for live switching ───────────────────────────
     # For each switchable field (other than the one already rendered), extract
     # the scalar array as Float32, cell→point interpolated to match what
-    # trame serialises for the active field.
-    # New: Save as raw binary files (.bin) instead of base64 strings.
+    # trame serialises for the active field, then base64-encode for injection.
+    import base64 as _b64
     fields_to_embed = list(available_fields) if available_fields else [field]
-    field_data_urls: dict[str, str] = {}
+    field_data_b64: dict[str, str] = {}
     field_ranges: dict[str, list[float]] = {}
 
     # Convert cell data → point data once (matches vtk.js rendering path)
@@ -797,34 +1215,30 @@ def generate_html_figure(
             print(f"[4dpaper] Warning: field '{f}' not found — skipping from switcher.", file=sys.stderr)
             continue
         arr_f32 = arr_np.astype("float32").ravel()
-        
-        # Save as binary file
-        bin_name = f"{fig_id or 'fig'}_f_{f}.bin"
-        (data_dir / bin_name).write_bytes(arr_f32.tobytes())
-        
-        field_data_urls[f] = f"data/{bin_name}"
+        field_data_b64[f] = _b64.b64encode(arr_f32.tobytes()).decode("ascii")
         field_ranges[f] = [float(arr_f32.min()), float(arr_f32.max())]
 
     # ── Prepare time step data blobs (one per step, active field only) ────────
-    # Each entry is a URL to a binary Float32Array of the scalar values at that step.
+    # Each entry is a base64 Float32Array of the scalar values at that step.
     # Empty string is used as a placeholder when a step's data is unavailable.
-    time_data_urls: list[str] = []
+    time_data_b64: list[str] = []
     time_labels: list[str] = []
     time_global_min = float("inf")
     time_global_max = float("-inf")
 
     if sim.n_steps > 1 and field:
         print(
-            f"[4dpaper] {fig_id or 'fig'}: generating binary data for {sim.n_steps} timesteps …",
+            f"[4dpaper] {fig_id or 'fig'}: embedding {sim.n_steps} timesteps for timeline …",
             file=sys.stderr,
         )
         for t_idx in range(sim.n_steps):
             t_mesh = sim.get_mesh(t_idx)
             if t_mesh is None:
-                time_data_urls.append("")
+                time_data_b64.append("")
                 time_labels.append(str(t_idx))
                 continue
             t_surface = t_mesh.extract_surface(algorithm="dataset_surface")
+            t_surface = _apply_decimation(t_surface, decimate, label=f"{fig_id or 'fig'} t={t_idx}")
             # Get scalar array — same cell→point conversion logic as _get_arr
             arr_np = None
             if field in t_surface.point_data:
@@ -835,16 +1249,11 @@ def generate_html_figure(
                     arr_np = t_pts.point_data[field]
             if arr_np is not None:
                 arr_f32 = arr_np.astype("float32").ravel()
-                
-                # Save as binary file
-                bin_name = f"{fig_id or 'fig'}_t_{t_idx}.bin"
-                (data_dir / bin_name).write_bytes(arr_f32.tobytes())
-                
-                time_data_urls.append(f"data/{bin_name}")
+                time_data_b64.append(_b64.b64encode(arr_f32.tobytes()).decode("ascii"))
                 time_global_min = min(time_global_min, float(arr_f32.min()))
                 time_global_max = max(time_global_max, float(arr_f32.max()))
             else:
-                time_data_urls.append("")
+                time_data_b64.append("")
             # Human-readable time label (physical time value from the reader)
             if t_idx < len(sim.time_steps):
                 time_labels.append(f"{sim.time_steps[t_idx]:.4g}")
@@ -883,212 +1292,19 @@ def generate_html_figure(
                     show_orientation=show_orientation,
                     fields_to_embed=fields_to_embed,
                     active_field=field,
-                    field_data=field_data_urls,
+                    field_data_b64=field_data_b64,
                     field_ranges=field_ranges,
                     time_labels=time_labels,
-                    time_data=time_data_urls,
+                    time_data_b64=time_data_b64,
                     time_global_range=time_global_range,
                     time_idx=idx,
                     time_field=field,
                 ) + "\n</body>"
             html = html.replace("</body>", inj_html, 1)
-    output_path.write_text(html)
+    output_path.write_text(html, encoding="utf-8")
+    _maybe_sign_output_html(output_path)
 
     print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
-
-
-def generate_html_from_vtu(
-    vtu_path: Path,
-    out_html: Path,
-    fig_id: str,
-    scalar_name: str,
-    clim: list[float],
-    cmap,
-    field_association: str,
-    preview: bool = False,
-) -> None:
-    """
-    Export a PyVista HTML figure from a .vtu geometry file.
-
-    Uses off_screen=False so that export_html() initialises the WebGL exporter
-    correctly -- same pattern as generate_html_figure().
-    """
-    import pyvista as pv
-
-    mesh = pv.read(str(vtu_path))
-
-    pl = pv.Plotter(off_screen=False)
-    pl.background_color = "#1a1a2e"
-
-    add_kwargs: dict = dict(cmap=cmap, preference=field_association)
-    if scalar_name and scalar_name in {**mesh.point_data, **mesh.cell_data}:
-        add_kwargs["scalars"] = scalar_name
-        add_kwargs["clim"] = clim
-
-    pl.add_mesh(mesh, **add_kwargs)
-
-    if not preview:
-        camera_path = _project_root / "state" / f"camera_{fig_id}.json"
-        if camera_path.exists():
-            try:
-                cam = json.loads(camera_path.read_text())
-                _apply_camera_from_dict(pl, fig_id, cam)
-            except Exception as exc:
-                print(f"[4dpaper] WARNING: could not apply camera for {fig_id}: {exc}", file=sys.stderr)
-        else:
-            pl.isometric_view()
-    else:
-        pl.isometric_view()
-
-    out_html.parent.mkdir(parents=True, exist_ok=True)
-    pl.export_html(str(out_html))
-    pl.close()
-
-
-def generate_pvsm_figure(
-    pvsm_path: Path,
-    fig_id: str,
-    figures_dir: Path,
-    data_path: Path | None = None,
-    time_spec: str | None = None,
-    pvpython_path: Path | None = None,
-) -> None:
-    """
-    Render a .pvsm state file to .vtu geometry and .png screenshot using pvpython.
-    Injects 4dpaper HUD controls into the resulting .html file.
-    """
-    import subprocess
-
-    pv_exe = pvpython_path or find_pvpython()
-    if not pv_exe:
-        raise RuntimeError(f"[4dpaper] ERROR: ParaView (pvpython) not found. Required for PVSM rendering.")
-
-    # Validate version before proceeding
-    if not check_paraview_version("6.0.1", pvpython_path=pv_exe):
-         _log(f"ParaView version check failed for {fig_id}. Proceeding with caution.", level="WARN")
-
-    pvsm_render_script = _ext_dir / "pvsm_render.py"
-    out_vtu     = figures_dir / f"{fig_id}-pipeline.vtu"
-    out_png     = figures_dir / f"{fig_id}.png"
-    out_html    = figures_dir / f"{fig_id}.html"
-    out_preview = figures_dir / f"{fig_id}-preview.html"
-    camera_path = _project_root / "state" / f"camera_{fig_id}.json"
-
-    # -- Step 1: pvpython subprocess -------------------------------------------
-    color_info = parse_pvsm_color_info(pvsm_path)
-
-    cmd = [
-        str(pv_exe), str(pvsm_render_script),
-        "--pvsm",    str(pvsm_path),
-        "--out-vtu", str(out_vtu),
-        "--out-png", str(out_png),
-    ]
-    if data_path:
-        cmd += ["--data", str(data_path)]
-    if time_spec:
-        cmd += ["--time", str(time_spec)]
-    if camera_path.exists():
-        cmd += ["--camera", str(camera_path)]
-    if not time_spec and color_info.get("scalar_name"):
-        cmd += ["--all-times", "--scalar", color_info["scalar_name"]]
-
-    _log(f"Running pvpython for {fig_id} ...")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.stdout: _log(result.stdout.strip())
-    if result.stderr: _log(result.stderr.strip(), level="DEBUG")
-    if result.returncode != 0:
-        raise RuntimeError(f"pvpython failed for {fig_id} (exit {result.returncode}).")
-
-    if not out_vtu.exists():
-        raise RuntimeError(f"pvpython did not produce {out_vtu}")
-
-    # -- Step 2: PyVista HTML export -------------------------------------------
-
-    _log(f"Generating {fig_id}.html from VTU ...")
-    generate_html_from_vtu(
-        vtu_path=out_vtu,
-        out_html=out_html,
-        fig_id=fig_id,
-        scalar_name=color_info["scalar_name"],
-        clim=[color_info["vmin"], color_info["vmax"]],
-        cmap=color_info["cmap"],
-        field_association=color_info["field_association"],
-        preview=False,
-    )
-
-    _log(f"Generating {fig_id}-preview.html ...")
-    generate_html_from_vtu(
-        vtu_path=out_vtu,
-        out_html=out_preview,
-        fig_id=fig_id,
-        scalar_name=color_info["scalar_name"],
-        clim=[color_info["vmin"], color_info["vmax"]],
-        cmap=color_info["cmap"],
-        field_association=color_info["field_association"],
-        preview=True,
-    )
-
-    # -- Step 3: Build time data and inject controls ----------------------------
-    scalar_name = color_info.get("scalar_name", "") or ""
-    time_labels: list[str] | None = None
-    time_data_b64: list[str] | None = None
-    time_global_range: list[float] | None = None
-
-    # Only attempt time embedding when no specific time step was requested
-    # and the PVSM has an active scalar field.
-    if not time_spec and scalar_name:
-        times_json = figures_dir / f"{fig_id}-times.json"
-        if times_json.exists():
-            try:
-                time_labels = json.loads(times_json.read_text(encoding="utf-8"))
-                arrays = []
-                for i in range(len(time_labels)):
-                    bin_path = figures_dir / f"{fig_id}-scalars-t{i}.bin"
-                    raw = bin_path.read_bytes()
-                    arr = _array.array("f")
-                    arr.frombytes(raw)
-                    arrays.append(arr)
-
-                # Topology guard: all frame arrays must have the same length
-                ref_len = len(arrays[0]) if arrays else 0
-                if any(len(a) != ref_len for a in arrays):
-                    print(
-                        f"[4dpaper] WARNING: {fig_id} — mesh topology changes between "
-                        "time steps; time scrubber disabled.",
-                        file=sys.stderr,
-                    )
-                    time_labels = None
-                    time_data_b64 = None
-                else:
-                    time_data_b64 = [
-                        _b64.b64encode(a.tobytes()).decode("ascii") for a in arrays
-                    ]
-                    time_global_range = [
-                        float(min(min(a) for a in arrays)),
-                        float(max(max(a) for a in arrays)),
-                    ]
-            except (OSError, ValueError) as exc:
-                print(
-                    f"[4dpaper] WARNING: {fig_id} — could not load time data: {exc}; "
-                    "time scrubber disabled.",
-                    file=sys.stderr,
-                )
-                time_labels = None
-
-    controls = _controls_strip_snippet(
-        fig_id=fig_id,
-        show_lock_btn=True,
-        show_orientation=True,
-        time_labels=time_labels,
-        time_data_b64=time_data_b64,
-        time_global_range=time_global_range,
-        time_field=scalar_name,
-    )
-    if controls:
-        html = out_html.read_text(encoding="utf-8")
-        if "</body>" in html:
-            out_html.write_text(html.replace("</body>", controls + "\n</body>", 1),
-                                encoding="utf-8")
 
 
 def generate_panel_html(panel: dict, figures_dir: Path) -> None:
@@ -1122,7 +1338,7 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
     camera_mode = panel.get("camera_mode", "independent")
 
     for sub_idx, sub in enumerate(panel["subfigures"]):
-        src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
+        src = resolve_src_path(sub["src"])
         out = figures_dir / f"{sub['id']}.html"
         af = [f.strip() for f in sub.get("fields", "").split(",") if f.strip()] or None
         # For timeseries: only show colorbar and lock button on the first panel
@@ -1138,9 +1354,60 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
     # Bidirectional re-relay: forwards camera/field UP to top, acks DOWN to children
     panel_id = panel["id"]
 
-    # 1. Process JS template from asset
-    js_tmpl = get_asset("panel_sync.js")
-    re_relay = f"<script>\n{js_tmpl.replace('{{PANEL_ID}}', panel_id).replace('{{SYNC_MODE}}', 'true' if camera_mode == 'sync' else 'false')}\n</script>"
+    if camera_mode == "sync":
+        re_relay = f"""\
+<script>
+var PANEL_ID="{panel_id}";
+window.addEventListener("message",function(e){{
+  if(!e.data)return;
+  if(e.data.type==="4dpaper-camera"){{
+    var msg=Object.assign({{}},e.data,{{fig_id:PANEL_ID}});
+    top.postMessage(msg,"*");
+    var iframes=document.querySelectorAll("iframe");
+    for(var i=0;i<iframes.length;i++){{
+      iframes[i].contentWindow.postMessage({{type:"4dpaper-camera-apply",camera:e.data.camera}},"*");
+    }}
+  }}
+  if(e.data.type==="4dpaper-camera-ack"){{
+    var camAck=Object.assign({{}},e.data,{{fig_id:"*"}});
+    var iframes2=document.querySelectorAll("iframe");
+    for(var j=0;j<iframes2.length;j++){{iframes2[j].contentWindow.postMessage(camAck,"*");}}
+  }}
+  if(e.data.type==="4dpaper-field-ack"){{
+    var iframes3=document.querySelectorAll("iframe");
+    for(var k=0;k<iframes3.length;k++){{iframes3[k].contentWindow.postMessage(e.data,"*");}}
+  }}
+  if(e.data.type==="4dpaper-field-update"){{top.postMessage(e.data,"*");}}
+  if(e.data.type==="4dpaper-lock-query"||e.data.type==="4dpaper-lock-toggle"){{
+    top.postMessage(e.data,"*");
+  }}
+  if(e.data.type==="4dpaper-lock-state"||e.data.type==="4dpaper-lock-ack"){{
+    var iframes4=document.querySelectorAll("iframe");
+    for(var l=0;l<iframes4.length;l++){{iframes4[l].contentWindow.postMessage(e.data,"*");}}
+  }}
+}});
+</script>"""
+    else:
+        re_relay = """\
+<script>
+window.addEventListener("message",function(e){
+  if(!e.data)return;
+  if(e.data.type==="4dpaper-camera"||e.data.type==="4dpaper-field-update"){
+    top.postMessage(e.data,"*");
+  }
+  if(e.data.type==="4dpaper-camera-ack"||e.data.type==="4dpaper-field-ack"){
+    var iframes=document.querySelectorAll("iframe");
+    for(var i=0;i<iframes.length;i++){iframes[i].contentWindow.postMessage(e.data,"*");}
+  }
+  if(e.data.type==="4dpaper-lock-query"||e.data.type==="4dpaper-lock-toggle"){
+    top.postMessage(e.data,"*");
+  }
+  if(e.data.type==="4dpaper-lock-state"||e.data.type==="4dpaper-lock-ack"){
+    var iframes2=document.querySelectorAll("iframe");
+    for(var k=0;k<iframes2.length;k++){iframes2[k].contentWindow.postMessage(e.data,"*");}
+  }
+});
+</script>"""
 
     grid_style = (
         f'display:grid;grid-template-columns:repeat({ncols},1fr);'
@@ -1167,7 +1434,8 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
     )
 
     out_path = figures_dir / f"{panel['id']}.html"
-    out_path.write_text(composite)
+    out_path.write_text(composite, encoding="utf-8")
+    _maybe_sign_output_html(out_path)
     print(f"[4dpaper] Generated panel (HTML): {out_path}", file=sys.stderr)
 
     # Write manifest so Lua can embed subfigures as direct srcdoc iframes
@@ -1210,7 +1478,7 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
     is_timeseries = panel.get("timeseries", False)
     # Generate each sub-figure PNG
     for sub_idx, sub in enumerate(panel["subfigures"]):
-        src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
+        src = resolve_src_path(sub["src"])
         out = figures_dir / f"{sub['id']}.png"
         cam_id = panel["id"] if camera_mode == "sync" else sub["id"]
         show_cb = (sub_idx == 0) if is_timeseries else True
@@ -1436,13 +1704,14 @@ def generate_video_figure(
     b64 = base64.b64encode(mp4_path.read_bytes()).decode("ascii")
     video_html = _build_video_html_fragment(b64, fig_id)
     video_html_path.parent.mkdir(parents=True, exist_ok=True)
-    video_html_path.write_text(video_html)
+    video_html_path.write_text(video_html, encoding="utf-8")
+    _maybe_sign_output_html(video_html_path)
     print(f"[4dpaper] Generated (video HTML): {video_html_path}", file=sys.stderr)
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
-def run_quarto_pre_render() -> None:
+def main() -> None:
     if os.environ.get("QUARTO_NO_EXECUTE"):
         print("[4dpaper] --no-execute mode: skipping figure generation.", file=sys.stderr)
         return
@@ -1453,14 +1722,30 @@ def run_quarto_pre_render() -> None:
     output_format = os.environ.get("QUARTO_OUTPUT_FORMAT", "html")  # kept for logging only
 
     # QUARTO_DOCUMENT_PATH is not always set for project-level pre-render hooks.
-    # Fall back to scanning all .qmd files in QUARTO_PROJECT_DIR (or project root).
+    # Fall back to following includes from main.qmd (or analysis_report.qmd).
     if qmd_path and Path(qmd_path).exists():
         qmd_files = [Path(qmd_path)]
     else:
         project_dir = Path(os.environ.get("QUARTO_PROJECT_DIR", str(_project_root)))
-        # Scan root *.qmd files and all *.qmd files in sections/ and subdirectories
-        qmd_files = sorted(project_dir.glob("*.qmd"))
-        qmd_files.extend(sorted(project_dir.glob("sections/**/*.qmd")))
+
+        def collect_includes(qmd: Path, seen: set) -> list:
+            if qmd in seen or not qmd.exists():
+                return []
+            seen.add(qmd)
+            result = [qmd]
+            for m in re.finditer(r'\{\{<\s*include\s+([^\s>]+)\s*>\}\}', qmd.read_text()):
+                child = (qmd.parent / m.group(1)).resolve()
+                result.extend(collect_includes(child, seen))
+            return result
+
+        for candidate in ["main.qmd", "analysis_report.qmd"]:
+            root_qmd = project_dir / candidate
+            if root_qmd.exists():
+                qmd_files = collect_includes(root_qmd, set())
+                break
+        else:
+            qmd_files = sorted(project_dir.glob("*.qmd"))
+
         if not qmd_files:
             print("[4dpaper] No .qmd files found — skipping.", file=sys.stderr)
             return
@@ -1469,7 +1754,6 @@ def run_quarto_pre_render() -> None:
     figures = []
     videos = []
     panels = []
-    pvsm_figs = []
     ts_raw = []
     graphs = []
     for qmd in qmd_files:
@@ -1477,12 +1761,11 @@ def run_quarto_pre_render() -> None:
         figures.extend(parse_shortcodes(text))
         videos.extend(parse_video_shortcodes(text))
         panels.extend(parse_panel_shortcodes(text))
-        pvsm_figs.extend(parse_pvsm_shortcodes(text))
         ts_raw.extend(parse_timeseries_shortcodes(text))
         graphs.extend(parse_graph_shortcodes(text))
 
-    if not any([figures, videos, panels, pvsm_figs, ts_raw, graphs]):
-        print("[4dpaper] No 4d-image, 4d-video, 4d-panel, 4d-pvsm, 4d-timeseries, or 4d-graph shortcodes found.", file=sys.stderr)
+    if not any([figures, videos, panels, ts_raw, graphs]):
+        print("[4dpaper] No 4d-image, 4d-video, 4d-panel, 4d-timeseries, or 4d-graph shortcodes found.", file=sys.stderr)
         return
 
     figures_dir = _project_root / "state" / "figures"
@@ -1497,7 +1780,7 @@ def run_quarto_pre_render() -> None:
     if ts_raw:
         from scripts.data_loader import SimulationData as _SimData  # noqa: PLC0415
     for ts in ts_raw:
-        src = Path(ts["src"]) if Path(ts["src"]).is_absolute() else _project_root / ts["src"]
+        src = resolve_src_path(ts["src"])
         try:
             sim = _SimData(str(src)).load()
             n_steps = sim.n_steps
@@ -1520,7 +1803,7 @@ def run_quarto_pre_render() -> None:
 
     for fig in figures:
         fig_id = fig["id"]
-        src = Path(fig["src"]) if Path(fig["src"]).is_absolute() else _project_root / fig["src"]
+        src = resolve_src_path(fig["src"])
         field = fig["field"]
         time_spec = fig.get("time", "mid")
         style = resolve_style(styles_config, fig["style"], field)
@@ -1567,6 +1850,7 @@ def run_quarto_pre_render() -> None:
                     background=style["background"],
                     axis_color=style["axis_color"],
                     cmap=style["cmap"],
+                    decimate=fig.get("decimate", "auto"),
                 )
             except Exception as exc:
                 print(f"[4dpaper] ERROR generating {fig_id}.html: {exc}", file=sys.stderr)
@@ -1584,34 +1868,34 @@ def run_quarto_pre_render() -> None:
                     f"HTML preview to update)"
                 )
             except Exception:
-                _log(f"Camera for {fig_id}: file exists but is invalid — will use isometric view", level="WARN")
+                print(f"[4dpaper] Camera for {fig_id}: file exists but is invalid — will use isometric view")
         else:
-            _log(
-                f"Camera for {fig_id}: NOT SET — isometric view will be used. "
-                "Rotate the figure in the HTML preview to save a camera position.", 
-                level="INFO"
+            print(
+                f"[4dpaper] Camera for {fig_id}: NOT SET — isometric view will be used. "
+                f"Rotate the figure in the HTML preview to save a camera position."
             )
         # Always regenerate PNG when a camera file exists...
         png_fresh = is_cache_valid(out_png, src, camera_path=camera_path, field_path=field_state_path, extra_deps=styles_extra_deps)
         if png_fresh:
-            _log(f"{fig_id}.png is up to date — skipping.")
+            print(f"[4dpaper] {fig_id}.png is up to date — skipping.")
         else:
-            _log(f"Generating {fig_id}.png …")
+            print(f"[4dpaper] Generating {fig_id}.png …")
             try:
                 generate_png_figure(
                     src, field, time_spec, out_png, fig_id=fig_id,
                     background=style["background"],
                     axis_color=style["axis_color"],
                     cmap=style["cmap"],
+                    decimate=fig.get("decimate", "auto"),
                 )
             except Exception as exc:
-                _log(f"could not generate {fig_id}.png: {exc}", level="WARN")
-                _log("  PNG is needed for PDF export only — HTML render continues.", level="DEBUG")
+                print(f"[4dpaper] WARNING: could not generate {fig_id}.png: {exc}")
+                print(f"[4dpaper]   PNG is needed for PDF export only — HTML render continues.")
 
     # ── Video shortcode processing ─────────────────────────────────────────────
     for vid in videos:
         fig_id = vid["id"]
-        src = Path(vid["src"]) if Path(vid["src"]).is_absolute() else _project_root / vid["src"]
+        src = resolve_src_path(vid["src"])
         field = vid["field"]
         time_spec = vid.get("time", "mid")
         fps = int(vid.get("fps", "10"))
@@ -1635,10 +1919,10 @@ def run_quarto_pre_render() -> None:
         )
 
         if mp4_valid and frame_valid and html_valid:
-            _log(f"{fig_id} video outputs are up to date — skipping.")
+            print(f"[4dpaper] {fig_id} video outputs are up to date — skipping.", file=sys.stderr)
             continue
 
-        _log(f"Generating video for {fig_id} …")
+        print(f"[4dpaper] Generating video for {fig_id} …", file=sys.stderr)
         try:
             generate_video_figure(
                 src, field, fps, time_spec,
@@ -1647,7 +1931,7 @@ def run_quarto_pre_render() -> None:
                 preview_html_path=preview_html_path,
             )
         except Exception as exc:
-            _log(f"ERROR generating video {fig_id}: {exc}", level="ERROR")
+            print(f"[4dpaper] ERROR generating video {fig_id}: {exc}", file=sys.stderr)
             sys.exit(1)
 
     # ── Panel shortcode processing ─────────────────────────────────────────────
@@ -1660,7 +1944,7 @@ def run_quarto_pre_render() -> None:
         # Determine max mtime of all sub-figure source files and camera deps
         sub_mtimes = []
         for sub in panel["subfigures"]:
-            src = Path(sub["src"]) if Path(sub["src"]).is_absolute() else _project_root / sub["src"]
+            src = resolve_src_path(sub["src"])
             if src.exists():
                 sub_mtimes.append(src.stat().st_mtime)
         # Camera deps: sync panels use one shared file; independent use per-subfigure files
@@ -1681,97 +1965,29 @@ def run_quarto_pre_render() -> None:
         max_dep_mtime = max(sub_mtimes) if sub_mtimes else 0.0
 
         if out_html.exists() and out_html.stat().st_mtime >= max_dep_mtime:
-            _log(f"{panel_id}.html is up to date — skipping.")
+            print(f"[4dpaper] {panel_id}.html is up to date — skipping.", file=sys.stderr)
         else:
-            _log(f"Generating panel {panel_id}.html …")
+            print(f"[4dpaper] Generating panel {panel_id}.html …", file=sys.stderr)
             try:
                 generate_panel_html(panel, figures_dir)
             except Exception as exc:
-                _log(f"ERROR generating panel {panel_id}.html: {exc}", level="ERROR")
+                print(f"[4dpaper] ERROR generating panel {panel_id}.html: {exc}", file=sys.stderr)
                 sys.exit(1)
 
         if out_png.exists() and out_png.stat().st_mtime >= max_dep_mtime:
-            _log(f"{panel_id}.png is up to date — skipping.")
+            print(f"[4dpaper] {panel_id}.png is up to date — skipping.")
         else:
-            _log(f"Generating panel {panel_id}.png …")
+            print(f"[4dpaper] Generating panel {panel_id}.png …")
             try:
                 generate_panel_png(panel, figures_dir)
             except Exception as exc:
-                _log(f"ERROR generating panel {panel_id}.png: {exc}", level="ERROR")
+                print(f"[4dpaper] ERROR generating panel {panel_id}.png: {exc}")
                 sys.exit(1)
-
-    # -- PVSM shortcode processing -----------------------------------------------
-    _pvsm_render_script = _ext_dir / "pvsm_render.py"
-    _pvpython_path = find_pvpython()
-    
-    # Pre-flight check for ParaView version if PVSM figures are present
-    if pvsm_figs and not check_paraview_version("6.0.1", pvpython_path=_pvpython_path):
-        _log("ParaView version check failed. PVSM rendering may be skipped or fail.", level="WARN")
-
-    for pvsm_fig in pvsm_figs:
-        fig_id   = pvsm_fig["id"]
-        pvsm_src = Path(pvsm_fig["src"]) if Path(pvsm_fig["src"]).is_absolute() \
-                   else _project_root / pvsm_fig["src"]
-        data_str = pvsm_fig.get("data", "").strip()
-        data_path = Path(data_str) if data_str else None
-        time_spec = pvsm_fig.get("time", "").strip() or None
-
-        out_html    = figures_dir / f"{fig_id}.html"
-        out_png     = figures_dir / f"{fig_id}.png"
-        camera_path = _project_root / "state" / f"camera_{fig_id}.json"
-
-        extra_deps = [_pvsm_render_script]
-        script_newer = out_html.exists() and _here.stat().st_mtime > out_html.stat().st_mtime
-
-        # time_spec figures render a single frame; no per-step bins to check.
-        scalar_bins_ok = True
-        if not time_spec:
-            times_json_path = figures_dir / f"{fig_id}-times.json"
-            if times_json_path.exists():
-                try:
-                    n_steps = len(json.loads(times_json_path.read_text(encoding="utf-8")))
-                    bin_paths = [
-                        figures_dir / f"{fig_id}-scalars-t{i}.bin"
-                        for i in range(n_steps)
-                    ]
-                    scalar_bins_ok = all(
-                        is_cache_valid(p, pvsm_src, camera_path=camera_path)
-                        for p in bin_paths
-                    )
-                except (OSError, ValueError):
-                    scalar_bins_ok = False
-            else:
-                scalar_bins_ok = False
-
-        cache_ok = (
-            not script_newer
-            and scalar_bins_ok
-            and is_cache_valid(out_html, pvsm_src, camera_path=camera_path, extra_deps=extra_deps)
-            and is_cache_valid(out_png,  pvsm_src, camera_path=camera_path, extra_deps=extra_deps)
-        )
-
-        if cache_ok:
-            _log(f"{fig_id} PVSM outputs are up to date -- skipping.")
-            continue
-
-        _log(f"Generating PVSM figure for {fig_id} ...")
-        try:
-            generate_pvsm_figure(
-                pvsm_path=pvsm_src,
-                fig_id=fig_id,
-                figures_dir=figures_dir,
-                data_path=data_path,
-                time_spec=time_spec,
-                pvpython_path=_pvpython_path,
-            )
-        except Exception as exc:
-            _log(f"ERROR generating PVSM figure {fig_id}: {exc}", level="ERROR")
-            sys.exit(1)
 
     for graph in graphs:
         fig_id = graph["id"]
-        src = Path(graph["src"]) if Path(graph["src"]).is_absolute() else _project_root / graph["src"]
-        
+        src = resolve_src_path(graph["src"])
+
         out_html = figures_dir / f"{fig_id}.html"
         out_png = figures_dir / f"{fig_id}.png"
         
@@ -1783,23 +1999,49 @@ def run_quarto_pre_render() -> None:
         )
         
         if cache_ok:
-            _log(f"{fig_id} Graph outputs are up to date -- skipping.")
+            print(f"[4dpaper] {fig_id} Graph outputs are up to date -- skipping.", file=sys.stderr)
             continue
             
-        _log(f"Generating Graph figure for {fig_id} ({src}) ...")
+        print(f"[4dpaper] Generating Graph figure for {fig_id} ({src}) ...", file=sys.stderr)
         try:
             import plotly.io as pio
             import plotly.graph_objects as go
-            
+
             with open(src, "r") as f:
                 fig_dict = json.load(f)
-            
+
+            # Apply RDP simplification to every trace that carries (x, y) arrays.
+            for trace in fig_dict.get("data", []):
+                xs = trace.get("x")
+                ys = trace.get("y")
+                if (isinstance(xs, list) and isinstance(ys, list)
+                        and len(xs) == len(ys) and len(xs) > 2):
+                    n_before = len(xs)
+                    xs_s, ys_s = _rdp_simplify_xy(xs, ys)
+                    n_after = len(xs_s)
+                    if n_after < n_before:
+                        trace["x"] = xs_s
+                        trace["y"] = ys_s
+                        pct = 100.0 * (1.0 - n_after / n_before)
+                        tname = trace.get("name", "")
+                        print(
+                            f"[4dpaper] {fig_id} RDP{f' ({tname})' if tname else ''}: "
+                            f"{n_before:,} → {n_after:,} points ({pct:.1f}% reduction)",
+                            file=sys.stderr,
+                        )
+
             fig = go.Figure(fig_dict)
             
-            pio.write_image(fig, out_png, format="png", engine="kaleido", scale=2)
+            # Export PNG for static PDF builds. Plotly auto-selects Kaleido when installed.
+            pio.write_image(fig, out_png, format="png", scale=2)
+            
+            # Re-theme the figure background so it matches the surrounding page neatly
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
 
+            # Export standalone HTML for interactive web
             html_content = pio.to_html(fig, full_html=True, include_plotlyjs="cdn", config={'displayModeBar': False})
+            
+            # Inject 4dpaper HUD controls (Lock button, etc) so it acts like natively generated viewer
             inj_html = _controls_strip_snippet(fig_id, show_orientation=False)
             if '</body>' in html_content:
                 html_content = html_content.replace('</body>', inj_html + '\n</body>', 1)
@@ -1807,81 +2049,10 @@ def run_quarto_pre_render() -> None:
                 html_content += inj_html
                 
             out_html.write_text(html_content, encoding="utf-8")
+            _maybe_sign_output_html(out_html)
         except Exception as exc:
-            _log(f"ERROR generating Graph figure {fig_id}: {exc}", level="ERROR")
+            print(f"[4dpaper] ERROR generating Graph figure {fig_id}: {exc}", file=sys.stderr)
             sys.exit(1)
-
-
-def run_audit() -> None:
-    """
-    Perform a comprehensive diagnostic of the 4DPaper environment.
-    Reports versions of core dependencies and performs a headless render test.
-    """
-    _log("── 4DPaper Environment Audit ──", level="AUDIT")
-    
-    # 1. System Info
-    _log(f"OS: {platform.platform()} ({platform.machine()})")
-    _log(f"Python: {sys.version.splitlines()[0]}")
-    _log(f"Executable: {sys.executable}")
-    
-    # 2. Dependency Check
-    deps = ["vtk", "pyvista", "numpy", "matplotlib", "yaml"]
-    for d in deps:
-        try:
-            mod = __import__(d)
-            v = getattr(mod, "__version__", "unknown")
-            _log(f"{d:12}: {v}")
-        except ImportError:
-            _log(f"{d:12}: MISSING", level="ERROR")
-
-    # 3. Graphics Stack (Headless Render Test)
-    _log("Testing Graphics Stack (Headless Render)...")
-    try:
-        import pyvista as pv
-        pv.OFF_SCREEN = True
-        pl = pv.Plotter(off_screen=True)
-        pl.add_mesh(pv.Sphere())
-        pl.render()
-        pl.close()
-        _log("Graphics Stack: OK (Off-screen rendering functional)")
-    except Exception as exc:
-        _log(f"Graphics Stack: FAILED ({exc})", level="ERROR")
-        _log("Note: Hardware acceleration might be missing or misconfigured.", level="WARN")
-
-    # 4. ParaView Discovery
-    _log("Searching for ParaView (pvpython)...")
-    pv_path = find_pvpython()
-    if pv_path:
-        _log(f"pvpython: Found at {pv_path}")
-        try:
-            # Try to get version from pvpython
-            cmd = [str(pv_path), "-c", "import paraview.servermanager as sm; print(sm.vtkSMProxyManager.GetParaViewSourceVersion())"]
-            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=5).decode().strip()
-            _log(f"ParaView: {out}")
-        except Exception as exc:
-            _log(f"ParaView: Found but version check failed ({exc})", level="WARN")
-    else:
-        _log("pvpython: NOT FOUND (PVSM figures will be skipped)", level="WARN")
-
-    _log("── Audit Complete ──", level="AUDIT")
-
-
-def main() -> None:
-    # 1. Handle --audit flag immediately
-    if "--audit" in sys.argv:
-        run_audit()
-        sys.exit(0)
-
-    action = sys.argv[1] if len(sys.argv) > 1 else "render"
-    
-    if action == "render":
-        run_quarto_pre_render()
-    elif action == "camera-lock":
-        # Placeholder for future dashboard camera locking logic
-        _log("Action 'camera-lock' requested (not yet fully implemented)")
-    else:
-        _log(f"Unknown action: {action}", level="ERROR")
-        sys.exit(1)
 
 
 if __name__ == "__main__":
