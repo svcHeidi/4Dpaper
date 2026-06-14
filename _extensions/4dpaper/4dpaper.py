@@ -487,6 +487,9 @@ def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None
         pl.isometric_view()
 
 
+_GOLDEN_TOPBAR_JS = '  function _b64ToF32(b64){if(!b64)return null;var bin=atob(b64),len=bin.length,bytes=new Uint8Array(len);for(var i=0;i<len;i++)bytes[i]=bin.charCodeAt(i);return new Float32Array(bytes.buffer);}\n  function _getDecodedField(name){if(!_decodedFieldData[name]&&FIELD_DATA[name])_decodedFieldData[name]=_b64ToF32(FIELD_DATA[name]);return _decodedFieldData[name]||null;}\n  function _getDecodedTime(name){if(!_decodedTimeData[name]){var src=TIME_DATA[name]||[];_decodedTimeData[name]=src.map(_b64ToF32);}return _decodedTimeData[name]||[];}\n  function _getTimeRange(name){return TIME_GLOBAL_RANGE[name]||[0.0,1.0];}\n  function _getRenderer(){if(_renderer&&_renderer.getActors)return _renderer;var rw=window.renderWindow;if(rw&&rw.getRenderers){var rs=rw.getRenderers();for(var i=0;i<rs.length;i++){var r=rs[i];if(r&&r.getActors&&r.getActors().length>0){_renderer=r;return r;}}for(var j=0;j<rs.length;j++){if(rs[j]){_renderer=rs[j];return _renderer;}}}return null;}\n  function _findMeshActor(){if(!window.__4dp_global_probe){window.__4dp_global_probe=true;console.log("[4dp probe-global] typeof window.vtk=",typeof window.vtk);var hits=Object.keys(window).filter(function(k){return /vtk|render|view|trame|scene|loca/i.test(k);});console.log("[4dp probe-global] window keys matching vtk/render/view/trame/scene/local:",hits);hits.forEach(function(k){try{var v=window[k];console.log("[4dp probe-global]   window."+k,"type=",typeof v,"hasGR=",!!(v&&v.getRenderers),"hasRW=",!!(v&&v.getRenderWindow),"hasGCN=",!!(v&&v.getClassName),"className=",v&&v.getClassName&&v.getClassName());}catch(_){}});var canvases=document.querySelectorAll("canvas");console.log("[4dp probe-global] canvas count=",canvases.length);canvases.forEach(function(c,ci){var keys=Object.keys(c).filter(function(k){return /vtk|render/i.test(k);});console.log("[4dp probe-global] canvas",ci,"vtk-ish keys=",keys,"id=",c.id,"class=",c.className);});try{var pIfr=parent&&parent.window;console.log("[4dp probe-global] parent.vtk=",typeof(pIfr&&pIfr.vtk));}catch(_){}try{var olv=window.OfflineLocalView;console.log("[4dp probe-OLV] type=",typeof olv,"keys=",olv?Object.keys(olv):null,"protoKeys=",olv?Object.getOwnPropertyNames(Object.getPrototypeOf(olv)||{}):null);if(olv){["getRenderer","getRenderWindow","getRenderers","getViewer","getView","render","scene","viewer"].forEach(function(m){console.log("[4dp probe-OLV]   has."+m+"=",typeof olv[m]);});}}catch(e){console.log("[4dp probe-OLV] err",e&&e.message);}try{var cs=document.querySelectorAll("canvas");if(cs&&cs[0]){var c=cs[0];var ck=[];for(var key in c){if(/vtk|render/i.test(key))ck.push(key);}console.log("[4dp probe-canvas] keys (incl proto):",ck);}}catch(_){}}var r=_getRenderer();if(!r){if(!window.__4dp_no_r){window.__4dp_no_r=true;console.log("[4dp probe] no renderer found via window.renderWindow");}return null;}if(!window.__4dp_probed){window.__4dp_probed=true;var rw=window.renderWindow;var rs=rw&&rw.getRenderers?rw.getRenderers():[];console.log("[4dp probe] rw=",!!rw,"rwClass=",rw&&rw.getClassName&&rw.getClassName(),"nRenderers=",rs.length);rs.forEach(function(rr,ri){var acts=rr.getActors?rr.getActors():[];var props=rr.getViewProps?rr.getViewProps():[];console.log("[4dp probe] renderer",ri,"class=",rr.getClassName&&rr.getClassName(),"nActors=",acts.length,"nProps=",props.length);var all=[].concat(acts).concat(props);all.forEach(function(a,ai){var m=a&&a.getMapper&&a.getMapper();var d=m&&m.getInputData&&m.getInputData();var pd=d&&d.getPointData&&d.getPointData();var arrs=[];if(pd&&pd.getNumberOfArrays){for(var k=0;k<pd.getNumberOfArrays();k++){var arr=pd.getArrayByIndex&&pd.getArrayByIndex(k);arrs.push(arr&&arr.getName&&arr.getName());}}console.log("[4dp probe]  item",ai,"actorClass=",a&&a.getClassName&&a.getClassName(),"mapperClass=",m&&m.getClassName&&m.getClassName(),"inputClass=",d&&d.getClassName&&d.getClassName(),"arrays=",arrs);});});}var acts=r.getActors?r.getActors():[];var props=r.getViewProps?r.getViewProps():[];var all=[].concat(acts).concat(props);for(var i=0;i<all.length;i++){var a=all[i],m=a&&a.getMapper&&a.getMapper(),d=m&&m.getInputData&&m.getInputData();if(d&&d.getPointData&&d.getPointData())return a;}return null;}\n  function _getScalarTarget(){_meshActor=_meshActor||_findMeshActor();if(!_meshActor){console.log("[4dp] _getScalarTarget: no meshActor");return null;}var mapper=_meshActor.getMapper&&_meshActor.getMapper();var input=mapper&&mapper.getInputData&&mapper.getInputData();var pd=input&&input.getPointData&&input.getPointData();var scalars=pd&&pd.getScalars&&pd.getScalars();if(!mapper||!input||!pd||!scalars){console.log("[4dp] _getScalarTarget incomplete",{mapper:!!mapper,input:!!input,pd:!!pd,scalars:!!scalars});return null;}return {mapper:mapper,input:input,pd:pd,scalars:scalars};}\n  function _applyScalarArray(arr,range,name){console.log("[4dp] _applyScalarArray name=",name,"len=",arr&&arr.length,"range=",range);var t=_getScalarTarget();if(!t||!arr){console.log("[4dp] _applyScalarArray FAIL: t=",!!t,"arr=",!!arr);return false;}var next=t.pd&&t.pd.getArrayByName?t.pd.getArrayByName(_displayScalarName):null;if(next&&next.setData){console.log("[4dp] _applyScalarArray branch=A getArrayByName");next.setData(arr,1);}else if(t.pd&&t.pd.getScalars&&t.pd.getScalars()&&t.pd.getScalars().setData){console.log("[4dp] _applyScalarArray branch=B getScalars");next=t.pd.getScalars();next.setData(arr,1);}else if(t.scalars&&t.scalars.newClone){console.log("[4dp] _applyScalarArray branch=C newClone");next=t.scalars.newClone();if(next.setNumberOfComponents)next.setNumberOfComponents(1);if(next.setData)next.setData(arr,1);}else if(t.scalars&&t.scalars.newInstance){console.log("[4dp] _applyScalarArray branch=D newInstance");next=t.scalars.newInstance({numberOfComponents:1,values:arr});}else {console.log("[4dp] _applyScalarArray FAIL: no setData path");return false;}if(next&&next.setName)next.setName(_displayScalarName);if(next&&t.pd.addArray)t.pd.addArray(next);if(_displayScalarName&&t.pd.setActiveScalars)t.pd.setActiveScalars(_displayScalarName);if(next&&t.pd.setScalars)t.pd.setScalars(next);if(next&&next.modified)next.modified();if(t.pd.modified)t.pd.modified();if(t.input.modified)t.input.modified();if(t.mapper.setColorByArrayName)t.mapper.setColorByArrayName(_displayScalarName);if(t.mapper.setScalarModeToUsePointData)t.mapper.setScalarModeToUsePointData();if(t.mapper.setScalarVisibility)t.mapper.setScalarVisibility(true);if(range&&t.mapper.setScalarRange)t.mapper.setScalarRange(range[0],range[1]);if(t.mapper.mapScalars)t.mapper.mapScalars(t.input,1.0);if(t.mapper.modified)t.mapper.modified();if(_meshActor.modified)_meshActor.modified();if(window.renderWindow){console.log("[4dp] _applyScalarArray render() OK");window.renderWindow.render();}return true;}\n  function _emitTimeSync(){if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1)parent.postMessage({type:"4dpaper-time",fig_id:FIG_ID,idx:_timeIdx,playing:_timePlaying},"*");}\n  function _setTimeFrame(idx,silent){console.log("[4dp] _setTimeFrame idx=",idx,"ACTIVE_FIELD=",ACTIVE_FIELD);var frames=_getDecodedTime(ACTIVE_FIELD);console.log("[4dp] _setTimeFrame frames=",frames&&frames.length);if(!frames||idx<0||idx>=frames.length){console.log("[4dp] _setTimeFrame BAIL idx out of range or no frames");return;}_timeIdx=idx;var slider=document.getElementById("cs-time-slider-__FIGSAFE__");if(slider)slider.value=String(idx);var label=document.getElementById("cs-time-val-__FIGSAFE__");if(label)label.textContent=(TIME_LABELS[idx]||String(idx));var arr=frames[idx];console.log("[4dp] _setTimeFrame arr ok=",!!arr,"len=",arr&&arr.length);if(arr)_applyScalarArray(arr,_getTimeRange(ACTIVE_FIELD),ACTIVE_FIELD);if(!silent)_emitTimeSync();}\n  function _setPlaying(v,silent){_timePlaying=!!v;var btn=document.getElementById("cs-play-__FIGSAFE__");if(btn)btn.innerHTML=_timePlaying?"&#x23F8;":"&#x25B6;";if(!_timePlaying&&_timeRaf){cancelAnimationFrame(_timeRaf);_timeRaf=0;}if(!silent)_emitTimeSync();}\n  function _tickTime(ts){if(!_timePlaying)return;if(!_timeLastTs)_timeLastTs=ts;if(ts-_timeLastTs>=180){var frames=_getDecodedTime(ACTIVE_FIELD);console.log("[4dp] _tickTime advance frames=",frames&&frames.length,"_timeIdx=",_timeIdx);if(frames&&frames.length){_setTimeFrame((_timeIdx+1)%frames.length);} _timeLastTs=ts;}_timeRaf=requestAnimationFrame(_tickTime);}\n  function _bindControls(){if(_controlsBound)return;_controlsBound=true;var slider=document.getElementById("cs-time-slider-__FIGSAFE__");if(slider)slider.addEventListener("input",function(){_setPlaying(false,true);_setTimeFrame(parseInt(this.value||"0",10)||0);});var play=document.getElementById("cs-play-__FIGSAFE__");console.log("[4dp] _bindControls: play btn found=",!!play,"slider found=",!!slider,"FIG_ID=",FIG_ID);if(play)play.addEventListener("click",function(){console.log("[4dp] play CLICK locked=",_locked,"_timePlaying=",_timePlaying);if(_locked){if(typeof _showLockedBadge==="function")_showLockedBadge();return;}var nv=!_timePlaying;_setPlaying(nv);_timeLastTs=0;if(nv)_timeRaf=requestAnimationFrame(_tickTime);});var fieldSel=document.getElementById("cs-field-sel-__FIGSAFE__");if(fieldSel)fieldSel.addEventListener("change",function(){var f=this.value,arr=_getDecodedField(f),range=FIELD_RANGES[f];if(arr&&_applyScalarArray(arr,range,f)){ACTIVE_FIELD=f;var badge=document.getElementById("cs-field-badge-__FIGSAFE__");if(badge){badge.textContent=f;badge.style.display="inline-block";badge.style.background="rgba(74,158,255,0.18)";badge.style.color="#9ecbff";setTimeout(function(){badge.style.display="none";},900);}if(TIME_DATA[f]&&TIME_DATA[f].length>_timeIdx){_setTimeFrame(_timeIdx);}}});if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1){var label=document.getElementById("cs-time-val-__FIGSAFE__");if(label)label.textContent=(TIME_LABELS[_timeIdx]||String(_timeIdx));}}\n  function _setLocked(v){\n    _locked=v;\n    var w=document.getElementById("cs-lock-widget-__FIGSAFE__");\n    if(w)w.innerHTML=v?"&#x1F512;":"&#x1F513;";\n    var s=document.getElementById("cs-lock-shield-__FIGSAFE__");\n    if(s)s.style.display=v?"block":"none";\n    var rw=window.renderWindow;\n    var i=(rw&&rw.getInteractor?rw.getInteractor():null);\n    if(i&&i.setEnabled)i.setEnabled(v?0:1);\n    var c=_cont||(i&&i.getContainer?i.getContainer():null);\n    if(c&&c.style){c.style.pointerEvents=v?"none":"";c.style.touchAction=v?"none":"";}\n    if(v&&i&&i.stopAnimating)i.stopAnimating();\n  }\n  function _n3(v){var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);return l<1e-10?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}\n  function _cr(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}\n  function _dt(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}\n  function _rot(v,ax,deg){var a=_n3(ax),x=v[0],y=v[1],z=v[2],c=Math.cos(deg*Math.PI/180),s=Math.sin(deg*Math.PI/180),d=a[0]*x+a[1]*y+a[2]*z;return[x*c+(a[1]*z-a[2]*y)*s+a[0]*d*(1-c),y*c+(a[2]*x-a[0]*z)*s+a[1]*d*(1-c),z*c+(a[0]*y-a[1]*x)*s+a[2]*d*(1-c)];}\n  window.csSetView___FIGSAFE__=function(dir,vup){if(!_renderer || _locked)return;var cam=_renderer.getActiveCamera(),fp=cam.getFocalPoint(),dist=cam.getDistance(),pn=_n3(dir),up=vup?_n3(vup):((Math.abs(pn[2])>0.9)?[0,1,0]:[0,0,1]);cam.setPosition(fp[0]+pn[0]*dist,fp[1]+pn[1]*dist,fp[2]+pn[2]*dist);cam.setViewUp(up[0],up[1],up[2]);cam.setFocalPoint(fp[0],fp[1],fp[2]);_renderer.resetCameraClippingRange();if(window.renderWindow)window.renderWindow.render();_sendCam(_renderer);};\n  window.csRotate___FIGSAFE__=function(dx,dy){if(!_renderer || _locked)return;var cam=_renderer.getActiveCamera(),pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp(),rel=[pos[0]-fp[0],pos[1]-fp[1],pos[2]-fp[2]],right=_n3(_cr(rel,vup)),pitch=_rot(rel,right,dy),yawAxis=_n3(vup),yaw=_rot(pitch,yawAxis,dx);cam.setPosition(fp[0]+yaw[0],fp[1]+yaw[1],fp[2]+yaw[2]);cam.setViewUp(vup[0],vup[1],vup[2]);_renderer.resetCameraClippingRange();if(window.renderWindow)window.renderWindow.render();_sendCam(_renderer);};\n  var _camTimer=null;\n  function _sendCam(r){if(_locked)return;clearTimeout(_camTimer);_camTimer=setTimeout(function(){var c=r.getActiveCamera();var d={position:c.getPosition(),focal_point:c.getFocalPoint(),view_up:c.getViewUp(),parallel_scale:c.getParallelScale(),parallel_projection:c.getParallelProjection()?1:0};parent.postMessage({type:"4dpaper-camera",fig_id:FIG_ID,camera:d},"*");},300);}\n  var _svg=null;\n  function _drawAxes(){if(!_renderer||!_svg)return;var cam=_renderer.getActiveCamera(),pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp(),vd=_n3([fp[0]-pos[0],fp[1]-pos[1],fp[2]-pos[2]]),right=_n3(_cr(vd,vup)),up=_cr(right,vd),cx=28,cy=28,R=22;function proj(v){return[cx+R*_dt(v,right),cy-R*_dt(v,up)];}var axes=[{w:[1,0,0],col:"#ff6666",lcol:"#ff9999",lbl:"X",hpd:\'data-dir="1,0,0"\'},{w:[0,1,0],col:"#66cc66",lcol:"#99cc99",lbl:"Y",hpd:\'data-dir="0,1,0"\'},{w:[0,0,1],col:"#6699ff",lcol:"#99aaff",lbl:"Z",hpd:\'data-dir="0,0,1"\'}];var h="";axes.forEach(function(ax){var tip=proj(ax.w),tx=tip[0].toFixed(1),ty=tip[1].toFixed(1),dx=tip[0]-cx,dy=tip[1]-cy,len=Math.sqrt(dx*dx+dy*dy)||1,nx=-dy/len*3.5,ny=dx/len*3.5,bx1=(tip[0]-dx/len*7+nx).toFixed(1),by1=(tip[1]-dy/len*7+ny).toFixed(1),bx2=(tip[0]-dx/len*7-nx).toFixed(1),by2=(tip[1]-dy/len*7-ny).toFixed(1);h+=\'<line x1="\'+cx+\'" y1="\'+cy+\'" x2="\'+tx+\'" y2="\'+ty+\'" \'+ax.hpd+\' stroke="\'+ax.col+\'" stroke-width="2.5"/>\';h+=\'<polygon points="\'+tx+","+ty+" "+bx1+","+by1+" "+bx2+","+by2+\'" \'+ax.hpd+\' fill="\'+ax.col+\'"/>\';h+=\'<text x="\'+(tip[0]+dx/len*5).toFixed(1)+\'" y="\'+(tip[1]+dy/len*5+3).toFixed(1)+\'" \'+ax.hpd+\' font-size="9" fill="\'+ax.lcol+\'" font-family="monospace">\'+ax.lbl+\'</text>\';});_svg.innerHTML=h;}\n  function _axLoop(){_drawAxes();requestAnimationFrame(_axLoop);}\n  (function _wR(){\n    var rw=window.renderWindow;\n    var r=_getRenderer();\n    if(r){\n          var i=rw&&rw.getInteractor?rw.getInteractor():null;_cont=i?i.getContainer():null;\n          if(_cont){\n            _cont.addEventListener("mouseenter",function(){_isHovered=true;window.focus();});\n            _cont.addEventListener("mouseleave",function(){_isHovered=false;});\n            _cont.addEventListener("wheel",function(e){e.preventDefault();},{passive:false});\n          }\n          _bindControls();\n          _svg=document.getElementById("cs-svg-axes-__FIGSAFE__");_svg.addEventListener("click",function(e){var dv=e.target.getAttribute("data-dir");if(!dv)return;if(_locked){if(typeof _showLockedBadge==="function")_showLockedBadge();return;}csSetView___FIGSAFE__(dv.split(",").map(Number));});_axLoop();\n          if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1)_setTimeFrame(_timeIdx);\n          document.addEventListener("pointerup",function(){_sendCam(_renderer);});\n          document.addEventListener("mouseup",function(){_sendCam(_renderer);});\n          document.addEventListener("touchend",function(){_sendCam(_renderer);});\n          window.addEventListener("message",function(e){\n            if(!e.data)return;var d=e.data;\n            if(d.type==="4dpaper-camera-apply"){if(_locked)return;var cam=d.camera,c=_renderer.getActiveCamera();if(cam.position)c.setPosition(cam.position[0],cam.position[1],cam.position[2]);if(cam.focal_point)c.setFocalPoint(cam.focal_point[0],cam.focal_point[1],cam.focal_point[2]);if(cam.view_up)c.setViewUp(cam.view_up[0],cam.view_up[1],cam.view_up[2]);if(cam.parallel_scale!=null)c.setParallelScale(cam.parallel_scale);if(cam.parallel_projection!=null)c.setParallelProjection(!!cam.parallel_projection);window.renderWindow.render();}\n            else if(d.type==="4dpaper-time-apply"&&d.fig_id!==FIG_ID){_setPlaying(!!d.playing,true);_timeLastTs=0;_setTimeFrame(parseInt(d.idx||"0",10)||0,true);}\n            else if(d.type==="4dpaper-lock-state"&&d.fig_id===FIG_ID)_setLocked(!!d.locked);\n            else if(d.type==="4dpaper-lock-ack"&&d.fig_id===FIG_ID){if(d.status!=="ok")_setLocked(!_locked);}\n            else if(d.type==="4dpaper-lock-all")_setLocked(!!d.locked);\n            else if(d.type==="4dpaper-hide-lock-btn"){var w=document.getElementById("cs-lock-widget-__FIGSAFE__");if(w)w.style.display="none";var s=document.getElementById("cs-lock-sep-__FIGSAFE__");if(s)s.style.display="none";}\n          });\n          return;\n    }\n    setTimeout(_wR,200);\n  })();\n  _bindControls();\n  window.addEventListener("keydown",function(e){if(!_renderer||!_isHovered||_locked)return;var k=e.key.toLowerCase();if(k==="x")csSetView___FIGSAFE__([1,0,0],[0,0,1]);else if(k==="y")csSetView___FIGSAFE__([0,1,0],[0,0,1]);else if(k==="z")csSetView___FIGSAFE__([0,0,1],[0,1,0]);else if(k==="i")csSetView___FIGSAFE__([1,1,1],[0,0,1]);else if(e.key==="ArrowUp")csRotate___FIGSAFE__(0,-90);else if(e.key==="ArrowDown")csRotate___FIGSAFE__(0,90);else if(e.key==="ArrowLeft")csRotate___FIGSAFE__(-90,0);else if(e.key==="ArrowRight")csRotate___FIGSAFE__(90,0);if(e.key.startsWith("Arrow"))e.preventDefault();});'
+
+
 def _controls_strip_snippet(
     fig_id: str,
     show_lock_btn: bool = True,
@@ -496,541 +499,118 @@ def _controls_strip_snippet(
     field_data_b64: dict | None = None,
     field_ranges: dict | None = None,
     time_labels: list[str] | None = None,
-    time_data_b64: list[str] | None = None,
-    time_global_range: list[float] | None = None,
+    time_data_b64: dict | None = None,
+    time_global_range: dict | None = None,
     time_idx: int = 0,
     time_field: str = "",
 ) -> str:
-    """Return the shared controls-strip HTML and JS."""
-    fig_id_js = json.dumps(fig_id).replace("</", "<\\/")
-    fig_id_safe = fig_id.replace("</", "<\\/").replace('"', '').replace("-", "_")
+    """Return the golden top-bar HTML + IIFE JS for one figure.
 
-    has_fields = bool(fields_to_embed and len(fields_to_embed) > 1)
-    has_time = bool(time_labels and len(time_labels) > 1 and time_data_b64)
-    n_time = len(time_data_b64) if time_data_b64 else 0
+    Reproduces the May-2026 reference figure UI: a fixed 26px top bar with an
+    inline field selector, play/pause button, time slider + value, and a
+    bottom-left axis widget. Lock state is driven externally via postMessage
+    (panel lock-all / dashboard), matching the reference figures.
 
-    BTN = (
-        "width:26px;height:26px;background:rgba(20,20,30,0.72);"
-        "border:1px solid rgba(255,255,255,0.18);border-radius:5px;"
-        "cursor:pointer;font-size:13px;line-height:1;color:#fff;"
-        "display:flex;align-items:center;justify-content:center;"
-    )
-    POP = (
-        "position:fixed;right:38px;top:50%;transform:translateY(-50%);"
-        "z-index:9998;background:rgba(20,20,30,0.88);"
-        "border:1px solid rgba(255,255,255,0.12);border-radius:6px;"
-        "padding:10px;font-family:monospace;font-size:11px;color:#eee;"
-        "box-shadow:0 4px 12px rgba(0,0,0,0.5);display:none;flex-direction:column;gap:6px;"
-        "min-width:120px;"
-    )
+    `time_data_b64` and `time_global_range` are per-field dicts
+    (``{field: [b64_frame, ...]}`` and ``{field: [min, max]}``) so the field
+    switcher animates the correct field while playing.
+    """
+    fig_id_safe = fig_id.replace("</", "").replace('"', "").replace("-", "_")
 
+    fields = list(fields_to_embed or ([active_field] if active_field else []))
+    has_fields = len(fields) > 1
 
-    strip_btns = ""
-    if has_fields:
-        strip_btns += (
-            f'<button id="cs-btn-field-{fig_id_safe}"'
-            f' onclick="csToggle_{fig_id_safe}(\'field\')"'
-            f' title="Switch field" style="{BTN}">&#x1F3A8;</button>\n'
-        )
-    if has_time:
-        strip_btns += (
-            f'<button id="cs-btn-time-{fig_id_safe}"'
-            f' onclick="csToggle_{fig_id_safe}(\'time\')"'
-            f' title="Time step" style="{BTN}">&#x1F550;</button>\n'
-        )
+    tdata = time_data_b64 if isinstance(time_data_b64, dict) else {}
+    tglobal = time_global_range if isinstance(time_global_range, dict) else {}
+    active_frames = tdata.get(active_field or time_field) or []
+    has_time = bool(time_labels and len(time_labels) > 1 and len(active_frames) > 1)
+    n_time = len(active_frames)
 
-    if not strip_btns and not show_orientation and not show_lock_btn:
+    # Nothing to render (e.g. plotly graph): emit no markup and no JS so we
+    # never inject a vtk renderer-polling loop into a non-vtk page.
+    if not has_fields and not has_time and not show_orientation:
         return ""
 
-    corner_widget = ""
+    # ── Top bar markup ───────────────────────────────────────────────────────
+    topbar = ""
+    if has_fields or has_time:
+        inner = ""
+        if has_fields:
+            opts = "".join(
+                f'<option value="{f}"{" selected" if f == active_field else ""}>{f}</option>'
+                for f in fields
+            )
+            inner += (
+                '<label style="display:flex;align-items:center;gap:2px;flex-shrink:0;">'
+                '<span style="color:#777;font-size:9px;">F</span>'
+                f'<select id="cs-field-sel-{fig_id_safe}" style="background:transparent;'
+                'border:none;color:#ddd;font-family:system-ui,sans-serif;font-size:10px;'
+                f'cursor:pointer;outline:none;max-width:90px;padding:0;">{opts}</select></label>'
+                '<span style="width:1px;height:14px;background:rgba(255,255,255,0.15);'
+                'flex-shrink:0;display:inline-block;"></span>'
+            )
+        if has_time:
+            init_label = time_labels[time_idx] if time_idx < len(time_labels) else str(time_idx)
+            inner += (
+                f'<button id="cs-play-{fig_id_safe}" title="Play / pause animation" '
+                'style="background:none;border:none;cursor:pointer;color:#ccc;font-size:11px;'
+                'flex-shrink:0;padding:0 1px;line-height:1;">&#x25B6;</button>'
+                '<span style="color:#777;font-size:9px;flex-shrink:0;">t</span>'
+                f'<input type="range" id="cs-time-slider-{fig_id_safe}" min="0" '
+                f'max="{n_time - 1}" value="{time_idx}" style="flex:1;min-width:30px;'
+                'max-width:110px;cursor:pointer;accent-color:#4a9eff;margin:0;">'
+                f'<span id="cs-time-val-{fig_id_safe}" style="color:#aaa;font-size:9px;'
+                'flex-shrink:0;white-space:nowrap;font-family:monospace;">'
+                f'{init_label}</span>'
+            )
+        inner += (
+            f'<span id="cs-field-badge-{fig_id_safe}" style="display:none;padding:1px 4px;'
+            'border-radius:2px;font-size:9px;flex-shrink:0;"></span>'
+        )
+        topbar = (
+            f'<div id="cs-topbar-{fig_id_safe}" style="position:fixed;top:0;left:0;right:0;'
+            'z-index:9999;display:flex;align-items:center;gap:5px;'
+            'background:rgba(18,18,26,0.82);border-bottom:1px solid rgba(255,255,255,0.09);'
+            f'padding:0 6px;height:26px;box-sizing:border-box;">{inner}</div>'
+        )
+
+    corner = ""
     if show_orientation:
-        corner_widget = (
-            f'<div id="cs-corner-{fig_id_safe}"'
-            f' style="position:fixed;bottom:4px;left:4px;z-index:9999;'
-            f'display:flex;align-items:center;gap:6px;">\n'
-            f'  <svg id="cs-svg-axes-{fig_id_safe}" width="56" height="56"'
-            f' style="background:transparent;border:none;border-radius:0;'
-            f'display:block;cursor:pointer;overflow:visible;"'
-            f' title="Click axis tip: ortho view \u00b7 Click axis tail: opposite view"></svg>\n'
-            f'  <span id="cs-iso-flash-{fig_id_safe}"'
-            f' style="font-size:9px;color:#ffe033;font-family:monospace;min-width:60px;"></span>\n'
-            f'</div>\n'
+        corner = (
+            f'<div id="cs-corner-{fig_id_safe}" style="position:fixed;bottom:4px;left:4px;'
+            'z-index:9999;display:flex;align-items:center;gap:6px;">'
+            f'<svg id="cs-svg-axes-{fig_id_safe}" width="56" height="56" '
+            'style="background:transparent;border:none;border-radius:0;display:block;'
+            'cursor:pointer;overflow:visible;" '
+            'title="Click axis tip: ortho view \u00b7 Click axis tail: opposite view"></svg>'
+            f'<span id="cs-iso-flash-{fig_id_safe}" style="font-size:9px;color:#ffe033;'
+            'font-family:monospace;min-width:60px;"></span></div>'
         )
 
-    lock_widget = ""
-    lock_badge = ""
-    lock_shield = ""
-    if show_lock_btn:
-        lock_widget = (
-            f'<div id="cs-lock-widget-{fig_id_safe}"'
-            f' style="position:fixed;top:4px;right:4px;z-index:9999;'
-            f'width:26px;height:26px;background:rgba(20,20,30,0.72);'
-            f'border:1px solid rgba(255,255,255,0.18);border-radius:5px;'
-            f'cursor:pointer;font-size:13px;'
-            f'display:flex;align-items:center;justify-content:center;color:#fff;"'
-            f' title="Lock / unlock figure">&#x1F513;</div>\n'
-        )
-        lock_badge = (
-            f'<div id="cs-lock-badge-{fig_id_safe}"'
-            f' style="display:none;position:fixed;top:4px;right:36px;z-index:9999;'
-            f'background:rgba(20,20,30,0.88);'
-            f'border:1px solid rgba(255,255,255,0.12);'
-            f'border-radius:4px;padding:2px 6px;'
-            f'font-family:monospace;font-size:10px;color:#f88;">locked</div>\n'
-        )
-        lock_shield = (
-            f'<div id="cs-lock-shield-{fig_id_safe}"'
-            f' style="display:none;position:fixed;inset:0;z-index:9998;'
-            f'background:transparent;cursor:not-allowed;"></div>\n'
-        )
+    html_block = topbar + corner
 
-    field_pop = ""
-    if has_fields:
-        field_opts = "".join(
-            f'<option value="{f}"{"  selected" if f == active_field else ""}>{f}</option>'
-            for f in (fields_to_embed or [])
-        )
-        field_pop = (
-            f'<div id="cs-pop-field-{fig_id_safe}" style="{POP}">\n'
-            f'  <label style="display:flex;flex-direction:column;gap:4px;">Field:\n'
-            f'    <select id="cs-field-sel-{fig_id_safe}"'
-            f' style="background:#333;color:#fff;border:1px solid #555;border-radius:3px;">\n'
-            f'      {field_opts}\n'
-            f'    </select>\n'
-            f'  </label>\n'
-            f'  <span id="cs-field-badge-{fig_id_safe}"'
-            f' style="display:none;padding:2px 6px;border-radius:2px;font-size:10px;"></span>\n'
-            f'</div>\n'
-        )
-
-    time_pop = ""
-    if has_time:
-        initial_label = (
-            time_labels[time_idx] if time_idx < len(time_labels) else str(time_idx)
-        )
-        time_pop = (
-            f'<div id="cs-pop-time-{fig_id_safe}" style="{POP}">\n'
-            f'  <div style="display:flex;justify-content:space-between;gap:8px;">\n'
-            f'    <span style="color:#aaa;">t&nbsp;=&nbsp;'
-            f'<span id="cs-time-val-{fig_id_safe}">{initial_label}</span></span>\n'
-            f'    <span style="color:#666;font-size:10px;">'
-            f'<span id="cs-time-idx-{fig_id_safe}">{time_idx}</span>/{n_time - 1}</span>\n'
-            f'  </div>\n'
-            f'  <input type="range" id="cs-time-slider-{fig_id_safe}"'
-            f' min="0" max="{n_time - 1}" value="{time_idx}"\n'
-            f'    style="width:160px;cursor:pointer;accent-color:#4a9eff;">\n'
-            f'</div>\n'
-        )
-
-    html_block = ""
-    if strip_btns:
-        html_block += (
-            f'<div id="cs-strip-{fig_id_safe}" style="position:fixed;right:4px;top:50%;'
-            f'transform:translateY(-50%);z-index:9999;display:flex;flex-direction:column;gap:4px;">\n'
-            + strip_btns
-            + f'</div>\n'
-        )
-    html_block += lock_shield + lock_widget + lock_badge + field_pop + time_pop + corner_widget
-
-    active_field_js = json.dumps(active_field).replace("</", "<\\/")
-    field_data_js = json.dumps(field_data_b64 or {}).replace("</", "<\\/")
-    field_ranges_js = json.dumps(field_ranges or {}).replace("</", "<\\/")
-    time_field_js = json.dumps(time_field or active_field).replace("</", "<\\/")
-    time_data_js = json.dumps(time_data_b64 or []).replace("</", "<\\/")
-    time_labels_js = json.dumps(time_labels or []).replace("</", "<\\/")
-    global_range_js = json.dumps(time_global_range or [0.0, 1.0])
-
-    _js = []
-
-    _js.append(f'  var FIG_ID={fig_id_js};\n')
-
-    if show_orientation:
-        _js.append(f'  var _iact=null;\n')
-
-    _locked_gate = (
-        f'    if(_locked){{_showLockedBadge();return;}}\n'
-    ) if show_lock_btn else ''
-    _js.append(
-        f'  var _CS_ALL=["axes","field","time"];\n'
-        f'  window.csToggle_{fig_id_safe}=function(name){{\n'
-        + _locked_gate
-        + f'    for(var _i=0;_i<_CS_ALL.length;_i++){{\n'
-        f'      var _el=document.getElementById("cs-pop-"+_CS_ALL[_i]+"-{fig_id_safe}");\n'
-        f'      if(!_el)continue;\n'
-        f'      _el.style.display=(_CS_ALL[_i]===name&&_el.style.display==="none")?"flex":"none";\n'
-        f'    }}\n'
-        + f'  }};\n'
+    # ── Data header + golden IIFE body ───────────────────────────────────────
+    fid = json.dumps(fig_id).replace("</", "<\\/")
+    af = json.dumps(active_field or time_field).replace("</", "<\\/")
+    fd = json.dumps(field_data_b64 or {}).replace("</", "<\\/")
+    fr = json.dumps(field_ranges or {})
+    td = json.dumps(tdata).replace("</", "<\\/")
+    tl = json.dumps(time_labels or [])
+    tgr = json.dumps(tglobal)
+    header = (
+        "  var FIG_ID=" + fid + ", _locked=false, _renderer=null, _isHovered=false, "
+        "_cont=null, _meshActor=null, _controlsBound=false, _timeIdx=" + str(int(time_idx))
+        + ", _timePlaying=false, _timeRaf=0, _timeLastTs=0, "
+        '_displayScalarName="__4dpaper_display__";\n'
+        "  var ACTIVE_FIELD=" + af + ", FIELD_DATA=" + fd + ", FIELD_RANGES=" + fr
+        + ", TIME_DATA=" + td + ", TIME_LABELS=" + tl + ", TIME_GLOBAL_RANGE=" + tgr
+        + ", _decodedFieldData={}, _decodedTimeData={};\n"
     )
 
-    _js.append(f'  var _locked=false;\n')
-    _js.append(f'  var _cont=null;\n')
-    if show_lock_btn:
-        _js.append(
-            f'  var _lockBadgeTimer=null;\n'
-            f'  function _showLockedBadge(){{\n'
-            f'    var b=document.getElementById("cs-lock-badge-{fig_id_safe}");\n'
-            f'    if(!b)return;\n'
-            f'    b.style.display="block";\n'
-            f'    clearTimeout(_lockBadgeTimer);\n'
-            f'    _lockBadgeTimer=setTimeout(function(){{b.style.display="none";}},1500);\n'
-            f'  }}\n'
-            f'  function _setLocked(v){{\n'
-            f'    _locked=v;\n'
-            f'    var w=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
-            f'    if(w)w.textContent=v?"\U0001F512":"\U0001F513";\n'
-            f'    var s=document.getElementById("cs-lock-shield-{fig_id_safe}");\n'
-            f'    if(s)s.style.display=v?"block":"none";\n'
-            f'    var rw=window.renderWindow;\n'
-            f'    var i=_iact||(rw&&rw.getInteractor?rw.getInteractor():null);\n'
-            f'    if(i&&i.setEnabled)i.setEnabled(v?0:1);\n'
-            f'    var c=_cont||(i&&i.getContainer?i.getContainer():null);\n'
-            f'    if(c&&c.style){{c.style.pointerEvents=v?"none":"";c.style.touchAction=v?"none":"";}}\n'
-            f'    if(v&&i&&i.stopAnimating)i.stopAnimating();\n'
-            f'  }}\n'
-            f'  parent.postMessage({{type:"4dpaper-lock-query",fig_id:FIG_ID}},"*");\n'
-            f'  (function(){{\n'
-            f'    var _lw=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
-            f'    if(_lw)_lw.addEventListener("click",function(){{\n'
-            f'      var nv=!_locked;\n'
-            f'      _setLocked(nv);\n'
-            f'      parent.postMessage({{type:"4dpaper-lock-toggle",fig_id:FIG_ID,locked:nv}},"*");\n'
-            f'    }});\n'
-            f'  }})();\n'
-        )
-
-    _js.append(
-        f'  window.addEventListener("message",function(e){{\n'
-        f'    if(!e.data)return;\n'
-    )
-    _js.append(
-        f'    if(e.data.type==="4dpaper-camera-ack"){{\n'
-        f'      if(e.data.fig_id!==FIG_ID&&e.data.fig_id!=="*")return;\n'
-        f'    }}\n'
-    )
-    if show_lock_btn:
-        _js.append(
-            f'    if(e.data.type==="4dpaper-lock-state"&&e.data.fig_id===FIG_ID)'
-            f'_setLocked(!!e.data.locked);\n'
-            f'    if(e.data.type==="4dpaper-lock-ack"&&e.data.fig_id===FIG_ID){{'
-            f'if(e.data.status!=="ok")_setLocked(!_locked);}}\n'
-        )
-    _js.append(
-        f'    if(e.data.type==="4dpaper-lock-all"){{\n'
-        f'      _locked=!!e.data.locked;\n'
-        f'      var _rw=window.renderWindow;\n'
-        f'      var _li=_rw&&_rw.getInteractor?_rw.getInteractor():null;\n'
-        f'      if(_li&&_li.setEnabled)_li.setEnabled(_locked?0:1);\n'
-        f'      var _lc=_cont||(_li&&_li.getContainer?_li.getContainer():null);\n'
-        f'      if(_lc&&_lc.style){{_lc.style.pointerEvents=_locked?"none":"";_lc.style.touchAction=_locked?"none":"";}}\n'
-        f'      if(_locked&&_li&&_li.stopAnimating)_li.stopAnimating();\n'
-        f'      var _lw=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
-        f'      if(_lw)_lw.textContent=_locked?"\U0001F512":"\U0001F513";\n'
-        f'      var _ls=document.getElementById("cs-lock-shield-{fig_id_safe}");\n'
-        f'      if(_ls)_ls.style.display=_locked?"block":"none";\n'
-        f'    }}\n'
-        f'    if(e.data.type==="4dpaper-hide-lock-btn"){{\n'
-        f'      var _lhw=document.getElementById("cs-lock-widget-{fig_id_safe}");\n'
-        f'      if(_lhw)_lhw.style.display="none";\n'
-        f'    }}\n'
-    )
-    _js.append(f'  }});\n')
-
-    _js.append(
-        f'  var _camTimer=null;\n'
-        f'  function _sendCam(renderer){{\n'
-        f'    if(_locked)return;\n'
-        f'    clearTimeout(_camTimer);\n'
-        f'    _camTimer=setTimeout(function(){{\n'
-        f'      var cam=renderer.getActiveCamera();\n'
-        f'      var camData={{position:cam.getPosition(),focal_point:cam.getFocalPoint(),'
-        f'view_up:cam.getViewUp(),parallel_scale:cam.getParallelScale(),'
-        f'parallel_projection:cam.getParallelProjection()?1:0}};\n'
-        f'      parent.postMessage({{type:"4dpaper-camera",fig_id:FIG_ID,camera:camData}},"*");\n'
-        f'    }},300);\n'
-        f'  }}\n'
-    )
-
-    if show_orientation:
-        _iso_lock_gate = (
-            f'      if(_locked){{_showLockedBadge();return;}}\n'
-        ) if show_lock_btn else ''
-        _js.append(
-            f'  var _renderer=null;\n'
-            f'  function _n3(v){{var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);'
-            f'return l<1e-10?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}}\n'
-            f'  function _cr(a,b){{return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}}\n'
-            f'  function _dt(a,b){{return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}}\n'
-            f'  function _rot(v,axis,deg){{\n'
-            f'    var a=_n3(axis),x=v[0],y=v[1],z=v[2];\n'
-            f'    var c=Math.cos(deg*Math.PI/180),s=Math.sin(deg*Math.PI/180);\n'
-            f'    var d=a[0]*x+a[1]*y+a[2]*z;\n'
-            f'    return [\n'
-            f'      x*c+(a[1]*z-a[2]*y)*s+a[0]*d*(1-c),\n'
-            f'      y*c+(a[2]*x-a[0]*z)*s+a[1]*d*(1-c),\n'
-            f'      z*c+(a[0]*y-a[1]*x)*s+a[2]*d*(1-c)\n'
-            f'    ];\n'
-            f'  }}\n'
-            f'  var _svg=null;\n'
-            f'  function _drawAxes(){{\n'
-            f'    if(!_renderer||!_svg)return;\n'
-            f'    var cam=_renderer.getActiveCamera();\n'
-            f'    var pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp();\n'
-            f'    var vd=_n3([fp[0]-pos[0],fp[1]-pos[1],fp[2]-pos[2]]);\n'
-            f'    var right=_n3(_cr(vd,vup));\n'
-            f'    var up=_cr(right,vd);\n'
-            f'    var cx=28,cy=28,R=22;\n'
-            f'    function proj(v){{return[cx+R*_dt(v,right),cy-R*_dt(v,up)];}}\n'
-            f'    var axes=[\n'
-            f'      {{w:[1,0,0],col:"#ff6666",lcol:"#ff9999",lbl:"X",'
-            f'hpd:\'data-dir="1,0,0"\',hnd:\'data-dir="-1,0,0"\'}},\n'
-            f'      {{w:[0,1,0],col:"#66cc66",lcol:"#99cc99",lbl:"Y",'
-            f'hpd:\'data-dir="0,1,0"\',hnd:\'data-dir="0,-1,0"\'}},\n'
-            f'      {{w:[0,0,1],col:"#6699ff",lcol:"#99aaff",lbl:"Z",'
-            f'hpd:\'data-dir="0,0,1"\',hnd:\'data-dir="0,0,-1"\'}}\n'
-            f'    ];\n'
-            f'    var html="";\n'
-            f'    axes.forEach(function(ax){{\n'
-            f'      var tip=proj(ax.w);\n'
-            f'      var tail=proj([-0.4*ax.w[0],-0.4*ax.w[1],-0.4*ax.w[2]]);\n'
-            f'      var tx=tip[0].toFixed(1),ty=tip[1].toFixed(1);\n'
-            f'      var dx=tip[0]-cx,dy=tip[1]-cy,len=Math.sqrt(dx*dx+dy*dy)||1;\n'
-            f'      var nx=-dy/len*3.5,ny=dx/len*3.5;\n'
-            f'      var bx1=(tip[0]-dx/len*7+nx).toFixed(1),by1=(tip[1]-dy/len*7+ny).toFixed(1);\n'
-            f'      var bx2=(tip[0]-dx/len*7-nx).toFixed(1),by2=(tip[1]-dy/len*7-ny).toFixed(1);\n'
-            f'      html+=\'<line x1="\'+cx+\'" y1="\'+cy+\'" x2="\'+tx+\'" y2="\'+ty+\'"\'\n'
-            f'           +\' \'+ax.hpd+\' stroke="\'+ax.col+\'" stroke-width="2.5"/>\';\n'
-            f'      html+=\'<polygon points="\'+tx+","+ty+" "+bx1+","+by1+" "+bx2+","+by2+\'"\'\n'
-            f'           +\' \'+ax.hpd+\' fill="\'+ax.col+\'"/>\';\n'
-            f'      html+=\'<text x="\'+( tip[0]+dx/len*5).toFixed(1)+\'" y="\'+( tip[1]+dy/len*5+3).toFixed(1)+\'"\'\n'
-            f'           +\' \'+ax.hpd+\' font-size="9" fill="\'+ax.lcol+\'" font-family="monospace">\'\n'
-            f'           +ax.lbl+\'</text>\';\n'
-            f'    }});\n'
-            f'    _svg.innerHTML=html;\n'
-            f'  }}\n'
-            f'  function _axLoop(){{_drawAxes();requestAnimationFrame(_axLoop);}}\n'
-            f'  var _ISO_VIEWS=[[1,1,1],[-1,1,1],[-1,-1,1],[1,-1,1]];\n'
-            f'  var _ISO_NAMES=["+X+Y+Z","-X+Y+Z","-X-Y+Z","+X-Y+Z"];\n'
-            f'  var _isoIdx=0;\n'
-            f'  var _isoT;\n'
-            f'  window.csSetView_{fig_id_safe}=function(dir,vup){{\n'
-            f'    if(!_renderer)return;\n'
-            f'    var cam=_renderer.getActiveCamera();\n'
-            f'    var fp=cam.getFocalPoint(),dist=cam.getDistance();\n'
-            f'    var pn=_n3(dir);\n'
-            f'    var up=vup?_n3(vup):((Math.abs(pn[2])>0.9)?[0,1,0]:[0,0,1]);\n'
-            f'    cam.setPosition(fp[0]+pn[0]*dist,fp[1]+pn[1]*dist,fp[2]+pn[2]*dist);\n'
-            f'    cam.setViewUp(up[0],up[1],up[2]);\n'
-            f'    cam.setFocalPoint(fp[0],fp[1],fp[2]);\n'
-            f'    _renderer.resetCameraClippingRange();\n'
-            f'    if(_iact)_iact.setEnabled(1);\n'
-            f'    if(window.renderWindow)window.renderWindow.render();\n'
-            f'    _sendCam(_renderer);\n'
-            f'  }};\n'
-            f'  window.csRotate_{fig_id_safe}=function(dx,dy){{\n'
-            f'    if(!_renderer)return;\n'
-            f'    var cam=_renderer.getActiveCamera();\n'
-            f'    var pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp();\n'
-            f'    var rel=[pos[0]-fp[0],pos[1]-fp[1],pos[2]-fp[2]];\n'
-            f'    var right=_n3(_cr(rel,vup));\n'
-            f'    var pitch=_rot(rel,right,dy);\n'
-            f'    var yawAxis=_n3(vup);\n'
-            f'    var yaw=_rot(pitch,yawAxis,dx);\n'
-            f'    cam.setPosition(fp[0]+yaw[0],fp[1]+yaw[1],fp[2]+yaw[2]);\n'
-            f'    cam.setViewUp(vup[0],vup[1],vup[2]);\n'
-            f'    _renderer.resetCameraClippingRange();\n'
-            f'    if(window.renderWindow)window.renderWindow.render();\n'
-            f'    _sendCam(_renderer);\n'
-            f'  }};\n'
-        )
-    else:
-        _js.append(f'  var _renderer=null;\n')
-
-    _svg_assign = (
-        f'          _svg=document.getElementById("cs-svg-axes-{fig_id_safe}");\n'
-    ) if show_orientation else ''
-    _svg_click_listener = (
-        f'          _svg.addEventListener("click",function(e){{\n'
-        f'            var dv=e.target.getAttribute("data-dir");if(!dv)return;\n'
-        + (f'            if(_locked){{_showLockedBadge();return;}}\n' if show_lock_btn else '')
-        + f'            csSetView_{fig_id_safe}(dv.split(",").map(Number));\n'
-        f'          }});\n'
-    ) if show_orientation else ''
-    _axLoop_call = f'          _axLoop();\n' if show_orientation else ''
-    _iact_lock = (
-        f'          _iact=window.renderWindow.getInteractor();\n'
-        f'          if(_iact)_iact.setEnabled(_locked?0:1);\n'
-    ) if show_orientation else ''
-    _lock_refresh = (
-        f'          _setLocked(_locked);\n'
-    ) if show_lock_btn else ''
-    _js.append(
-        f'  var _renderer=null, _isHovered=false;\n'
-        f'  (function _wR(){{\n'
-        f'    var rw=window.renderWindow;\n'
-        f'    if(rw&&rw.getRenderers){{\n'
-        f'      var rs=rw.getRenderers();\n'
-        f'      for(var _ri=0;_ri<rs.length;_ri++){{\n'
-        f'        var _r=rs[_ri];\n'
-        f'        if(_r&&_r.getActors&&_r.getActors().length>0){{\n'
-        f'          _renderer=_r;\n'
-        f'          _cont=window.renderWindow.getInteractor().getContainer();\n'
-        f'          if(_cont){{\n'
-        f'            _cont.addEventListener("mouseenter",function(){{_isHovered=true;window.focus();}});\n'
-        f'            _cont.addEventListener("mouseleave",function(){{_isHovered=false;}});\n'
-        f'            _cont.addEventListener("wheel",function(e){{e.preventDefault();}},{{passive:false}});\n'
-        f'          }}\n'
-        + _lock_refresh
-        + _svg_assign
-        + _svg_click_listener
-        + _axLoop_call
-        + _iact_lock
-        + f'          document.addEventListener("pointerup",function(){{_sendCam(_renderer);}});\n'
-        f'          document.addEventListener("mouseup",function(){{_sendCam(_renderer);}});\n'
-        f'          document.addEventListener("touchend",function(){{_sendCam(_renderer);}});\n'
-        f'          window.addEventListener("message",function(e){{\n'
-        f'            if(!_renderer || _locked || !e.data || e.data.type!=="4dpaper-camera-apply")return;\n'
-        f'            var cam=e.data.camera;if(!cam)return;\n'
-        f'            var c=_renderer.getActiveCamera();\n'
-        f'            if(cam.position)c.setPosition(cam.position[0],cam.position[1],cam.position[2]);\n'
-        f'            if(cam.focal_point)c.setFocalPoint(cam.focal_point[0],cam.focal_point[1],cam.focal_point[2]);\n'
-        f'            if(cam.view_up)c.setViewUp(cam.view_up[0],cam.view_up[1],cam.view_up[2]);\n'
-        f'            if(cam.parallel_scale!=null)c.setParallelScale(cam.parallel_scale);\n'
-        f'            if(cam.parallel_projection!=null)c.setParallelProjection(!!cam.parallel_projection);\n'
-        f'            window.renderWindow.render();\n'
-        f'          }});\n'
-        f'          return;\n'
-        f'        }}\n'
-        f'      }}\n'
-        f'    }}\n'
-        f'    setTimeout(_wR,200);\n'
-        f'  }})();\n'
-    )
-
-    if has_fields:
-        _js.append(
-            f'  var FIELD_DATA={field_data_js};\n'
-            f'  var FIELD_RANGES={field_ranges_js};\n'
-            f'  var ORIG_FIELD={active_field_js};\n'
-            f'  var _fSel=document.getElementById("cs-field-sel-{fig_id_safe}");\n'
-            f'  var _fBadge=document.getElementById("cs-field-badge-{fig_id_safe}");\n'
-            f'  function _decF(b64){{var bin=atob(b64);var by=new Uint8Array(bin.length);'
-            f'for(var i=0;i<bin.length;i++)by[i]=bin.charCodeAt(i);return new Float32Array(by.buffer);}}\n'
-            f'  (function _wM(){{\n'
-            f'    var rw=window.renderWindow;\n'
-            f'    if(rw&&rw.getRenderers){{\n'
-            f'      var rs=rw.getRenderers();\n'
-            f'      for(var _ri=0;_ri<rs.length;_ri++){{\n'
-            f'        var _r=rs[_ri];if(!_r||!_r.getActors)continue;\n'
-            f'        var acts=_r.getActors();\n'
-            f'        for(var _ai=0;_ai<acts.length;_ai++){{\n'
-            f'          var act=acts[_ai];if(!act||!act.getMapper)continue;\n'
-            f'          var mp=act.getMapper();if(!mp||!mp.getInputData)continue;\n'
-            f'          var pd=mp.getInputData();\n'
-            f'          if(pd&&pd.getPointData&&pd.getPointData().getArrayByName(ORIG_FIELD)){{\n'
-            f'            if(_fSel)_fSel.addEventListener("change",function(){{\n'
-            f'              var f=_fSel.value;\n'
-            f'              if(!FIELD_DATA[f]&&f!==ORIG_FIELD)return;\n'
-            f'              try{{\n'
-            f'                if(_fBadge){{_fBadge.innerHTML="&#8230;";'
-            f'_fBadge.style.background="#555";_fBadge.style.display="inline-block";}}\n'
-            f'                var arr=pd.getPointData().getArrayByName(ORIG_FIELD);\n'
-            f'                if(FIELD_DATA[f])arr.setData(_decF(FIELD_DATA[f]),1);\n'
-            f'                arr.modified();pd.modified();\n'
-            f'                var rng=FIELD_RANGES[f];\n'
-            f'                if(rng)mp.setScalarRange(rng[0],rng[1]);\n'
-            f'                try{{var a2=_r.getActors2D?_r.getActors2D():[];'
-            f'for(var k=0;k<a2.length;k++)if(a2[k].setTitle)a2[k].setTitle(f);}}'
-            f'catch(e2){{}}\n'
-            f'                window.renderWindow.render();\n'
-            f'                if(_fBadge){{_fBadge.innerHTML="&#10003; "+f;'
-            f'_fBadge.style.background="rgba(0,140,0,0.85)";'
-            f'setTimeout(function(){{_fBadge.style.display="none";}},2000);}}\n'
-            f'                try{{parent.postMessage({{type:"4dpaper-field-update",'
-            f'fig_id:FIG_ID,data:{{field:f}}}},"*");}}'
-            f'catch(e3){{}}\n'
-            f'              }}catch(err){{\n'
-            f'                if(_fBadge){{_fBadge.innerHTML="&#10007; error";'
-            f'_fBadge.style.background="rgba(180,0,0,0.85)";'
-            f'_fBadge.style.display="inline-block";}}\n'
-            f'                console.error("[4dpaper] field switch error:",err);\n'
-            f'              }}\n'
-            f'            }});\n'
-            f'            return;\n'
-            f'          }}\n'
-            f'        }}\n'
-            f'      }}\n'
-            f'    }}\n'
-            f'    setTimeout(_wM,200);\n'
-            f'  }})();\n'
-        )
-
-    if has_time:
-        _js.append(
-            f'  var TIME_DATA={time_data_js};\n'
-            f'  var TIME_LABELS={time_labels_js};\n'
-            f'  var GLOBAL_RANGE={global_range_js};\n'
-            f'  var TIME_FIELD={time_field_js};\n'
-            f'  var _tSlider=document.getElementById("cs-time-slider-{fig_id_safe}");\n'
-            f'  var _tVal=document.getElementById("cs-time-val-{fig_id_safe}");\n'
-            f'  var _tIdx=document.getElementById("cs-time-idx-{fig_id_safe}");\n'
-            f'  var _tTimer=null;\n'
-            f'  function _decT(b64){{var bin=atob(b64);var by=new Uint8Array(bin.length);'
-            f'for(var i=0;i<bin.length;i++)by[i]=bin.charCodeAt(i);return new Float32Array(by.buffer);}}\n'
-            f'  (function _wT(){{\n'
-            f'    var rw=window.renderWindow;\n'
-            f'    if(rw&&rw.getRenderers){{\n'
-            f'      var rs=rw.getRenderers();\n'
-            f'      for(var _ri=0;_ri<rs.length;_ri++){{\n'
-            f'        var _r=rs[_ri];if(!_r||!_r.getActors)continue;\n'
-            f'        var acts=_r.getActors();\n'
-            f'        for(var _ai=0;_ai<acts.length;_ai++){{\n'
-            f'          var act=acts[_ai];if(!act||!act.getMapper)continue;\n'
-            f'          var mp=act.getMapper();if(!mp||!mp.getInputData)continue;\n'
-            f'          var pd=mp.getInputData();\n'
-            f'          if(pd&&pd.getPointData&&pd.getPointData().getArrayByName(TIME_FIELD)){{\n'
-            f'            if(_tSlider)_tSlider.addEventListener("input",function(){{\n'
-            f'              var idx=parseInt(_tSlider.value);\n'
-            f'              if(_tVal&&TIME_LABELS[idx]!==undefined)_tVal.textContent=TIME_LABELS[idx];\n'
-            f'              if(_tIdx)_tIdx.textContent=idx;\n'
-            f'              clearTimeout(_tTimer);\n'
-            f'              var b64=TIME_DATA[idx];if(!b64)return;\n'
-            f'              try{{var a=pd.getPointData().getArrayByName(TIME_FIELD);\n'
-            f'a.setData(_decT(b64),1);a.modified();pd.modified();\n'
-            f'mp.setScalarRange(GLOBAL_RANGE[0],GLOBAL_RANGE[1]);\n'
-            f'window.renderWindow.render();}}'
-            f'catch(e1){{console.error("[4dp] t-step:",e1);}}\n'
-            f'              _tTimer=setTimeout(function(){{\n'
-            f'                try{{parent.postMessage({{type:"4dpaper-field-update",'
-            f'fig_id:FIG_ID,data:{{time:String(idx)}}}},"*");}}'
-            f'catch(e2){{}}\n'
-            f'              }},100);\n'
-            f'            }});\n'
-            f'            return;\n'
-            f'          }}\n'
-            f'        }}\n'
-            f'      }}\n'
-            f'    }}\n'
-            f'    setTimeout(_wT,200);\n'
-            f'  }})();\n'
-        )
-    _js.append(
-        f'  window.addEventListener("keydown",function(e){{\n'
-        f'    if(!_renderer || !_isHovered)return;\n'
-        f'    var k=e.key.toLowerCase();\n'
-        f'    if(k==="x"){{csSetView_{fig_id_safe}([1,0,0],[0,0,1]);}}\n'
-        f'    else if(k==="y"){{csSetView_{fig_id_safe}([0,1,0],[0,0,1]);}}\n'
-        f'    else if(k==="z"){{csSetView_{fig_id_safe}([0,0,1],[0,1,0]);}}\n'
-        f'    else if(k==="i"){{csSetView_{fig_id_safe}([1,1,1],[0,0,1]);}}\n'
-        f'    else if(e.key==="ArrowUp"){{csRotate_{fig_id_safe}(0,-90);}}\n'
-        f'    else if(e.key==="ArrowDown"){{csRotate_{fig_id_safe}(0,90);}}\n'
-        f'    else if(e.key==="ArrowLeft"){{csRotate_{fig_id_safe}(-90,0);}}\n'
-        f'    else if(e.key==="ArrowRight"){{csRotate_{fig_id_safe}(90,0);}}\n'
-        f'    if(e.key.startsWith("Arrow")){{e.preventDefault();}}\n'
-        f'  }});\n'
-    )
-
-    js_block = f'<script>\n(function(){{\n' + "".join(_js) + f'}})();\n</script>\n'
+    js_body = _GOLDEN_TOPBAR_JS.replace("__FIGSAFE__", fig_id_safe)
+    js_block = "<script>\n(function(){\n" + header + js_body + "\n})();\n</script>\n"
     return html_block + js_block
+
 
 
 def generate_png_figure(
@@ -1218,53 +798,58 @@ def generate_html_figure(
         field_data_b64[f] = _b64.b64encode(arr_f32.tobytes()).decode("ascii")
         field_ranges[f] = [float(arr_f32.min()), float(arr_f32.max())]
 
-    # ── Prepare time step data blobs (one per step, active field only) ────────
-    # Each entry is a base64 Float32Array of the scalar values at that step.
-    # Empty string is used as a placeholder when a step's data is unavailable.
-    time_data_b64: list[str] = []
+    # ── Prepare per-field time step data blobs (one list per switchable field) ─
+    # Golden top-bar schema: TIME_DATA = {field: [b64_frame, ...]} and
+    # TIME_GLOBAL_RANGE = {field: [min, max]} so the field switcher animates the
+    # correct field while playing. Empty string is a per-step placeholder.
+    time_data_b64: dict[str, list[str]] = {}
+    time_global_range: dict[str, list[float]] = {}
     time_labels: list[str] = []
-    time_global_min = float("inf")
-    time_global_max = float("-inf")
 
-    if sim.n_steps > 1 and field:
+    if sim.n_steps > 1 and fields_to_embed:
         print(
-            f"[4dpaper] {fig_id or 'fig'}: embedding {sim.n_steps} timesteps for timeline …",
+            f"[4dpaper] {fig_id or 'fig'}: embedding {sim.n_steps} timesteps "
+            f"× {len(fields_to_embed)} field(s) for timeline …",
             file=sys.stderr,
         )
+        _tg_min: dict[str, float] = {f: float("inf") for f in fields_to_embed}
+        _tg_max: dict[str, float] = {f: float("-inf") for f in fields_to_embed}
+        for f in fields_to_embed:
+            time_data_b64[f] = []
         for t_idx in range(sim.n_steps):
-            t_mesh = sim.get_mesh(t_idx)
-            if t_mesh is None:
-                time_data_b64.append("")
-                time_labels.append(str(t_idx))
-                continue
-            t_surface = t_mesh.extract_surface(algorithm="dataset_surface")
-            t_surface = _apply_decimation(t_surface, decimate, label=f"{fig_id or 'fig'} t={t_idx}")
-            # Get scalar array — same cell→point conversion logic as _get_arr
-            arr_np = None
-            if field in t_surface.point_data:
-                arr_np = t_surface.point_data[field]
-            elif field in t_surface.cell_data:
-                t_pts = t_surface.cell_data_to_point_data()
-                if field in t_pts.point_data:
-                    arr_np = t_pts.point_data[field]
-            if arr_np is not None:
-                arr_f32 = arr_np.astype("float32").ravel()
-                time_data_b64.append(_b64.b64encode(arr_f32.tobytes()).decode("ascii"))
-                time_global_min = min(time_global_min, float(arr_f32.min()))
-                time_global_max = max(time_global_max, float(arr_f32.max()))
-            else:
-                time_data_b64.append("")
             # Human-readable time label (physical time value from the reader)
             if t_idx < len(sim.time_steps):
                 time_labels.append(f"{sim.time_steps[t_idx]:.4g}")
             else:
                 time_labels.append(str(t_idx))
-
-    time_global_range = (
-        [time_global_min, time_global_max]
-        if time_global_min != float("inf")
-        else [0.0, 1.0]
-    )
+            t_mesh = sim.get_mesh(t_idx)
+            if t_mesh is None:
+                for f in fields_to_embed:
+                    time_data_b64[f].append("")
+                continue
+            t_surface = t_mesh.extract_surface(algorithm="dataset_surface")
+            t_surface = _apply_decimation(t_surface, decimate, label=f"{fig_id or 'fig'} t={t_idx}")
+            t_pts = None  # lazily computed cell→point conversion, shared by all fields
+            for f in fields_to_embed:
+                arr_np = None
+                if f in t_surface.point_data:
+                    arr_np = t_surface.point_data[f]
+                elif f in t_surface.cell_data:
+                    if t_pts is None:
+                        t_pts = t_surface.cell_data_to_point_data()
+                    if f in t_pts.point_data:
+                        arr_np = t_pts.point_data[f]
+                if arr_np is not None:
+                    arr_f32 = arr_np.astype("float32").ravel()
+                    time_data_b64[f].append(_b64.b64encode(arr_f32.tobytes()).decode("ascii"))
+                    _tg_min[f] = min(_tg_min[f], float(arr_f32.min()))
+                    _tg_max[f] = max(_tg_max[f], float(arr_f32.max()))
+                else:
+                    time_data_b64[f].append("")
+        for f in fields_to_embed:
+            time_global_range[f] = (
+                [_tg_min[f], _tg_max[f]] if _tg_min[f] != float("inf") else [0.0, 1.0]
+            )
 
     # Patch viewport units so the widget has a fixed height when embedded inline.
     # PyVista's trame output uses 100vw/100vh which fills the whole page.

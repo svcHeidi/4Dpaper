@@ -28,16 +28,7 @@ WORKDIR /app
 
 # Install Python dependencies first (cached unless requirements.txt changes)
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir \
-    panel>=1.3.0 \
-    tornado>=6.3 \
-    "pyvista[jupyter]>=0.43.0" \
-    trame \
-    trame-vtk \
-    trame-vuetify \
-    quarto>=0.1.0 \
-    "weasyprint>=60.0" \
-    "cryptography>=41.0.0"
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy application code (changes more frequently — after pip for cache efficiency)
 COPY dashboard /app/dashboard
