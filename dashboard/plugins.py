@@ -18,6 +18,7 @@ from dashboard.field_plugin import ROUTES as field_routes
 from dashboard.file_plugin import ROUTES as file_routes
 from dashboard.shortcuts_plugin import ROUTES as shortcuts_routes
 from dashboard.upload_plugin import ROUTES as upload_routes
+from dashboard.ai_plugin import ROUTES as ai_routes
 
 # PROJECT_ROOT can be set via environment variable (for Docker) or defaults to parent directory
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
@@ -36,6 +37,6 @@ _output_route = (
 
 ROUTES = (
     camera_routes + color_routes + compile_routes + field_routes
-    + file_routes + shortcuts_routes + upload_routes
+    + file_routes + shortcuts_routes + upload_routes + ai_routes
     + [_state_route, _output_route]
 )

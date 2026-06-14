@@ -13,6 +13,8 @@ services:
       - PORT=5006
       - PYTHONUNBUFFERED=1
       - PROJECT_ROOT=/workspace
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     healthcheck:

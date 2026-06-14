@@ -416,6 +416,7 @@
     <script src="/assets/js/shortcuts-graph.js"></script>
     <script src="dashboard/static/js/insert-figure-overlay.js"></script>
     <script src="dashboard/static/js/insert-file-overlay.js"></script>
+    <script src="dashboard/static/js/chat.js"></script>
 </head>
 <body class="bg-app-bg text-app-text font-sans selection:bg-app-accent selection:text-white">
 
@@ -462,6 +463,12 @@
                         <i class="ph ph-magnifying-glass text-xl"></i>
                     </div>
                 </div>
+                <!-- AI Chat -->
+                <div class="w-full flex justify-center group cursor-pointer hover:text-app-textLight transition-colors" data-activity="chat">
+                    <div class="p-2.5">
+                        <i class="ph ph-robot text-xl"></i>
+                    </div>
+                </div>
             </div>
             <!-- Bottom Icons -->
             <div class="mt-auto flex flex-col space-y-4 w-full pb-2">
@@ -499,6 +506,36 @@
             <!-- File Tree View -->
             <div class="flex-1 overflow-auto custom-scrollbar p-2" id="fileTreeContent" data-view="explorer">
                 <div class="text-xs text-app-text p-4 text-center">Loading files...</div>
+            </div>
+            
+            <!-- AI Chat View -->
+            <div class="flex-1 flex flex-col hidden" id="chatContent" data-view="chat">
+                <div class="p-4 border-b border-app-border flex-shrink-0 flex items-center justify-between">
+                    <select id="agentPersonaSelect" class="bg-app-bg border border-app-border rounded px-2 py-1 text-sm text-app-textLight w-full mr-2">
+                        <!-- Dynamic agent personas will be loaded here -->
+                        <option value="data_architect">Data Architect</option>
+                        <option value="visualization_engineer">Visualization Engineer</option>
+                        <option value="technical_writer">Technical Writer</option>
+                    </select>
+                    <button class="hover:text-app-accent transition-colors" onclick="openChatSettings()" title="AI Settings">
+                        <i class="ph ph-gear"></i>
+                    </button>
+                </div>
+                
+                <!-- Messages Area -->
+                <div id="chatMessages" class="flex-1 overflow-auto custom-scrollbar p-4 space-y-4 text-sm text-app-textLight">
+                    <div class="text-xs text-app-text text-center mt-4">Start chatting with the agent...</div>
+                </div>
+                
+                <!-- Input Area -->
+                <div class="p-3 border-t border-app-border flex-shrink-0 bg-app-tabBg">
+                    <div class="flex items-end bg-app-bg border border-app-border rounded-lg overflow-hidden focus-within:border-app-accent transition-colors">
+                        <textarea id="chatInput" class="flex-1 bg-transparent border-none p-3 max-h-32 text-sm text-app-textLight resize-none focus:ring-0 custom-scrollbar" rows="1" placeholder="Type a message..."></textarea>
+                        <button id="chatSendBtn" class="p-3 text-app-text hover:text-app-accent transition-colors">
+                            <i class="ph-fill ph-paper-plane-right text-lg"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1290,7 +1327,48 @@ jupyter: python3
         // Activity bar
         document.querySelectorAll('[data-activity]').forEach(btn => {
             btn.addEventListener('click', () => {
-                console.log('Activity:', btn.dataset.activity);
+                const activity = btn.dataset.activity;
+                console.log('Activity:', activity);
+                
+                // Update active state on buttons
+                document.querySelectorAll('[data-activity]').forEach(b => {
+                    const iconContainer = b.querySelector('div.p-2\\.5');
+                    const activeBar = b.querySelector('.bg-app-accent');
+                    
+                    if (b === btn) {
+                        if (iconContainer) iconContainer.classList.add('bg-app-tabBg', 'text-app-textLight');
+                        if (!activeBar && b.querySelector('i')) {
+                            // Add the active bar indicator
+                            const bar = document.createElement('div');
+                            bar.className = 'absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-8 bg-app-accent rounded-r';
+                            b.classList.add('relative');
+                            b.insertBefore(bar, b.firstChild);
+                        }
+                    } else {
+                        if (iconContainer) iconContainer.classList.remove('bg-app-tabBg', 'text-app-textLight');
+                        if (activeBar) activeBar.remove();
+                    }
+                });
+
+                // Update views
+                document.querySelectorAll('[data-view]').forEach(view => {
+                    if (view.dataset.view === activity) {
+                        view.classList.remove('hidden');
+                        // Hide the insert toolbar if not in explorer
+                        const insertToolbar = document.querySelector('.flex.gap-1.p-2.border-b');
+                        if (insertToolbar) {
+                            insertToolbar.style.display = activity === 'explorer' ? 'flex' : 'none';
+                        }
+                        // Update panel title
+                        const sidebarTitle = document.querySelector('#fileTreePanel .text-xs.font-semibold.uppercase');
+                        if (sidebarTitle) {
+                            sidebarTitle.textContent = activity === 'explorer' ? 'Explorer' : 
+                                                       activity === 'chat' ? 'AI Agent' : activity;
+                        }
+                    } else {
+                        view.classList.add('hidden');
+                    }
+                });
             });
         });
 
