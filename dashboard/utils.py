@@ -8,8 +8,18 @@ from pathlib import Path
 from dashboard.document_signing import sign_html_file_if_configured
 
 
-def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str = "html") -> int:
-    """Run `quarto render` and stream output to `log_lines`."""
+def run_quarto_render(
+    qmd_path: Path,
+    log_lines: list[str],
+    output_format: str = "html",
+    csl: Path | None = None,
+) -> int:
+    """Run `quarto render` and stream output to `log_lines`.
+
+    `csl` (optional) is a CSL citation-style file applied via `--metadata csl=`.
+    Paperview output is named `<stem>-paperview.html` so each paper renders to a
+    distinct file.
+    """
     import os
     import subprocess
     import threading
@@ -34,8 +44,14 @@ def run_quarto_render(qmd_path: Path, log_lines: list[str], output_format: str =
         env["FOURD_APP_MODE"] = "1"
         env["FOURD_PAPER_VIEW"] = "1"
         cmd += ["--profile", "paperview"]
+        # Per-paper output name (profile no longer hardcodes output-file) so
+        # compiling paperII doesn't overwrite paperI's paperview HTML.
+        cmd += ["--output", f"{qmd_path.stem}-paperview.html"]
     else:
         cmd = ["quarto", "render", str(qmd_path), "--to", output_format]
+
+    if csl is not None:
+        cmd += ["--metadata", f"csl={csl}"]
 
     try:
         proc = subprocess.Popen(

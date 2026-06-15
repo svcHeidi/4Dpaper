@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0" default-locale="en-US">
+  <info>
+    <title>4DPaper Numeric</title>
+    <id>https://4dpapers.local/styles/numeric</id>
+    <link href="https://4dpapers.local/styles/numeric" rel="self"/>
+    <author><name>4DPapers</name></author>
+    <category citation-format="numeric"/>
+    <summary>Bracketed numeric citations [1] with a numbered reference list.</summary>
+    <updated>2026-06-15T00:00:00+00:00</updated>
+  </info>
+  <citation collapse="citation-number">
+    <sort>
+      <key variable="citation-number"/>
+    </sort>
+    <layout prefix="[" suffix="]" delimiter=", ">
+      <text variable="citation-number"/>
+    </layout>
+  </citation>
+  <bibliography second-field-align="flush" entry-spacing="0">
+    <sort>
+      <key variable="citation-number"/>
+    </sort>
+    <layout>
+      <text variable="citation-number" prefix="[" suffix="] "/>
+      <names variable="author" suffix=", ">
+        <name initialize-with=". " delimiter=", " and="text"/>
+        <substitute>
+          <names variable="editor"/>
+          <text variable="title"/>
+        </substitute>
+      </names>
+      <choose>
+        <if type="article-journal">
+          <text variable="title" suffix=", "/>
+          <text variable="container-title" font-style="italic" suffix=", "/>
+          <group delimiter=", ">
+            <text variable="volume" prefix="vol. "/>
+            <text variable="issue" prefix="no. "/>
+            <text variable="page" prefix="pp. "/>
+          </group>
+        </if>
+        <else>
+          <text variable="title" suffix=", "/>
+          <text variable="container-title" font-style="italic" suffix=", "/>
+          <text variable="publisher" suffix=", "/>
+        </else>
+      </choose>
+      <date variable="issued" prefix=" ">
+        <date-part name="year"/>
+      </date>
+      <text variable="DOI" prefix=". doi: "/>
+    </layout>
+  </bibliography>
+</style>

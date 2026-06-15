@@ -528,6 +528,19 @@
                 </div>
             </div>
             
+            <!-- Settings View -->
+            <div class="flex-1 overflow-auto custom-scrollbar p-3 hidden" id="settingsContent" data-view="settings">
+                <div class="text-xs text-app-textLight font-semibold uppercase tracking-wider px-1 py-1 mb-3">Settings</div>
+                <div class="space-y-2">
+                    <label class="block text-xs text-app-text font-medium" for="citationStyle">Bibliography / citation style</label>
+                    <select id="citationStyle" class="w-full bg-app-tabBg border border-app-border rounded px-2 py-1.5 text-xs text-app-textLight outline-none cursor-pointer">
+                        <option value="author-date">Author–date — (Smith et al., 2020)</option>
+                        <option value="numeric">Numeric — [1]</option>
+                    </select>
+                    <p class="text-[11px] text-app-text opacity-70 leading-snug">Applied on the next Compile / Export. Author–date is Quarto's default; Numeric uses bracketed&nbsp;[1] references with a numbered list.</p>
+                </div>
+            </div>
+
             <!-- AI Chat View -->
             <div class="flex-1 flex flex-col hidden" id="chatContent" data-view="chat">
 
@@ -701,14 +714,28 @@ jupyter: python3
         isCompiling: false,
         codeEditor: null,
         viewMode: 'interactive', // 'interactive' or 'pdf'
-        mainFilename: 'main'
+        mainFilename: 'main',
+        activePaper: null,       // root .qmd selected in Papers panel (null = backend default)
+        citationStyle: (localStorage.getItem('4dpapers_citation_style') || 'author-date')
     };
+
+    // Citation-style setting (Settings panel) — persists across sessions.
+    function initCitationStyle() {
+        const sel = document.getElementById('citationStyle');
+        if (!sel) return;
+        sel.value = state.citationStyle;
+        sel.addEventListener('change', () => {
+            state.citationStyle = sel.value;
+            localStorage.setItem('4dpapers_citation_style', sel.value);
+        });
+    }
 
     // Initialize app
     async function initApp() {
         initCodeEditor();
         await loadFileTree();
         setupEventListeners();
+        initCitationStyle();
         // Open main.qmd if it exists, fall back to analysis_report.qmd
         const files = await fetch('/api/files').then(r => r.json()).catch(() => ({}));
         const mainFile = (files.files || []).find(f => f.path === 'main.qmd')
@@ -1185,9 +1212,11 @@ jupyter: python3
             const response = await fetch('/api/compile', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     files: state.editorContent,
-                    format: state.viewMode
+                    format: state.viewMode,
+                    target: state.activePaper,
+                    csl: state.citationStyle
                 })
             });
 
@@ -1296,7 +1325,12 @@ jupyter: python3
                 const response = await fetch('/api/compile', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ files: state.editorContent, format: fmt === 'pdf' ? 'pdf' : 'html' })
+                    body: JSON.stringify({
+                        files: state.editorContent,
+                        format: fmt === 'pdf' ? 'pdf' : 'html',
+                        target: state.activePaper,
+                        csl: state.citationStyle
+                    })
                 });
                 const result = await response.json();
                 if (!(response.ok && result.status === 'success')) {
@@ -1482,18 +1516,35 @@ jupyter: python3
                         listEl.innerHTML = '<div class="text-xs text-app-text p-4 text-center">No .qmd papers found in workspace.</div>';
                         return;
                     }
-                    listEl.innerHTML = qmds.map(f => {
+                    // Default the active paper to main.qmd (or the first paper) so Compile
+                    // has a clear target and the panel shows which one will build.
+                    if (!state.activePaper || !qmds.some(f => f.path === state.activePaper)) {
+                        const def = qmds.find(f => f.path === 'main.qmd') || qmds[0];
+                        state.activePaper = def.path;
+                    }
+                    const hint = '<div class="text-[11px] text-app-text opacity-60 px-2 pb-2 leading-snug">Click a paper to make it the Compile / Export target.</div>';
+                    listEl.innerHTML = hint + qmds.map(f => {
                         const path = f.path;
                         const name = path.split('/').pop();
-                        return `<div class="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-app-tabBg group paper-item" data-path="${path}" title="${path}">
+                        const active = path === state.activePaper;
+                        return `<div class="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-app-tabBg group paper-item ${active ? 'bg-app-tabBg ring-1 ring-app-accent' : ''}" data-path="${path}" title="${path}">
                             <i class="ph-duotone ph-file-text text-app-accent flex-shrink-0"></i>
                             <span class="text-xs text-app-textLight truncate flex-1">${name}</span>
+                            <i class="ph-fill ph-check-circle text-app-accent text-xs paper-active-mark ${active ? '' : 'hidden'}"></i>
                         </div>`;
                     }).join('');
-                    // Click to open paper in editor
+                    // Click selects the paper as the Compile/Export target and opens it.
                     listEl.querySelectorAll('.paper-item').forEach(item => {
                         item.addEventListener('click', () => {
                             const path = item.dataset.path;
+                            state.activePaper = path;
+                            listEl.querySelectorAll('.paper-item').forEach(p => {
+                                const on = p.dataset.path === path;
+                                p.classList.toggle('bg-app-tabBg', on);
+                                p.classList.toggle('ring-1', on);
+                                p.classList.toggle('ring-app-accent', on);
+                                p.querySelector('.paper-active-mark')?.classList.toggle('hidden', !on);
+                            });
                             openFile(path);
                         });
                     });
