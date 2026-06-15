@@ -438,10 +438,21 @@
                 <i class="ph-fill ph-play text-white"></i>
                 <span>Compile</span>
             </button>
-            <button class="bg-transparent hover:bg-app-bg border border-app-border text-app-textLight px-4 py-1.5 rounded-md text-sm font-medium flex items-center space-x-2 transition-colors shadow-sm" data-purpose="export-button">
-                <i class="ph-duotone ph-download-simple"></i>
-                <span>Export</span>
-            </button>
+            <div class="relative" data-purpose="export-wrap">
+                <button class="bg-transparent hover:bg-app-bg border border-app-border text-app-textLight px-4 py-1.5 rounded-md text-sm font-medium flex items-center space-x-2 transition-colors shadow-sm" data-purpose="export-button">
+                    <i class="ph-duotone ph-download-simple"></i>
+                    <span>Export</span>
+                    <i class="ph-bold ph-caret-down text-xs opacity-70"></i>
+                </button>
+                <div class="hidden absolute right-0 mt-1 w-48 bg-app-panelBg border border-app-border rounded-md shadow-lg z-50 py-1" data-purpose="export-menu">
+                    <button class="w-full text-left px-4 py-2 text-sm text-app-textLight hover:bg-app-bg flex items-center space-x-2" data-export="pdf">
+                        <i class="ph-duotone ph-file-pdf text-app-accent"></i><span>Export to PDF</span>
+                    </button>
+                    <button class="w-full text-left px-4 py-2 text-sm text-app-textLight hover:bg-app-bg flex items-center space-x-2" data-export="html">
+                        <i class="ph-duotone ph-file-html text-app-accent"></i><span>Export to HTML</span>
+                    </button>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -1265,38 +1276,60 @@ jupyter: python3
         }
     });
 
-    // Export button handler — compiles paperview HTML then opens print dialog
-    document.querySelector('[data-purpose="export-button"]')?.addEventListener('click', async () => {
+    // Export dropdown — Export to PDF (paperview + print) or Export to HTML (download)
+    (function () {
+        const wrap = document.querySelector('[data-purpose="export-wrap"]');
         const btn = document.querySelector('[data-purpose="export-button"]');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="ph-fill ph-spinner text-white animate-spin"></i><span>Exporting...</span>';
+        const menu = document.querySelector('[data-purpose="export-menu"]');
+        if (!wrap || !btn || !menu) return;
 
-        try {
-            // Compile paperview format
-            const response = await fetch('/api/compile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ files: state.editorContent, format: 'pdf' })
-            });
-            const result = await response.json();
+        btn.addEventListener('click', (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); });
+        document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) menu.classList.add('hidden'); });
 
-            if (response.ok && result.status === 'success') {
-                // Open paperview HTML in new tab and trigger print
-                const printUrl = '/output/' + result.filename + '?t=' + Date.now();
-                const win = window.open(printUrl, '_blank');
-                win.addEventListener('load', () => {
-                    win.print();
+        async function doExport(fmt) {
+            menu.classList.add('hidden');
+            const orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="ph-fill ph-spinner text-white animate-spin"></i><span>Exporting…</span>';
+            try {
+                // Compile saves in-flight editor changes, then renders the chosen format.
+                const response = await fetch('/api/compile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ files: state.editorContent, format: fmt === 'pdf' ? 'pdf' : 'html' })
                 });
-            } else {
-                alert('Export failed:\n\n' + (result.error || 'Unknown error'));
+                const result = await response.json();
+                if (!(response.ok && result.status === 'success')) {
+                    alert('Export failed:\n\n' + (result.error || 'Unknown error'));
+                    return;
+                }
+                if (fmt === 'pdf') {
+                    // Open the static paperview HTML and trigger the print/save-as-PDF dialog.
+                    const printUrl = '/output/' + result.filename + '?t=' + Date.now();
+                    const win = window.open(printUrl, '_blank');
+                    if (win) win.addEventListener('load', () => win.print());
+                } else {
+                    // Download the compiled standalone HTML file.
+                    const r = await fetch('/output/' + result.filename + '?t=' + Date.now());
+                    const blob = await r.blob();
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = result.filename;
+                    document.body.appendChild(a); a.click(); a.remove();
+                    URL.revokeObjectURL(a.href);
+                }
+            } catch (error) {
+                alert('Export failed: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = orig;
             }
-        } catch (error) {
-            alert('Export failed: ' + error.message);
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="ph-duotone ph-download-simple"></i><span>Export</span>';
         }
-    });
+
+        menu.querySelectorAll('[data-export]').forEach((item) => {
+            item.addEventListener('click', () => doExport(item.getAttribute('data-export')));
+        });
+    })();
 
     // Setup event listeners
     function setupEventListeners() {
