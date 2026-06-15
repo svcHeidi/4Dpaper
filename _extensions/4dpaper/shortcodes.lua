@@ -26,22 +26,8 @@ local _paper_view = os.getenv("FOURD_PAPER_VIEW") == "1"
 local _RELAY_SCRIPT = [=[
 <script>
 (function(){
-  /* ── Debug bar: shows message chain status without DevTools ─────── */
-  (function(){
-    if (document.getElementById('fourd-dbg')) return;
-    var d=document.createElement('div');
-    d.id='fourd-dbg';
-    d.style.cssText='position:fixed;bottom:4px;right:4px;z-index:2147483646;'+
-      'background:rgba(0,0,0,0.82);color:#0f0;font-size:10px;font-family:monospace;'+
-      'padding:4px 8px;border-radius:4px;max-width:320px;pointer-events:none;';
-    d.textContent='[4d] relay ready';
-    document.body.appendChild(d);
-  })();
-  function _dbg(msg){
-    var d=document.getElementById('fourd-dbg');
-    if(d)d.textContent='[4d] '+msg;
-    console.log('[4dpaper]',msg);
-  }
+  /* Debug bar removed — no on-page "[4d] …" message log, no console spam. */
+  function _dbg(msg){}
 
   /* ── Camera overlay: lives in this document (paper preview) ──────── */
   if (!document.getElementById('fourd-cam-overlay')) {
