@@ -21,8 +21,25 @@ def run_quarto_render(
     distinct file.
     """
     import os
+    import shutil
     import subprocess
     import threading
+
+    # Remove the previous render's supporting-files dir (<stem>_files) before
+    # re-rendering. On macOS Docker bind mounts (virtiofs/gRPC-FUSE), Quarto's
+    # ensureDirSync/statSync on a *stale* _files dir can intermittently fail with
+    # "Resource deadlock avoided (os error 35)". Starting each render from a clean
+    # slate avoids re-stat'ing a stale dir. These dirs are regenerated every render.
+    _stem = qmd_path.stem
+    for _d in (
+        qmd_path.parent / f"{_stem}_files",
+        qmd_path.parent / "_output" / f"{_stem}_files",
+    ):
+        try:
+            if _d.exists():
+                shutil.rmtree(_d, ignore_errors=True)
+        except Exception:
+            pass
 
     env = os.environ.copy()
     _venv_bin = Path(__file__).parent.parent / ".venv" / "bin"
