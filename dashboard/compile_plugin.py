@@ -44,6 +44,44 @@ def _find_main_qmd() -> Path:
     return _PROJECT_ROOT / "main.qmd"  # will produce a clear FileNotFoundError
 
 
+def _resolve_target(body: dict) -> Path:
+    """Resolve the paper to compile from the request body's `target`.
+
+    `target` must be a root-level `.qmd` (a paper wrapper) inside the project.
+    Falls back to `_find_main_qmd()` when absent or invalid.
+    """
+    target = (body.get("target") or "").strip()
+    if not target:
+        return _find_main_qmd()
+    # Reject path traversal / nested paths — papers live at the project root.
+    if target.endswith(".qmd") and "/" not in target and "\\" not in target and ".." not in target:
+        p = (_PROJECT_ROOT / target).resolve()
+        try:
+            p.relative_to(_PROJECT_ROOT.resolve())
+        except ValueError:
+            return _find_main_qmd()
+        if p.exists() and p.suffix == ".qmd":
+            return p
+    return _find_main_qmd()
+
+
+# Citation-style key → CSL file (relative to <project>/_extensions/4dpaper/csl).
+# "author-date"/"" use pandoc's built-in default (no CSL file).
+_CSL_STYLES = {
+    "numeric": "numeric.csl",
+}
+
+
+def _resolve_csl(body: dict) -> "Path | None":
+    """Resolve the optional `csl` citation-style key to a CSL file path."""
+    style = (body.get("csl") or "").strip().lower()
+    fname = _CSL_STYLES.get(style)
+    if not fname:
+        return None
+    p = (_PROJECT_ROOT / "_extensions" / "4dpaper" / "csl" / fname).resolve()
+    return p if p.exists() else None
+
+
 class CompileHandler(SecureMixin, tornado.web.RequestHandler):
     """Compile the main QMD to HTML (interactive) or paperview HTML (static)."""
 
@@ -84,15 +122,17 @@ class CompileHandler(SecureMixin, tornado.web.RequestHandler):
                 path.write_text(content, encoding="utf-8")
                 print(f"[CompileHandler] Saved: {path.relative_to(_PROJECT_ROOT)}")
 
-            main_qmd = _find_main_qmd()
+            main_qmd = _resolve_target(body)
             stem = main_qmd.stem
+            csl_path = _resolve_csl(body)
 
             if not main_qmd.exists():
                 self.set_status(404)
                 self.write({"error": "Main QMD file not found"})
                 return
 
-            print("[CompileHandler] Starting Quarto render...")
+            print(f"[CompileHandler] Starting Quarto render of {main_qmd.name}"
+                  f"{f' (csl={csl_path.name})' if csl_path else ''}...")
             log_lines: list[str] = []
 
             # Frontend sends "pdf" to mean the paperview static profile
@@ -104,7 +144,7 @@ class CompileHandler(SecureMixin, tornado.web.RequestHandler):
             loop = asyncio.get_event_loop()
             async with _render_lock:
                 exit_code = await loop.run_in_executor(
-                    None, run_quarto_render, main_qmd, log_lines, render_format
+                    None, run_quarto_render, main_qmd, log_lines, render_format, csl_path
                 )
 
             print(f"[CompileHandler] Quarto exit code: {exit_code}")
@@ -181,15 +221,20 @@ class ExportHandler(SecureMixin, tornado.web.RequestHandler):
             return
 
         try:
-            main_qmd = _find_main_qmd()
+            try:
+                body = json.loads(self.request.body) if self.request.body else {}
+            except (ValueError, TypeError):
+                body = {}
+            main_qmd = _resolve_target(body)
             stem = main_qmd.stem
+            csl_path = _resolve_csl(body)
 
             # Step 1: render paperview HTML (static, figures as saved-camera PNGs)
             log_lines: list[str] = []
             loop = asyncio.get_event_loop()
             async with _render_lock:
                 exit_code = await loop.run_in_executor(
-                    None, run_quarto_render, main_qmd, log_lines, "paperview"
+                    None, run_quarto_render, main_qmd, log_lines, "paperview", csl_path
                 )
 
             if exit_code != 0:

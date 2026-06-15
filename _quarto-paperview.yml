@@ -7,7 +7,6 @@ format:
     number-sections: true
     embed-resources: false
     css: _extensions/4dpaper/paperview.css
-    output-file: main-paperview.html
     # theme:none drops Quarto's MathJax JS, and WeasyPrint cannot run JS (nor
     # render MathML). webtex turns each equation into an <img>, which renders in
     # both the browser PDF-preview and the WeasyPrint PDF. Needs network access
