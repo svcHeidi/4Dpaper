@@ -9,6 +9,13 @@ import re
 import sys
 from pathlib import Path
 
+# Apply nest_asyncio early to allow trame's async server in non-Jupyter contexts
+try:
+    import nest_asyncio
+    nest_asyncio.apply()
+except ImportError:
+    pass
+
 _here = Path(__file__).resolve()
 _project_root = Path(
     os.environ.get("PROJECT_ROOT")
