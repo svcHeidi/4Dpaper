@@ -1127,11 +1127,17 @@ local function fourd_graph(args, kwargs)
   end
 end
 
+-- 4d-multi-image: multiple datasets in one interactive scene.
+-- The Python pre-render hook generates state/figures/<id>.html (and .png).
+-- From Lua's perspective the output is identical to 4d-image — just embed it.
+local fourd_multi_image = fourd_image
+
 return {
-  ["4d-image"]      = fourd_image,
-  ["4d-video"]      = fourd_video,
-  ["4d-panel"]      = fourd_panel,
-  ["4d-pvsm"]       = fourd_pvsm,
-  ["4d-timeseries"] = fourd_timeseries,
-  ["4d-graph"]      = fourd_graph,
+  ["4d-image"]       = fourd_image,
+  ["4d-multi-image"] = fourd_multi_image,
+  ["4d-video"]       = fourd_video,
+  ["4d-panel"]       = fourd_panel,
+  ["4d-pvsm"]        = fourd_pvsm,
+  ["4d-timeseries"]  = fourd_timeseries,
+  ["4d-graph"]       = fourd_graph,
 }

@@ -1044,7 +1044,7 @@ def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None
         pl.isometric_view()
 
 
-_GOLDEN_TOPBAR_JS = '  function _b64ToF32(b64){if(!b64)return null;var bin=atob(b64),len=bin.length,bytes=new Uint8Array(len);for(var i=0;i<len;i++)bytes[i]=bin.charCodeAt(i);return new Float32Array(bytes.buffer);}\n  function _getDecodedField(name){if(!_decodedFieldData[name]&&FIELD_DATA[name])_decodedFieldData[name]=_b64ToF32(FIELD_DATA[name]);return _decodedFieldData[name]||null;}\n  function _getDecodedTime(name){if(!_decodedTimeData[name]){var src=TIME_DATA[name]||[];_decodedTimeData[name]=src.map(_b64ToF32);}return _decodedTimeData[name]||[];}\n  function _getTimeRange(name){return TIME_GLOBAL_RANGE[name]||[0.0,1.0];}\n  function _getRenderer(){if(_renderer&&_renderer.getActors)return _renderer;var rw=window.renderWindow;if(rw&&rw.getRenderers){var rs=rw.getRenderers();for(var i=0;i<rs.length;i++){var r=rs[i];if(r&&r.getActors&&r.getActors().length>0){_renderer=r;return r;}}for(var j=0;j<rs.length;j++){if(rs[j]){_renderer=rs[j];return _renderer;}}}return null;}\n  function _findMeshActor(){if(!window.__4dp_global_probe){window.__4dp_global_probe=true;var hits=Object.keys(window).filter(function(k){return /vtk|render|view|trame|scene|loca/i.test(k);});hits.forEach(function(k){try{var v=window[k];}catch(_){}});var canvases=document.querySelectorAll("canvas");canvases.forEach(function(c,ci){var keys=Object.keys(c).filter(function(k){return /vtk|render/i.test(k);});});try{var pIfr=parent&&parent.window;}catch(_){}try{var olv=window.OfflineLocalView;if(olv){["getRenderer","getRenderWindow","getRenderers","getViewer","getView","render","scene","viewer"].forEach(function(m){});}}catch(e){}try{var cs=document.querySelectorAll("canvas");if(cs&&cs[0]){var c=cs[0];var ck=[];for(var key in c){if(/vtk|render/i.test(key))ck.push(key);}}}catch(_){}}var r=_getRenderer();if(!r){if(!window.__4dp_no_r){window.__4dp_no_r=true;}return null;}if(!window.__4dp_probed){window.__4dp_probed=true;var rw=window.renderWindow;var rs=rw&&rw.getRenderers?rw.getRenderers():[];rs.forEach(function(rr,ri){var acts=rr.getActors?rr.getActors():[];var props=rr.getViewProps?rr.getViewProps():[];var all=[].concat(acts).concat(props);all.forEach(function(a,ai){var m=a&&a.getMapper&&a.getMapper();var d=m&&m.getInputData&&m.getInputData();var pd=d&&d.getPointData&&d.getPointData();var arrs=[];if(pd&&pd.getNumberOfArrays){for(var k=0;k<pd.getNumberOfArrays();k++){var arr=pd.getArrayByIndex&&pd.getArrayByIndex(k);arrs.push(arr&&arr.getName&&arr.getName());}}});});}var acts=r.getActors?r.getActors():[];var props=r.getViewProps?r.getViewProps():[];var all=[].concat(acts).concat(props);for(var i=0;i<all.length;i++){var a=all[i],m=a&&a.getMapper&&a.getMapper(),d=m&&m.getInputData&&m.getInputData();if(d&&d.getPointData&&d.getPointData())return a;}return null;}\n  function _getScalarTarget(){_meshActor=_meshActor||_findMeshActor();if(!_meshActor){return null;}var mapper=_meshActor.getMapper&&_meshActor.getMapper();var input=mapper&&mapper.getInputData&&mapper.getInputData();var pd=input&&input.getPointData&&input.getPointData();var scalars=pd&&pd.getScalars&&pd.getScalars();if(!mapper||!input||!pd||!scalars){return null;}return {mapper:mapper,input:input,pd:pd,scalars:scalars};}\n  function _applyScalarArray(arr,range,name){var t=_getScalarTarget();if(!t||!arr){return false;}var next=t.pd&&t.pd.getArrayByName?t.pd.getArrayByName(_displayScalarName):null;if(next&&next.setData){next.setData(arr,1);}else if(t.pd&&t.pd.getScalars&&t.pd.getScalars()&&t.pd.getScalars().setData){next=t.pd.getScalars();next.setData(arr,1);}else if(t.scalars&&t.scalars.newClone){next=t.scalars.newClone();if(next.setNumberOfComponents)next.setNumberOfComponents(1);if(next.setData)next.setData(arr,1);}else if(t.scalars&&t.scalars.newInstance){next=t.scalars.newInstance({numberOfComponents:1,values:arr});}else {return false;}if(next&&next.setName)next.setName(_displayScalarName);if(next&&t.pd.addArray)t.pd.addArray(next);if(_displayScalarName&&t.pd.setActiveScalars)t.pd.setActiveScalars(_displayScalarName);if(next&&t.pd.setScalars)t.pd.setScalars(next);if(next&&next.modified)next.modified();if(t.pd.modified)t.pd.modified();if(t.input.modified)t.input.modified();if(t.mapper.setColorByArrayName)t.mapper.setColorByArrayName(_displayScalarName);if(t.mapper.setScalarModeToUsePointData)t.mapper.setScalarModeToUsePointData();if(t.mapper.setScalarVisibility)t.mapper.setScalarVisibility(true);if(range&&t.mapper.setScalarRange)t.mapper.setScalarRange(range[0],range[1]);if(t.mapper.mapScalars)t.mapper.mapScalars(t.input,1.0);if(t.mapper.modified)t.mapper.modified();if(_meshActor.modified)_meshActor.modified();var _sbrw=window.renderWindow;if(_sbrw&&_sbrw.getRenderers){var _sbrs=_sbrw.getRenderers();for(var _sbi=0;_sbi<_sbrs.length;_sbi++){var _sbp=[].concat(_sbrs[_sbi].getActors?_sbrs[_sbi].getActors():[]).concat(_sbrs[_sbi].getViewProps?_sbrs[_sbi].getViewProps():[]);for(var _sbj=0;_sbj<_sbp.length;_sbj++){var _sba=_sbp[_sbj];if(_sba.getClassName&&_sba.getClassName().indexOf(\'ScalarBar\')>=0){if(name&&_sba.setAxisLabel)_sba.setAxisLabel(name);var _sbl=_sba.getScalarsToColors&&_sba.getScalarsToColors();if(_sbl&&range&&_sbl.setMappingRange){_sbl.setMappingRange(range[0],range[1]);if(_sbl.updateRange)_sbl.updateRange();}if(_sba.modified)_sba.modified();}}}}if(window.renderWindow){window.renderWindow.render();}return true;}\n  function _emitTimeSync(){if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1)parent.postMessage({type:"4dpaper-time",fig_id:FIG_ID,idx:_timeIdx,playing:_timePlaying},"*");}\n  function _setTimeFrame(idx,silent){var frames=_getDecodedTime(ACTIVE_FIELD);if(!frames||idx<0||idx>=frames.length){return;}_timeIdx=idx;var slider=document.getElementById("cs-time-slider-__FIGSAFE__");if(slider)slider.value=String(idx);var label=document.getElementById("cs-time-val-__FIGSAFE__");if(label)label.textContent=(TIME_LABELS[idx]||String(idx));var arr=frames[idx];if(arr)_applyScalarArray(arr,_getTimeRange(ACTIVE_FIELD),ACTIVE_FIELD);if(!silent)_emitTimeSync();}\n  function _setPlaying(v,silent){_timePlaying=!!v;var btn=document.getElementById("cs-play-__FIGSAFE__");if(btn)btn.innerHTML=_timePlaying?"&#x23F8;":"&#x25B6;";if(!_timePlaying&&_timeRaf){cancelAnimationFrame(_timeRaf);_timeRaf=0;}if(!silent)_emitTimeSync();}\n  function _tickTime(ts){if(!_timePlaying)return;if(!_timeLastTs)_timeLastTs=ts;if(ts-_timeLastTs>=180){var frames=_getDecodedTime(ACTIVE_FIELD);if(frames&&frames.length){_setTimeFrame((_timeIdx+1)%frames.length);} _timeLastTs=ts;}_timeRaf=requestAnimationFrame(_tickTime);}\n  function _bindControls(){if(_controlsBound)return;_controlsBound=true;var slider=document.getElementById("cs-time-slider-__FIGSAFE__");if(slider)slider.addEventListener("input",function(){_setPlaying(false,true);_setTimeFrame(parseInt(this.value||"0",10)||0);});var play=document.getElementById("cs-play-__FIGSAFE__");if(play)play.addEventListener("click",function(){if(_locked){if(typeof _showLockedBadge==="function")_showLockedBadge();return;}var nv=!_timePlaying;_setPlaying(nv);_timeLastTs=0;if(nv)_timeRaf=requestAnimationFrame(_tickTime);});var fieldSel=document.getElementById("cs-field-sel-__FIGSAFE__");if(fieldSel)fieldSel.addEventListener("change",function(){var f=this.value,arr=_getDecodedField(f),range=FIELD_RANGES[f];if(arr&&_applyScalarArray(arr,range,f)){ACTIVE_FIELD=f;var badge=document.getElementById("cs-field-badge-__FIGSAFE__");if(badge){badge.textContent=f;badge.style.display="inline-block";badge.style.background="rgba(74,158,255,0.18)";badge.style.color="#9ecbff";setTimeout(function(){badge.style.display="none";},900);}if(TIME_DATA[f]&&TIME_DATA[f].length>_timeIdx){_setTimeFrame(_timeIdx);}}});if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1){var label=document.getElementById("cs-time-val-__FIGSAFE__");if(label)label.textContent=(TIME_LABELS[_timeIdx]||String(_timeIdx));}}\n  function _setLocked(v){\n    _locked=v;if(v){_setPlaying(false);}\n    var w=document.getElementById("cs-lock-widget-__FIGSAFE__");\n    if(w)w.innerHTML=v?"&#x1F512;":"&#x1F513;";\n    var s=document.getElementById("cs-lock-shield-__FIGSAFE__");\n    if(s)s.style.display=v?"block":"none";\n    var rw=window.renderWindow;\n    var i=(rw&&rw.getInteractor?rw.getInteractor():null);\n    if(i&&i.setEnabled)i.setEnabled(v?0:1);\n    var c=_cont||(i&&i.getContainer?i.getContainer():null);\n    if(c&&c.style){c.style.pointerEvents=v?"none":"";c.style.touchAction=v?"none":"";}\n    if(v&&i&&i.stopAnimating)i.stopAnimating();\n  }\n  function _n3(v){var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);return l<1e-10?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}\n  function _cr(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}\n  function _dt(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}\n  function _rot(v,ax,deg){var a=_n3(ax),x=v[0],y=v[1],z=v[2],c=Math.cos(deg*Math.PI/180),s=Math.sin(deg*Math.PI/180),d=a[0]*x+a[1]*y+a[2]*z;return[x*c+(a[1]*z-a[2]*y)*s+a[0]*d*(1-c),y*c+(a[2]*x-a[0]*z)*s+a[1]*d*(1-c),z*c+(a[0]*y-a[1]*x)*s+a[2]*d*(1-c)];}\n  window.csSetView___FIGSAFE__=function(dir,vup){if(!_renderer || _locked)return;var cam=_renderer.getActiveCamera(),fp=cam.getFocalPoint(),dist=cam.getDistance(),pn=_n3(dir),up=vup?_n3(vup):((Math.abs(pn[2])>0.9)?[0,1,0]:[0,0,1]);cam.setPosition(fp[0]+pn[0]*dist,fp[1]+pn[1]*dist,fp[2]+pn[2]*dist);cam.setViewUp(up[0],up[1],up[2]);cam.setFocalPoint(fp[0],fp[1],fp[2]);_renderer.resetCameraClippingRange();if(window.renderWindow)window.renderWindow.render();_sendCam(_renderer);};\n  window.csRotate___FIGSAFE__=function(dx,dy){if(!_renderer || _locked)return;var cam=_renderer.getActiveCamera(),pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp(),rel=[pos[0]-fp[0],pos[1]-fp[1],pos[2]-fp[2]],right=_n3(_cr(rel,vup)),pitch=_rot(rel,right,dy),yawAxis=_n3(vup),yaw=_rot(pitch,yawAxis,dx);cam.setPosition(fp[0]+yaw[0],fp[1]+yaw[1],fp[2]+yaw[2]);cam.setViewUp(vup[0],vup[1],vup[2]);_renderer.resetCameraClippingRange();if(window.renderWindow)window.renderWindow.render();_sendCam(_renderer);};\n  var _camTimer=null;\n  function _sendCam(r){if(_locked)return;clearTimeout(_camTimer);_camTimer=setTimeout(function(){var c=r.getActiveCamera();var d={position:c.getPosition(),focal_point:c.getFocalPoint(),view_up:c.getViewUp(),parallel_scale:c.getParallelScale(),parallel_projection:c.getParallelProjection()?1:0};parent.postMessage({type:"4dpaper-camera",fig_id:FIG_ID,camera:d},"*");},300);}\n  var _svg=null;\n  function _drawAxes(){if(!_renderer||!_svg)return;var cam=_renderer.getActiveCamera(),pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp(),vd=_n3([fp[0]-pos[0],fp[1]-pos[1],fp[2]-pos[2]]),right=_n3(_cr(vd,vup)),up=_cr(right,vd),cx=28,cy=28,R=22;function proj(v){return[cx+R*_dt(v,right),cy-R*_dt(v,up)];}var axes=[{w:[1,0,0],col:"#ff6666",lcol:"#ff9999",lbl:"X",hpd:\'data-dir="1,0,0"\'},{w:[0,1,0],col:"#66cc66",lcol:"#99cc99",lbl:"Y",hpd:\'data-dir="0,1,0"\'},{w:[0,0,1],col:"#6699ff",lcol:"#99aaff",lbl:"Z",hpd:\'data-dir="0,0,1"\'}];var h="";axes.forEach(function(ax){var tip=proj(ax.w),tx=tip[0].toFixed(1),ty=tip[1].toFixed(1),dx=tip[0]-cx,dy=tip[1]-cy,len=Math.sqrt(dx*dx+dy*dy)||1,nx=-dy/len*3.5,ny=dx/len*3.5,bx1=(tip[0]-dx/len*7+nx).toFixed(1),by1=(tip[1]-dy/len*7+ny).toFixed(1),bx2=(tip[0]-dx/len*7-nx).toFixed(1),by2=(tip[1]-dy/len*7-ny).toFixed(1);h+=\'<line x1="\'+cx+\'" y1="\'+cy+\'" x2="\'+tx+\'" y2="\'+ty+\'" \'+ax.hpd+\' stroke="\'+ax.col+\'" stroke-width="2.5"/>\';h+=\'<polygon points="\'+tx+","+ty+" "+bx1+","+by1+" "+bx2+","+by2+\'" \'+ax.hpd+\' fill="\'+ax.col+\'"/>\';h+=\'<text x="\'+(tip[0]+dx/len*5).toFixed(1)+\'" y="\'+(tip[1]+dy/len*5+3).toFixed(1)+\'" \'+ax.hpd+\' font-size="9" fill="\'+ax.lcol+\'" font-family="monospace">\'+ax.lbl+\'</text>\';});_svg.innerHTML=h;}\n  function _axLoop(){_drawAxes();requestAnimationFrame(_axLoop);}\n  (function _wR(){\n    var rw=window.renderWindow;\n    var r=_getRenderer();\n    if(r){\n          var i=rw&&rw.getInteractor?rw.getInteractor():null;_cont=i?i.getContainer():null;\n          if(_cont){\n            _cont.addEventListener("mouseenter",function(){_isHovered=true;window.focus();});\n            _cont.addEventListener("mouseleave",function(){_isHovered=false;});\n            _cont.addEventListener("wheel",function(e){e.preventDefault();},{passive:false});\n          }\n          _bindControls();\n          _svg=document.getElementById("cs-svg-axes-__FIGSAFE__");_svg.addEventListener("click",function(e){var dv=e.target.getAttribute("data-dir");if(!dv)return;if(_locked){if(typeof _showLockedBadge==="function")_showLockedBadge();return;}csSetView___FIGSAFE__(dv.split(",").map(Number));});_axLoop();\n          if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1)_setTimeFrame(_timeIdx);\n          document.addEventListener("pointerup",function(){_sendCam(_renderer);});\n          document.addEventListener("mouseup",function(){_sendCam(_renderer);});\n          document.addEventListener("touchend",function(){_sendCam(_renderer);});\n          window.addEventListener("message",function(e){\n            if(!e.data)return;var d=e.data;\n            if(d.type==="4dpaper-camera-apply"){if(_locked)return;var r=_getRenderer();if(!r)return;var cam=d.camera,c=r.getActiveCamera();if(cam.position)c.setPosition(cam.position[0],cam.position[1],cam.position[2]);if(cam.focal_point)c.setFocalPoint(cam.focal_point[0],cam.focal_point[1],cam.focal_point[2]);if(cam.view_up)c.setViewUp(cam.view_up[0],cam.view_up[1],cam.view_up[2]);if(cam.parallel_scale!=null)c.setParallelScale(cam.parallel_scale);if(cam.parallel_projection!=null)c.setParallelProjection(!!cam.parallel_projection);window.renderWindow.render();}\n            else if(d.type==="4dpaper-time-apply"&&d.fig_id!==FIG_ID){_setPlaying(!!d.playing,true);_timeLastTs=0;_setTimeFrame(parseInt(d.idx||"0",10)||0,true);}\n            else if(d.type==="4dpaper-lock-state"&&d.fig_id===FIG_ID)_setLocked(!!d.locked);\n            else if(d.type==="4dpaper-lock-ack"&&d.fig_id===FIG_ID){if(d.status!=="ok")_setLocked(!_locked);}\n            else if(d.type==="4dpaper-lock-all")_setLocked(!!d.locked);\n            else if(d.type==="4dpaper-hide-lock-btn"){var w=document.getElementById("cs-lock-widget-__FIGSAFE__");if(w)w.style.display="none";var s=document.getElementById("cs-lock-sep-__FIGSAFE__");if(s)s.style.display="none";}\n          });\n          return;\n    }\n    setTimeout(_wR,200);\n  })();\n  _bindControls();\n  window.addEventListener("keydown",function(e){if(!_renderer||!_isHovered||_locked)return;var k=e.key.toLowerCase();if(k==="x")csSetView___FIGSAFE__([1,0,0],[0,0,1]);else if(k==="y")csSetView___FIGSAFE__([0,1,0],[0,0,1]);else if(k==="z")csSetView___FIGSAFE__([0,0,1],[0,1,0]);else if(k==="i")csSetView___FIGSAFE__([1,1,1],[0,0,1]);else if(e.key==="ArrowUp")csRotate___FIGSAFE__(0,-90);else if(e.key==="ArrowDown")csRotate___FIGSAFE__(0,90);else if(e.key==="ArrowLeft")csRotate___FIGSAFE__(-90,0);else if(e.key==="ArrowRight")csRotate___FIGSAFE__(90,0);if(e.key.startsWith("Arrow"))e.preventDefault();});'
+_GOLDEN_TOPBAR_JS = '  function _b64ToF32(b64){if(!b64)return null;var bin=atob(b64),len=bin.length,bytes=new Uint8Array(len);for(var i=0;i<len;i++)bytes[i]=bin.charCodeAt(i);return new Float32Array(bytes.buffer);}\n  function _getDecodedField(name){if(!_decodedFieldData[name]&&FIELD_DATA[name])_decodedFieldData[name]=_b64ToF32(FIELD_DATA[name]);return _decodedFieldData[name]||null;}\n  function _getDecodedTime(name){if(!_decodedTimeData[name]){var src=TIME_DATA[name]||[];_decodedTimeData[name]=src.map(_b64ToF32);}return _decodedTimeData[name]||[];}\n  function _getTimeRange(name){return TIME_GLOBAL_RANGE[name]||[0.0,1.0];}\n  function _getRenderer(){if(_renderer&&_renderer.getActors)return _renderer;var rw=window.renderWindow;if(rw&&rw.getRenderers){var rs=rw.getRenderers();for(var i=0;i<rs.length;i++){var r=rs[i];if(r&&r.getActors&&r.getActors().length>0){_renderer=r;return r;}}for(var j=0;j<rs.length;j++){if(rs[j]){_renderer=rs[j];return _renderer;}}}return null;}\n  function _findMeshActor(){if(!window.__4dp_global_probe){window.__4dp_global_probe=true;var hits=Object.keys(window).filter(function(k){return /vtk|render|view|trame|scene|loca/i.test(k);});hits.forEach(function(k){try{var v=window[k];}catch(_){}});var canvases=document.querySelectorAll("canvas");canvases.forEach(function(c,ci){var keys=Object.keys(c).filter(function(k){return /vtk|render/i.test(k);});});try{var pIfr=parent&&parent.window;}catch(_){}try{var olv=window.OfflineLocalView;if(olv){["getRenderer","getRenderWindow","getRenderers","getViewer","getView","render","scene","viewer"].forEach(function(m){});}}catch(e){}try{var cs=document.querySelectorAll("canvas");if(cs&&cs[0]){var c=cs[0];var ck=[];for(var key in c){if(/vtk|render/i.test(key))ck.push(key);}}}catch(_){}}var r=_getRenderer();if(!r){if(!window.__4dp_no_r){window.__4dp_no_r=true;}return null;}if(!window.__4dp_probed){window.__4dp_probed=true;var rw=window.renderWindow;var rs=rw&&rw.getRenderers?rw.getRenderers():[];rs.forEach(function(rr,ri){var acts=rr.getActors?rr.getActors():[];var props=rr.getViewProps?rr.getViewProps():[];var all=[].concat(acts).concat(props);all.forEach(function(a,ai){var m=a&&a.getMapper&&a.getMapper();var d=m&&m.getInputData&&m.getInputData();var pd=d&&d.getPointData&&d.getPointData();var arrs=[];if(pd&&pd.getNumberOfArrays){for(var k=0;k<pd.getNumberOfArrays();k++){var arr=pd.getArrayByIndex&&pd.getArrayByIndex(k);arrs.push(arr&&arr.getName&&arr.getName());}}});});}var acts=r.getActors?r.getActors():[];var props=r.getViewProps?r.getViewProps():[];var all=[].concat(acts).concat(props);for(var i=0;i<all.length;i++){var a=all[i],m=a&&a.getMapper&&a.getMapper(),d=m&&m.getInputData&&m.getInputData();if(d&&d.getPointData&&d.getPointData())return a;}return null;}\n  function _getScalarTarget(){_meshActor=_meshActor||_findMeshActor();if(!_meshActor){return null;}var mapper=_meshActor.getMapper&&_meshActor.getMapper();var input=mapper&&mapper.getInputData&&mapper.getInputData();var pd=input&&input.getPointData&&input.getPointData();var scalars=pd&&pd.getScalars&&pd.getScalars();if(!mapper||!input||!pd||!scalars){return null;}return {mapper:mapper,input:input,pd:pd,scalars:scalars};}\n  function _applyScalarArray(arr,range,name){var t=_getScalarTarget();if(!t||!arr){return false;}var next=t.pd&&t.pd.getArrayByName?t.pd.getArrayByName(_displayScalarName):null;if(next&&next.setData){next.setData(arr,1);}else if(t.pd&&t.pd.getScalars&&t.pd.getScalars()&&t.pd.getScalars().setData){next=t.pd.getScalars();next.setData(arr,1);}else if(t.scalars&&t.scalars.newClone){next=t.scalars.newClone();if(next.setNumberOfComponents)next.setNumberOfComponents(1);if(next.setData)next.setData(arr,1);}else if(t.scalars&&t.scalars.newInstance){next=t.scalars.newInstance({numberOfComponents:1,values:arr});}else {return false;}if(next&&next.setName)next.setName(_displayScalarName);if(next&&t.pd.addArray)t.pd.addArray(next);if(_displayScalarName&&t.pd.setActiveScalars)t.pd.setActiveScalars(_displayScalarName);if(next&&t.pd.setScalars)t.pd.setScalars(next);if(next&&next.modified)next.modified();if(t.pd.modified)t.pd.modified();if(t.input.modified)t.input.modified();if(t.mapper.setColorByArrayName)t.mapper.setColorByArrayName(_displayScalarName);if(t.mapper.setScalarModeToUsePointData)t.mapper.setScalarModeToUsePointData();if(t.mapper.setScalarVisibility)t.mapper.setScalarVisibility(true);if(range&&t.mapper.setScalarRange)t.mapper.setScalarRange(range[0],range[1]);if(t.mapper.mapScalars)t.mapper.mapScalars(t.input,1.0);if(t.mapper.modified)t.mapper.modified();if(_meshActor.modified)_meshActor.modified();var _sbrw=window.renderWindow;if(_sbrw&&_sbrw.getRenderers){var _sbrs=_sbrw.getRenderers();for(var _sbi=0;_sbi<_sbrs.length;_sbi++){var _sbp=[].concat(_sbrs[_sbi].getActors?_sbrs[_sbi].getActors():[]).concat(_sbrs[_sbi].getViewProps?_sbrs[_sbi].getViewProps():[]);for(var _sbj=0;_sbj<_sbp.length;_sbj++){var _sba=_sbp[_sbj];if(_sba.getClassName&&_sba.getClassName().indexOf(\'ScalarBar\')>=0){if(name&&_sba.setAxisLabel)_sba.setAxisLabel(name);var _sbl=_sba.getScalarsToColors&&_sba.getScalarsToColors();if(_sbl&&range&&_sbl.setMappingRange){_sbl.setMappingRange(range[0],range[1]);if(_sbl.updateRange)_sbl.updateRange();}if(_sba.modified)_sba.modified();}}}}if(window.renderWindow){window.renderWindow.render();}return true;}\n  function _emitTimeSync(){if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1)parent.postMessage({type:"4dpaper-time",fig_id:FIG_ID,idx:_timeIdx,playing:_timePlaying},"*");}\n  function _setTimeFrame(idx,silent){var frames=_getDecodedTime(ACTIVE_FIELD);if(!frames||idx<0||idx>=frames.length){return;}_timeIdx=idx;var slider=document.getElementById("cs-time-slider-__FIGSAFE__");if(slider)slider.value=String(idx);var label=document.getElementById("cs-time-val-__FIGSAFE__");if(label)label.textContent=(TIME_LABELS[idx]||String(idx));var arr=frames[idx];if(arr)_applyScalarArray(arr,_getTimeRange(ACTIVE_FIELD),ACTIVE_FIELD);if(!silent)_emitTimeSync();if(window[\'__4dp_onframe___FIGSAFE__\'])window[\'__4dp_onframe___FIGSAFE__\'](idx);}\n  function _setPlaying(v,silent){_timePlaying=!!v;var btn=document.getElementById("cs-play-__FIGSAFE__");if(btn)btn.innerHTML=_timePlaying?"&#x23F8;":"&#x25B6;";if(!_timePlaying&&_timeRaf){cancelAnimationFrame(_timeRaf);_timeRaf=0;}if(!silent)_emitTimeSync();}\n  function _tickTime(ts){if(!_timePlaying)return;if(!_timeLastTs)_timeLastTs=ts;if(ts-_timeLastTs>=180){var frames=_getDecodedTime(ACTIVE_FIELD);if(frames&&frames.length){_setTimeFrame((_timeIdx+1)%frames.length);} _timeLastTs=ts;}_timeRaf=requestAnimationFrame(_tickTime);}\n  function _bindControls(){if(_controlsBound)return;_controlsBound=true;var slider=document.getElementById("cs-time-slider-__FIGSAFE__");if(slider)slider.addEventListener("input",function(){_setPlaying(false,true);_setTimeFrame(parseInt(this.value||"0",10)||0);});var play=document.getElementById("cs-play-__FIGSAFE__");if(play)play.addEventListener("click",function(){if(_locked){if(typeof _showLockedBadge==="function")_showLockedBadge();return;}var nv=!_timePlaying;_setPlaying(nv);_timeLastTs=0;if(nv)_timeRaf=requestAnimationFrame(_tickTime);});var fieldSel=document.getElementById("cs-field-sel-__FIGSAFE__");if(fieldSel)fieldSel.addEventListener("change",function(){var f=this.value,arr=_getDecodedField(f),range=FIELD_RANGES[f];if(arr&&_applyScalarArray(arr,range,f)){ACTIVE_FIELD=f;var badge=document.getElementById("cs-field-badge-__FIGSAFE__");if(badge){badge.textContent=f;badge.style.display="inline-block";badge.style.background="rgba(74,158,255,0.18)";badge.style.color="#9ecbff";setTimeout(function(){badge.style.display="none";},900);}if(TIME_DATA[f]&&TIME_DATA[f].length>_timeIdx){_setTimeFrame(_timeIdx);}}});if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1){var label=document.getElementById("cs-time-val-__FIGSAFE__");if(label)label.textContent=(TIME_LABELS[_timeIdx]||String(_timeIdx));}}\n  function _setLocked(v){\n    _locked=v;if(v){_setPlaying(false);}\n    var w=document.getElementById("cs-lock-widget-__FIGSAFE__");\n    if(w)w.innerHTML=v?"&#x1F512;":"&#x1F513;";\n    var s=document.getElementById("cs-lock-shield-__FIGSAFE__");\n    if(s)s.style.display=v?"block":"none";\n    var rw=window.renderWindow;\n    var i=(rw&&rw.getInteractor?rw.getInteractor():null);\n    if(i&&i.setEnabled)i.setEnabled(v?0:1);\n    var c=_cont||(i&&i.getContainer?i.getContainer():null);\n    if(c&&c.style){c.style.pointerEvents=v?"none":"";c.style.touchAction=v?"none":"";}\n    if(v&&i&&i.stopAnimating)i.stopAnimating();\n  }\n  function _n3(v){var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);return l<1e-10?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}\n  function _cr(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}\n  function _dt(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}\n  function _rot(v,ax,deg){var a=_n3(ax),x=v[0],y=v[1],z=v[2],c=Math.cos(deg*Math.PI/180),s=Math.sin(deg*Math.PI/180),d=a[0]*x+a[1]*y+a[2]*z;return[x*c+(a[1]*z-a[2]*y)*s+a[0]*d*(1-c),y*c+(a[2]*x-a[0]*z)*s+a[1]*d*(1-c),z*c+(a[0]*y-a[1]*x)*s+a[2]*d*(1-c)];}\n  window.csSetView___FIGSAFE__=function(dir,vup){if(!_renderer || _locked)return;var cam=_renderer.getActiveCamera(),fp=cam.getFocalPoint(),dist=cam.getDistance(),pn=_n3(dir),up=vup?_n3(vup):((Math.abs(pn[2])>0.9)?[0,1,0]:[0,0,1]);cam.setPosition(fp[0]+pn[0]*dist,fp[1]+pn[1]*dist,fp[2]+pn[2]*dist);cam.setViewUp(up[0],up[1],up[2]);cam.setFocalPoint(fp[0],fp[1],fp[2]);_renderer.resetCameraClippingRange();if(window.renderWindow)window.renderWindow.render();_sendCam(_renderer);};\n  window.csRotate___FIGSAFE__=function(dx,dy){if(!_renderer || _locked)return;var cam=_renderer.getActiveCamera(),pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp(),rel=[pos[0]-fp[0],pos[1]-fp[1],pos[2]-fp[2]],right=_n3(_cr(rel,vup)),pitch=_rot(rel,right,dy),yawAxis=_n3(vup),yaw=_rot(pitch,yawAxis,dx);cam.setPosition(fp[0]+yaw[0],fp[1]+yaw[1],fp[2]+yaw[2]);cam.setViewUp(vup[0],vup[1],vup[2]);_renderer.resetCameraClippingRange();if(window.renderWindow)window.renderWindow.render();_sendCam(_renderer);};\n  var _camTimer=null;\n  function _sendCam(r){if(_locked)return;clearTimeout(_camTimer);_camTimer=setTimeout(function(){var c=r.getActiveCamera();var d={position:c.getPosition(),focal_point:c.getFocalPoint(),view_up:c.getViewUp(),parallel_scale:c.getParallelScale(),parallel_projection:c.getParallelProjection()?1:0};parent.postMessage({type:"4dpaper-camera",fig_id:FIG_ID,camera:d},"*");},300);}\n  var _svg=null;\n  function _drawAxes(){if(!_renderer||!_svg)return;var cam=_renderer.getActiveCamera(),pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp(),vd=_n3([fp[0]-pos[0],fp[1]-pos[1],fp[2]-pos[2]]),right=_n3(_cr(vd,vup)),up=_cr(right,vd),cx=28,cy=28,R=22;function proj(v){return[cx+R*_dt(v,right),cy-R*_dt(v,up)];}var axes=[{w:[1,0,0],col:"#ff6666",lcol:"#ff9999",lbl:"X",hpd:\'data-dir="1,0,0"\'},{w:[0,1,0],col:"#66cc66",lcol:"#99cc99",lbl:"Y",hpd:\'data-dir="0,1,0"\'},{w:[0,0,1],col:"#6699ff",lcol:"#99aaff",lbl:"Z",hpd:\'data-dir="0,0,1"\'}];var h="";axes.forEach(function(ax){var tip=proj(ax.w),tx=tip[0].toFixed(1),ty=tip[1].toFixed(1),dx=tip[0]-cx,dy=tip[1]-cy,len=Math.sqrt(dx*dx+dy*dy)||1,nx=-dy/len*3.5,ny=dx/len*3.5,bx1=(tip[0]-dx/len*7+nx).toFixed(1),by1=(tip[1]-dy/len*7+ny).toFixed(1),bx2=(tip[0]-dx/len*7-nx).toFixed(1),by2=(tip[1]-dy/len*7-ny).toFixed(1);h+=\'<line x1="\'+cx+\'" y1="\'+cy+\'" x2="\'+tx+\'" y2="\'+ty+\'" \'+ax.hpd+\' stroke="\'+ax.col+\'" stroke-width="2.5"/>\';h+=\'<polygon points="\'+tx+","+ty+" "+bx1+","+by1+" "+bx2+","+by2+\'" \'+ax.hpd+\' fill="\'+ax.col+\'"/>\';h+=\'<text x="\'+(tip[0]+dx/len*5).toFixed(1)+\'" y="\'+(tip[1]+dy/len*5+3).toFixed(1)+\'" \'+ax.hpd+\' font-size="9" fill="\'+ax.lcol+\'" font-family="monospace">\'+ax.lbl+\'</text>\';});_svg.innerHTML=h;}\n  function _axLoop(){_drawAxes();requestAnimationFrame(_axLoop);}\n  (function _wR(){\n    var rw=window.renderWindow;\n    var r=_getRenderer();\n    if(r){\n          var i=rw&&rw.getInteractor?rw.getInteractor():null;_cont=i?i.getContainer():null;\n          if(_cont){\n            _cont.addEventListener("mouseenter",function(){_isHovered=true;window.focus();});\n            _cont.addEventListener("mouseleave",function(){_isHovered=false;});\n            _cont.addEventListener("wheel",function(e){e.preventDefault();},{passive:false});\n          }\n          _bindControls();\n          _svg=document.getElementById("cs-svg-axes-__FIGSAFE__");_svg.addEventListener("click",function(e){var dv=e.target.getAttribute("data-dir");if(!dv)return;if(_locked){if(typeof _showLockedBadge==="function")_showLockedBadge();return;}csSetView___FIGSAFE__(dv.split(",").map(Number));});_axLoop();\n          if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1)_setTimeFrame(_timeIdx);\n          document.addEventListener("pointerup",function(){_sendCam(_renderer);});\n          document.addEventListener("mouseup",function(){_sendCam(_renderer);});\n          document.addEventListener("touchend",function(){_sendCam(_renderer);});\n          window.addEventListener("message",function(e){\n            if(!e.data)return;var d=e.data;\n            if(d.type==="4dpaper-camera-apply"){if(_locked)return;var r=_getRenderer();if(!r)return;var cam=d.camera,c=r.getActiveCamera();if(cam.position)c.setPosition(cam.position[0],cam.position[1],cam.position[2]);if(cam.focal_point)c.setFocalPoint(cam.focal_point[0],cam.focal_point[1],cam.focal_point[2]);if(cam.view_up)c.setViewUp(cam.view_up[0],cam.view_up[1],cam.view_up[2]);if(cam.parallel_scale!=null)c.setParallelScale(cam.parallel_scale);if(cam.parallel_projection!=null)c.setParallelProjection(!!cam.parallel_projection);window.renderWindow.render();}\n            else if(d.type==="4dpaper-time-apply"&&d.fig_id!==FIG_ID){_setPlaying(!!d.playing,true);_timeLastTs=0;_setTimeFrame(parseInt(d.idx||"0",10)||0,true);}\n            else if(d.type==="4dpaper-lock-state"&&d.fig_id===FIG_ID)_setLocked(!!d.locked);\n            else if(d.type==="4dpaper-lock-ack"&&d.fig_id===FIG_ID){if(d.status!=="ok")_setLocked(!_locked);}\n            else if(d.type==="4dpaper-lock-all")_setLocked(!!d.locked);\n            else if(d.type==="4dpaper-hide-lock-btn"){var w=document.getElementById("cs-lock-widget-__FIGSAFE__");if(w)w.style.display="none";var s=document.getElementById("cs-lock-sep-__FIGSAFE__");if(s)s.style.display="none";}\n          });\n          return;\n    }\n    setTimeout(_wR,200);\n  })();\n  _bindControls();\n  window.addEventListener("keydown",function(e){if(!_renderer||!_isHovered||_locked)return;var k=e.key.toLowerCase();if(k==="x")csSetView___FIGSAFE__([1,0,0],[0,0,1]);else if(k==="y")csSetView___FIGSAFE__([0,1,0],[0,0,1]);else if(k==="z")csSetView___FIGSAFE__([0,0,1],[0,1,0]);else if(k==="i")csSetView___FIGSAFE__([1,1,1],[0,0,1]);else if(e.key==="ArrowUp")csRotate___FIGSAFE__(0,-90);else if(e.key==="ArrowDown")csRotate___FIGSAFE__(0,90);else if(e.key==="ArrowLeft")csRotate___FIGSAFE__(-90,0);else if(e.key==="ArrowRight")csRotate___FIGSAFE__(90,0);if(e.key.startsWith("Arrow"))e.preventDefault();});'
 
 _GOLDEN_TOPBAR_JS = _GOLDEN_TOPBAR_JS.replace(
     """var _camTimer=null;
@@ -1206,22 +1206,13 @@ def _controls_strip_snippet(
         lock_js = (
             '\n  function _setCamSyncStatus(state){var _cs=document.getElementById("cs-cam-sync-' + fig_id_safe + '");'
             'if(!_cs)return;'
-            'if(state==="syncing"){_cs.style.display="inline-block";_cs.textContent="Syncing…";'
-            '_cs.style.background="rgba(255,204,77,0.16)";_cs.style.color="#ffe08a";'
-            '_cs.title="Saving the current camera for PDF export.";return;}'
-            'if(state==="ok"){_cs.style.display="inline-block";_cs.textContent="Camera synced";'
-            '_cs.style.background="rgba(76,175,80,0.16)";_cs.style.color="#9ee6a3";'
-            '_cs.title="The saved camera is used for static PDF screenshots.";return;}'
-            'if(state==="error"){_cs.style.display="inline-block";_cs.textContent="Sync failed";'
-            '_cs.style.background="rgba(244,67,54,0.16)";_cs.style.color="#ffb3ad";'
-            '_cs.title="Camera sync failed. PDF export will keep the last saved view.";return;}'
             '_cs.style.display="none";}'
             '\n  var _origSendCam=_sendCam;'
-            '_sendCam=function(r){_setCamSyncStatus("syncing");_origSendCam(r);};'
+            '_sendCam=function(r){_origSendCam(r);};'
             '\n  window.addEventListener("message",function(e){'
             'if(!e.data)return;var d=e.data;'
             'if(d.type==="4dpaper-camera-ack"&&(d.fig_id===FIG_ID||d.fig_id==="*")){'
-            '_setCamSyncStatus(d.status==="ok"?"ok":"error");}});'
+            ';}});'
             '\n  (function(){var _lw=document.getElementById("cs-lock-widget-' + fig_id_safe + '");'
             'if(_lw)_lw.addEventListener("click",function(){var nv=!_locked;_setLocked(nv);'
             'parent.postMessage({type:"4dpaper-lock-toggle",fig_id:FIG_ID,locked:nv},"*");});'
@@ -1272,6 +1263,486 @@ window.addEventListener('message', function(e){{
     }}
 }});
 </script>"""
+
+
+_DEFAULT_CMAPS = ["coolwarm", "plasma", "viridis", "RdBu"]
+
+_COLORBAR_POSITIONS = [
+    {"position_x": 0.02, "position_y": 0.05, "width": 0.22, "height": 0.10},
+    {"position_x": 0.76, "position_y": 0.05, "width": 0.22, "height": 0.10},
+    {"position_x": 0.76, "position_y": 0.20, "width": 0.22, "height": 0.10},
+    {"position_x": 0.76, "position_y": 0.35, "width": 0.22, "height": 0.10},
+]
+
+
+def _nearest_time_idx(sim, target_time: float) -> int:
+    """Return the index in sim.time_steps closest to target_time."""
+    times = sim.time_steps
+    if not times:
+        return 0
+    return min(range(len(times)), key=lambda i: abs(times[i] - target_time))
+
+
+def _multi_actor_extension_snippet(
+    overlay_field_names: list[str],
+    overlay_time_data_b64: dict[str, list[str]],
+    overlay_time_global_range: dict[str, list[float]],
+    fig_id: str = "",
+) -> str:
+    """
+    Return a <script> that animates overlay actors in sync with src1.
+
+    Hooks into window['__4dp_onframe_<figsafe>'] which _GOLDEN_TOPBAR_JS calls
+    from _setTimeFrame on every frame advance.  This avoids the IIFE scope
+    problem: _setTimeFrame is local to the controls-strip IIFE and cannot be
+    captured by a sibling script block.
+
+    Actors are identified by insertion order: actor[0] = src1, actor[1] = src2, …
+    """
+    if not overlay_field_names:
+        return ""
+    fig_safe = fig_id.replace("-", "_").replace("</", "")
+    td_json = json.dumps(overlay_time_data_b64)
+    range_json = json.dumps(overlay_time_global_range)
+    fields_json = json.dumps(overlay_field_names)
+    hook_key = f"__4dp_onframe_{fig_safe}"
+    return (
+        "<script>\n(function(){\n"
+        f"  var OV_TD={td_json};\n"
+        f"  var OV_RANGE={range_json};\n"
+        f"  var OV_FIELDS={fields_json};\n"
+        "  var _ovDec={}; var _ovActs=null;\n"
+        # Helper: decode base64 float32 array
+        "  function _b64F32(b64){if(!b64)return null;"
+        "var bin=atob(b64),len=bin.length,bytes=new Uint8Array(len);"
+        "for(var i=0;i<len;i++)bytes[i]=bin.charCodeAt(i);"
+        "return new Float32Array(bytes.buffer);}\n"
+        # Helper: find the renderer (mirrors _getRenderer in the controls strip)
+        "  function _getR(){var rw=window.renderWindow;if(!rw||!rw.getRenderers)return null;"
+        "var rs=rw.getRenderers();"
+        "for(var i=0;i<rs.length;i++){if(rs[i]&&rs[i].getActors&&rs[i].getActors().length>0)return rs[i];}"
+        "return rs[0]||null;}\n"
+        # Helper: return overlay actors (everything after actor[0])
+        "  function _getOvActs(){\n"
+        "    if(_ovActs)return _ovActs;\n"
+        "    var r=_getR(); if(!r)return null;\n"
+        "    var all=[].concat(r.getActors?r.getActors():[]).concat(r.getViewProps?r.getViewProps():[]);\n"
+        "    _ovActs=all.filter(function(a){var m=a&&a.getMapper&&a.getMapper();"
+        "var d=m&&m.getInputData&&m.getInputData();return!!(d&&d.getPointData&&d.getPointData());}).slice(1);\n"
+        "    return _ovActs;\n  }\n"
+        # Apply a scalar array to one actor
+        "  function _applyOv(actor,arr,range,name){\n"
+        "    if(!actor||!arr)return;\n"
+        "    var m=actor.getMapper&&actor.getMapper(),"
+        "inp=m&&m.getInputData&&m.getInputData(),"
+        "pd=inp&&inp.getPointData&&inp.getPointData();\n"
+        "    if(!pd)return;\n"
+        "    var next=pd.getArrayByName?pd.getArrayByName(name):null;\n"
+        "    if(next&&next.setData){next.setData(arr,1);}\n"
+        "    else{var sc=pd.getScalars&&pd.getScalars();"
+        "if(sc&&sc.setData){sc.setData(arr,1);next=sc;}else return;}\n"
+        "    if(next.setName)next.setName(name);\n"
+        "    if(pd.addArray)pd.addArray(next);\n"
+        "    if(pd.setActiveScalars)pd.setActiveScalars(name);\n"
+        "    if(pd.setScalars)pd.setScalars(next);\n"
+        "    if(next.modified)next.modified();\n"
+        "    if(pd.modified)pd.modified();\n"
+        "    if(inp.modified)inp.modified();\n"
+        "    if(m.setColorByArrayName)m.setColorByArrayName(name);\n"
+        "    if(m.setScalarModeToUsePointData)m.setScalarModeToUsePointData();\n"
+        "    if(m.setScalarVisibility)m.setScalarVisibility(true);\n"
+        "    if(range&&m.setScalarRange)m.setScalarRange(range[0],range[1]);\n"
+        "    if(m.modified)m.modified();\n"
+        "    if(actor.modified)actor.modified();\n"
+        "    if(window.renderWindow)window.renderWindow.render();\n  }\n"
+        # Update all overlays at frame idx
+        "  function _updateOv(idx){\n"
+        "    var acts=_getOvActs(); if(!acts||!acts.length)return;\n"
+        "    for(var i=0;i<OV_FIELDS.length;i++){\n"
+        "      var f=OV_FIELDS[i],a=acts[i];\n"
+        "      if(!a||!OV_TD[f])continue;\n"
+        "      if(!_ovDec[f])_ovDec[f]=OV_TD[f].map(_b64F32);\n"
+        "      var fr=_ovDec[f];\n"
+        "      if(fr&&idx<fr.length&&fr[idx])_applyOv(a,fr[idx],OV_RANGE[f]||[0,1],f);\n"
+        "    }\n  }\n"
+        # Register the hook that _GOLDEN_TOPBAR_JS calls from _setTimeFrame
+        f"  window['{hook_key}']=_updateOv;\n"
+        "})();\n</script>"
+    )
+
+
+def parse_multi_image_shortcodes(text: str) -> list[dict]:
+    """Parse ``4d-multi-image`` shortcodes from QMD text.
+
+    Attributes src1/field1, src2/field2, … (up to 8 sources) plus shared
+    attributes: id, time, stride, caption.  Per-source overrides: cmap1/cmap2,
+    decimate1/decimate2, line_width2 (auto-detected but overridable).
+    """
+    stripped = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    pattern = r'\{\{<\s*4d-multi-image\s+(.*?)\s*>\}\}'
+    results = []
+    for match in re.finditer(pattern, stripped, re.DOTALL):
+        raw = match.group(1)
+        kwargs: dict[str, str] = {}
+        for key, val in re.findall(r'(\w+)\s*=\s*["\'](.*?)["\']', raw):
+            kwargs[key] = val
+        if "id" not in kwargs or "src1" not in kwargs:
+            continue
+        kwargs.setdefault("time", "mid")
+        kwargs.setdefault("stride", "1")
+        kwargs.setdefault("caption", "")
+        results.append(kwargs)
+    return results
+
+
+def generate_multi_image_html(
+    sources: list[dict],
+    time_spec: str,
+    output_path: Path,
+    fig_id: str,
+    camera_fig_id: str | None = None,
+    stride: int = 1,
+    background: str = "white",
+    axis_color: str = "black",
+    show_colorbar: bool = True,
+    show_lock_btn: bool = True,
+    show_orientation: bool = True,
+) -> None:
+    """
+    Generate a self-contained vtk.js HTML with multiple actors in one scene.
+
+    ``sources`` is an ordered list of dicts, each with keys:
+      src (Path), field (str), cmap (str), decimate (str), line_width (str)
+
+    src1 (sources[0]) drives the time axis.  All other sources snap to their
+    nearest timestep each frame.
+    """
+    import pyvista as pv
+    from scripts.data_loader import SimulationData
+
+    if not sources:
+        raise ValueError("generate_multi_image_html requires at least one source")
+
+    sims = [SimulationData(str(s["src"])).load() for s in sources]
+    sim1 = sims[0]
+    field1 = sources[0]["field"]
+
+    if sim1.n_steps == 0:
+        raise RuntimeError(f"src1 at {sources[0]['src']} has no timesteps")
+
+    n = sim1.n_steps
+    if time_spec == "first":
+        idx = 0
+    elif time_spec == "last":
+        idx = max(0, n - 1)
+    else:
+        try:
+            idx = max(0, min(int(time_spec), n - 1))
+        except ValueError:
+            idx = n // 2
+
+    # ── Build initial frame ──────────────────────────────────────────────────
+    pl = pv.Plotter(off_screen=True, window_size=(900, 600))
+    pl.background_color = background if background != "transparent" else "white"
+
+    init_surfaces: list = []
+    for si, (source, sim) in enumerate(zip(sources, sims)):
+        field = source["field"]
+        cmap = source.get("cmap") or _DEFAULT_CMAPS[si % len(_DEFAULT_CMAPS)]
+        decimate = source.get("decimate", "auto")
+        line_width = float(source.get("line_width", "2.0"))
+
+        t_idx = idx if si == 0 else _nearest_time_idx(
+            sim, sim1.time_steps[idx] if idx < len(sim1.time_steps) else 0.0
+        )
+        mesh = sim.get_mesh(t_idx)
+        if mesh is None:
+            print(f"Warning: src{si+1} has no mesh at step {t_idx}", file=sys.stderr)
+            init_surfaces.append(None)
+            continue
+
+        surface = _prepare_surface(mesh)
+        surface = _apply_decimation(surface, decimate, label=f"{fig_id}-src{si+1}")
+        init_surfaces.append(surface)
+
+        src_colorbar = source.get("colorbar", si == 0)
+        src_opacity = source.get("opacity", 1.0)
+        cb_pos = _COLORBAR_POSITIONS[si % len(_COLORBAR_POSITIONS)]
+        sbar_args = {"title": field, "color": axis_color, **cb_pos} if src_colorbar else {}
+        has_field = bool(field) and (field in surface.point_data or field in surface.cell_data)
+        is_line = not _has_polygon_cells(surface)
+        if field and not has_field:
+            print(f"Warning: field '{field}' not found in src{si+1} — geometry only.", file=sys.stderr)
+
+        mesh_kwargs: dict = dict(
+            scalars=field if has_field else None,
+            cmap=cmap,
+            show_scalar_bar=src_colorbar and has_field,
+            scalar_bar_args=sbar_args if has_field else {},
+            opacity=src_opacity,
+        )
+        if not has_field:
+            mesh_kwargs.update(color="#aaaaaa")
+        if is_line:
+            pl.add_mesh(surface, line_width=line_width, render_lines_as_tubes=True, **mesh_kwargs)
+        else:
+            pl.add_mesh(surface, smooth_shading=True, **mesh_kwargs)
+
+    _cam_id = camera_fig_id or fig_id
+    camera_path = _project_root / "state" / f"camera_{_cam_id}.json"
+    apply_camera_state(pl, _cam_id or "unnamed", camera_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    pl.export_html(str(output_path))
+    pl.close()
+
+    # ── Field data for src1 (field switcher at rest) ─────────────────────────
+    src1_fields = sources[0].get("fields") or ([field1] if field1 else [])
+    if isinstance(src1_fields, str):
+        src1_fields = [f.strip() for f in src1_fields.split(",") if f.strip()]
+    field_data_b64: dict[str, str] = {}
+    field_ranges: dict[str, list[float]] = {}
+    surf1 = init_surfaces[0] if init_surfaces else None
+    if surf1 is not None:
+        for f in src1_fields:
+            arr_np = None
+            if f in surf1.point_data:
+                arr_np = surf1.point_data[f]
+            elif f in surf1.cell_data:
+                arr_np = surf1.cell_data_to_point_data().point_data.get(f)
+            if arr_np is not None:
+                arr_f32 = arr_np.astype("float32").ravel()
+                field_data_b64[f] = _b64.b64encode(arr_f32.tobytes()).decode("ascii")
+                field_ranges[f] = [float(arr_f32.min()), float(arr_f32.max())]
+
+    # ── Time data (src1 primary + overlays) ──────────────────────────────────
+    time_data_b64: dict[str, list[str]] = {}
+    time_global_range: dict[str, list[float]] = {}
+    time_labels: list[str] = []
+    overlay_time_data_b64: dict[str, list[str]] = {}
+    overlay_time_global_range: dict[str, list[float]] = {}
+    overlay_field_names: list[str] = []
+
+    for si in range(1, len(sources)):
+        ov_f = sources[si]["field"]
+        if ov_f:
+            overlay_field_names.append(ov_f)
+            overlay_time_data_b64[ov_f] = []
+            overlay_time_global_range[ov_f] = [float("inf"), float("-inf")]
+
+    if sim1.n_steps > 1 and src1_fields:
+        step_indices = list(range(0, sim1.n_steps, stride))
+        print(
+            f"{fig_id}: embedding {len(step_indices)} timesteps (stride={stride})"
+            f" × {len(src1_fields)} primary field(s)"
+            f" + {len(overlay_field_names)} overlay field(s) …",
+            file=sys.stderr,
+        )
+        _tg_min = {f: float("inf") for f in src1_fields}
+        _tg_max = {f: float("-inf") for f in src1_fields}
+        for f in src1_fields:
+            time_data_b64[f] = []
+        decimate1 = sources[0].get("decimate", "auto")
+
+        for t_idx in step_indices:
+            time_labels.append(
+                f"{sim1.time_steps[t_idx]:.4g}" if t_idx < len(sim1.time_steps) else str(t_idx)
+            )
+
+            # src1 frame
+            t_mesh = sim1.get_mesh(t_idx)
+            t_pts = None
+            if t_mesh is not None:
+                t_surface = _prepare_surface(t_mesh)
+                t_surface = _apply_decimation(t_surface, decimate1, label=f"{fig_id}-src1 t={t_idx}")
+                for f in src1_fields:
+                    arr_np = None
+                    if f in t_surface.point_data:
+                        arr_np = t_surface.point_data[f]
+                    elif f in t_surface.cell_data:
+                        if t_pts is None:
+                            t_pts = t_surface.cell_data_to_point_data()
+                        arr_np = t_pts.point_data.get(f)
+                    if arr_np is not None:
+                        arr_f32 = arr_np.astype("float32").ravel()
+                        time_data_b64[f].append(_b64.b64encode(arr_f32.tobytes()).decode("ascii"))
+                        _tg_min[f] = min(_tg_min[f], float(arr_f32.min()))
+                        _tg_max[f] = max(_tg_max[f], float(arr_f32.max()))
+                    else:
+                        time_data_b64[f].append("")
+            else:
+                for f in src1_fields:
+                    time_data_b64[f].append("")
+
+            # overlay frames
+            target_time = sim1.time_steps[t_idx] if t_idx < len(sim1.time_steps) else 0.0
+            for si in range(1, len(sources)):
+                ov_field = sources[si]["field"]
+                if not ov_field:
+                    continue
+                ov_sim = sims[si]
+                ov_t = _nearest_time_idx(ov_sim, target_time)
+                ov_mesh = ov_sim.get_mesh(ov_t)
+                arr_np = None
+                if ov_mesh is not None:
+                    ov_surf = _prepare_surface(ov_mesh)
+                    if ov_field in ov_surf.point_data:
+                        arr_np = ov_surf.point_data[ov_field]
+                    elif ov_field in ov_surf.cell_data:
+                        arr_np = ov_surf.cell_data_to_point_data().point_data.get(ov_field)
+                if arr_np is not None:
+                    arr_f32 = arr_np.astype("float32").ravel()
+                    overlay_time_data_b64[ov_field].append(
+                        _b64.b64encode(arr_f32.tobytes()).decode("ascii")
+                    )
+                    cur = overlay_time_global_range[ov_field]
+                    overlay_time_global_range[ov_field] = [
+                        min(cur[0], float(arr_f32.min())),
+                        max(cur[1], float(arr_f32.max())),
+                    ]
+                else:
+                    overlay_time_data_b64[ov_field].append("")
+
+        for f in src1_fields:
+            time_global_range[f] = (
+                [_tg_min[f], _tg_max[f]] if _tg_min[f] != float("inf") else [0.0, 1.0]
+            )
+
+    # ── Patch HTML and inject controls + overlay extension ───────────────────
+    html = output_path.read_text()
+    html = html.replace("100vw", "900px").replace("100vh", "600px")
+
+    if fig_id and "</body>" in html:
+        inj = _controls_strip_snippet(
+            fig_id=fig_id,
+            show_lock_btn=show_lock_btn,
+            show_orientation=show_orientation,
+            fields_to_embed=src1_fields,
+            active_field=field1,
+            field_data_b64=field_data_b64,
+            field_ranges=field_ranges,
+            time_labels=time_labels,
+            time_data_b64=time_data_b64,
+            time_global_range=time_global_range,
+            time_idx=idx,
+            time_field=field1,
+        )
+        inj += "\n" + _timeseries_sync_snippet(fig_id)
+        if overlay_field_names:
+            inj += "\n" + _multi_actor_extension_snippet(
+                overlay_field_names,
+                overlay_time_data_b64,
+                overlay_time_global_range,
+                fig_id=fig_id,
+            )
+        html = html.replace("</body>", inj + "\n</body>", 1)
+
+    output_path.write_text(html, encoding="utf-8")
+    _maybe_sign_output_html(output_path)
+    print(f"Generated (multi-image): {output_path}", file=sys.stderr)
+
+
+def generate_multi_image_png(
+    sources: list[dict],
+    time_spec: str,
+    output_path: Path,
+    fig_id: str,
+    camera_fig_id: str | None = None,
+    background: str = "white",
+    axis_color: str = "black",
+    show_colorbar: bool = True,
+) -> None:
+    """Generate a static PNG of a multi-source scene for PDF export."""
+    import pyvista as pv
+    from scripts.data_loader import SimulationData
+
+    if not sources:
+        raise ValueError("generate_multi_image_png requires at least one source")
+
+    sims = [SimulationData(str(s["src"])).load() for s in sources]
+    sim1 = sims[0]
+
+    n = sim1.n_steps
+    if time_spec == "first":
+        idx = 0
+    elif time_spec == "last":
+        idx = max(0, n - 1)
+    else:
+        try:
+            idx = max(0, min(int(time_spec), n - 1))
+        except ValueError:
+            idx = n // 2
+
+    pl = pv.Plotter(off_screen=True, window_size=(900, 600))
+    pl.background_color = background if background != "transparent" else "white"
+
+    for si, (source, sim) in enumerate(zip(sources, sims)):
+        field = source["field"]
+        cmap = source.get("cmap") or _DEFAULT_CMAPS[si % len(_DEFAULT_CMAPS)]
+        decimate = source.get("decimate", "auto")
+        line_width = float(source.get("line_width", "2.0"))
+
+        t_idx = idx if si == 0 else _nearest_time_idx(
+            sim, sim1.time_steps[idx] if idx < len(sim1.time_steps) else 0.0
+        )
+        mesh = sim.get_mesh(t_idx)
+        if mesh is None:
+            continue
+
+        surface = _prepare_surface(mesh)
+        surface = _apply_decimation(surface, decimate, label=f"{fig_id}-src{si+1}.png")
+
+        src_colorbar = source.get("colorbar", si == 0)
+        src_opacity = source.get("opacity", 1.0)
+        cb_pos = _COLORBAR_POSITIONS[si % len(_COLORBAR_POSITIONS)]
+        sbar_args = {"title": field, "color": axis_color, **cb_pos} if src_colorbar else {}
+        has_field = bool(field) and (field in surface.point_data or field in surface.cell_data)
+        is_line = not _has_polygon_cells(surface)
+
+        mesh_kwargs: dict = dict(
+            scalars=field if has_field else None,
+            cmap=cmap,
+            show_scalar_bar=src_colorbar and has_field,
+            scalar_bar_args=sbar_args if has_field else {},
+            opacity=src_opacity,
+        )
+        if not has_field:
+            mesh_kwargs.update(color="#aaaaaa")
+        if is_line:
+            pl.add_mesh(surface, line_width=line_width, render_lines_as_tubes=True, **mesh_kwargs)
+        else:
+            pl.add_mesh(surface, smooth_shading=True, **mesh_kwargs)
+
+    _cam_id = camera_fig_id or fig_id
+    camera_path = _project_root / "state" / f"camera_{_cam_id}.json"
+    apply_camera_state(pl, _cam_id or "unnamed", camera_path)
+    pl.add_axes(interactive=False, line_width=3)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    pl.save_graphic(str(output_path.with_suffix(".pdf")))
+    pl.screenshot(str(output_path))
+    pl.close()
+    print(f"Generated (multi-image PNG): {output_path}")
+
+
+def _build_multi_image_sources(fig: dict, resolve_src_path) -> list[dict]:
+    """Extract ordered source list from a parsed 4d-multi-image shortcode dict."""
+    sources = []
+    i = 1
+    while f"src{i}" in fig:
+        # colorbar: src1 shows by default; overlays (src2+) hide by default
+        cb_default = "true" if i == 1 else "false"
+        cb_val = fig.get(f"colorbar{i}", cb_default).strip().lower()
+        sources.append({
+            "src": resolve_src_path(fig[f"src{i}"]),
+            "field": fig.get(f"field{i}", ""),
+            "fields": fig.get(f"fields{i}", ""),
+            "cmap": fig.get(f"cmap{i}", ""),
+            "decimate": fig.get(f"decimate{i}", "auto"),
+            "line_width": fig.get(f"line_width{i}", "2.0"),
+            "colorbar": cb_val not in ("false", "0", "no", "off"),
+            "opacity": float(fig.get(f"opacity{i}", "1.0")),
+        })
+        i += 1
+    return sources
 
 
 def _load_saved_field_state(fig_id: str, field: str, time_spec: str) -> tuple[str, str]:
@@ -2050,12 +2521,14 @@ def main() -> None:
     panels = []
     ts_raw = []
     graphs = []
+    multi_images = []
     for qmd in qmd_files:
         text = qmd.read_text()
         figures.extend(parse_shortcodes(text))
         videos.extend(parse_video_shortcodes(text))
         panels.extend(parse_panel_shortcodes(text))
         ts_raw.extend(parse_timeseries_shortcodes(text))
+        multi_images.extend(parse_multi_image_shortcodes(text))
         graphs.extend(parse_graph_shortcodes(text))
 
     if not any([figures, videos, panels, ts_raw, graphs]):
@@ -2417,6 +2890,62 @@ def main() -> None:
         except Exception as exc:
             print(f"ERROR generating Graph figure {fig_id}: {exc}", file=sys.stderr)
             sys.exit(1)
+
+
+    # ── 4d-multi-image shortcode processing ───────────────────────────────────
+    for fig in multi_images:
+        fig_id = fig["id"]
+        sources = _build_multi_image_sources(fig, resolve_src_path)
+        if not sources:
+            print(f"WARNING: 4d-multi-image '{fig_id}' has no valid src attributes — skipping.", file=sys.stderr)
+            continue
+
+        time_spec = fig.get("time", "mid")
+        stride = int(fig.get("stride", "1"))
+
+        out_html = figures_dir / f"{fig_id}.html"
+        out_png = figures_dir / f"{fig_id}.png"
+        camera_path = _project_root / "state" / f"camera_{fig_id}.json"
+
+        # Cache: invalidate if any source changes
+        src1 = sources[0]["src"]
+        extra_srcs = [s["src"] for s in sources[1:] if s["src"].exists()]
+        script_newer = out_html.exists() and _here.stat().st_mtime > out_html.stat().st_mtime
+        html_fresh = (
+            not script_newer
+            and is_cache_valid(out_html, src1, extra_deps=extra_srcs + figure_extra_deps)
+        )
+        if html_fresh:
+            print(f"{fig_id}.html is up to date — skipping.", file=sys.stderr)
+        else:
+            print(f"Generating {fig_id}.html (multi-image, {len(sources)} sources) …", file=sys.stderr)
+            try:
+                generate_multi_image_html(
+                    sources, time_spec, out_html, fig_id,
+                    stride=stride,
+                    background=style["background"] if "style" not in fig else resolve_style(styles_config, fig["style"], "")["background"],
+                    axis_color=style["axis_color"] if "style" not in fig else resolve_style(styles_config, fig["style"], "")["axis_color"],
+                )
+            except Exception as exc:
+                print(f"ERROR generating {fig_id}.html: {exc}", file=sys.stderr)
+                sys.exit(1)
+
+        png_fresh = is_cache_valid(out_png, src1, camera_path=camera_path, extra_deps=extra_srcs + figure_extra_deps)
+        if png_fresh:
+            print(f"{fig_id}.png is up to date — skipping.")
+        else:
+            print(f"Generating {fig_id}.png …")
+            try:
+                generate_multi_image_png(
+                    sources, time_spec, out_png, fig_id,
+                    background=style["background"] if "style" not in fig else resolve_style(styles_config, fig["style"], "")["background"],
+                    axis_color=style["axis_color"] if "style" not in fig else resolve_style(styles_config, fig["style"], "")["axis_color"],
+                )
+            except Exception as exc:
+                if strict_static_export:
+                    print(f"ERROR: could not generate {fig_id}.png: {exc}")
+                    sys.exit(1)
+                print(f"WARNING: could not generate {fig_id}.png: {exc}")
 
 
 if __name__ == "__main__":
