@@ -903,7 +903,12 @@ local function fourd_timeseries(args, kwargs)
         local fh = io.open(fig_path, "r")
         if fh then
           local content = fh:read("*all"); fh:close()
-          local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+          -- Hide per-frame topbars by injecting CSS
+          local with_topbar_css = content:gsub(
+            '</head>',
+            '<style>#cs-topbar-__FIGSAFE__{display:none!important;}div[id^="cs-topbar"]{display:none!important;}</style></head>'
+          )
+          local escaped = with_topbar_css:gsub("&", "&amp;"):gsub('"', "&quot;")
           cell_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
                         'data-panel="' .. id .. '" ' ..
                         'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
@@ -952,7 +957,7 @@ local function fourd_timeseries(args, kwargs)
       '});' ..
       '})();</script></div>'
     return pandoc.RawBlock("html",
-      '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+      '<figure class="fourd-figure" style="margin:1.5rem 0;background:white;padding:0;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">\n' ..
       lock_toolbar_ts .. '\n' ..
       '<div style="' .. grid_style .. '">' .. table.concat(ts_cells) .. '</div>\n' ..
       (caption ~= "" and
