@@ -29,7 +29,7 @@ Side-by-side synchronized camera view comparing transmembrane potential (Vm) and
 
 Synchronized multi-panel view showing how transmembrane potential evolves across 4 evenly-spaced timesteps. Camera rotation in any panel updates all:
 
-{{< 4d-timeseries id="niederer-ts" src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam" field="Vm" fields="Vm,activationTime" steps="4" height="400px" caption="Niederer verification: Transmembrane potential evolution over 4 representative timesteps. Camera synchronized across all frames." >}}
+{{< 4d-timeseries id="niederer-ts" src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam" field="Vm" fields="Vm,activationTime" steps="4" height="400px" caption="Niederer verification: Transmembrane potential evolution over 4 representative timesteps." >}}
 
 ### High-Resolution Heart: Decimation in Action
 
