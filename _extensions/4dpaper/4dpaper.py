@@ -568,10 +568,15 @@ def _build_timeseries_composite_html(
         .header {{ padding: 16px; background: #161b22; border-bottom: 1px solid #30363d; }}
         .header h1 {{ font-size: 24px; margin-bottom: 4px; }}
         .header p {{ font-size: 13px; color: #8b949e; }}
-        .controls {{ padding: 12px 16px; background: #0d1117; border-bottom: 1px solid #30363d; display: flex; gap: 16px; align-items: center; }}
+        .controls {{ padding: 12px 16px; background: #0d1117; border-bottom: 1px solid #30363d; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }}
         .control-group {{ display: flex; gap: 8px; align-items: center; }}
         .control-group label {{ font-size: 13px; display: flex; align-items: center; gap: 6px; }}
         select {{ padding: 6px 10px; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; font-size: 12px; }}
+        input[type="range"] {{ flex: 1; min-width: 200px; height: 6px; -webkit-appearance: none; background: transparent; }}
+        input[type="range"]::-webkit-slider-thumb {{ -webkit-appearance: none; appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #238636; cursor: pointer; }}
+        input[type="range"]::-moz-range-thumb {{ width: 12px; height: 12px; border-radius: 50%; background: #238636; cursor: pointer; border: none; }}
+        .play-btn {{ padding: 6px 12px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; }}
+        .play-btn:hover {{ background: #2ea043; }}
         .grid-container {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
@@ -626,6 +631,11 @@ def _build_timeseries_composite_html(
 
         <div class="controls">
             <div class="control-group">
+                <button id="playBtn" class="play-btn">▶ Play</button>
+                <input type="range" id="timelineSlider" min="0" max="{len(frame_ids) - 1}" value="0" style="flex: 0.3;">
+                <span id="frameDisplay" style="font-size: 12px; color: #8b949e; min-width: 60px;">Frame 0/{len(frame_ids) - 1}</span>
+            </div>
+            <div class="control-group">
                 <label for="fieldSelect">Field:</label>
                 <select id="fieldSelect">
                     {chr(10).join(f'                    <option value="{f}">{f}</option>' for f in available_fields)}
@@ -642,9 +652,13 @@ def _build_timeseries_composite_html(
     <script>
         const FRAME_IDS = {json.dumps(frame_ids)};
         const AVAILABLE_FIELDS = {json.dumps(available_fields)};
+        const N_FRAMES = FRAME_IDS.length;
+        const PLAY_FPS = 2;
 
         let syncCameras = false;
-        let viewers = [];
+        let isPlaying = false;
+        let currentFrame = 0;
+        let playInterval = null;
 
         function getAllViewers() {{
             return Array.from(document.querySelectorAll('.frame-iframe')).map(
@@ -652,6 +666,68 @@ def _build_timeseries_composite_html(
             ).filter(Boolean);
         }}
 
+        function updateFrameDisplay() {{
+            document.getElementById('frameDisplay').textContent = `Frame ${{currentFrame}}/${{N_FRAMES - 1}}`;
+            document.getElementById('timelineSlider').value = currentFrame;
+        }}
+
+        function broadcastFrameSeek(frameIdx) {{
+            currentFrame = Math.max(0, Math.min(frameIdx, N_FRAMES - 1));
+            updateFrameDisplay();
+            getAllViewers().forEach((viewerWindow) => {{
+                if (viewerWindow) {{
+                    viewerWindow.postMessage({{
+                        type: '4dpaper-timeseries-seek',
+                        frameIndex: currentFrame
+                    }}, '*');
+                }}
+            }});
+        }}
+
+        function broadcastPlayState(playing) {{
+            getAllViewers().forEach((viewerWindow) => {{
+                if (viewerWindow) {{
+                    viewerWindow.postMessage({{
+                        type: '4dpaper-timeseries-play',
+                        playing: playing
+                    }}, '*');
+                }}
+            }});
+        }}
+
+        // Play button control
+        document.getElementById('playBtn').addEventListener('click', (e) => {{
+            isPlaying = !isPlaying;
+            const btn = e.target;
+            btn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+            broadcastPlayState(isPlaying);
+
+            if (isPlaying) {{
+                playInterval = setInterval(() => {{
+                    currentFrame = (currentFrame + 1) % N_FRAMES;
+                    updateFrameDisplay();
+                    broadcastFrameSeek(currentFrame);
+                }}, 1000 / PLAY_FPS);
+            }} else {{
+                clearInterval(playInterval);
+            }}
+            console.log('Play state:', isPlaying);
+        }});
+
+        // Timeline slider control
+        document.getElementById('timelineSlider').addEventListener('input', (e) => {{
+            const frameIdx = parseInt(e.target.value);
+            broadcastFrameSeek(frameIdx);
+            // Stop playback when user drags slider
+            if (isPlaying) {{
+                isPlaying = false;
+                clearInterval(playInterval);
+                document.getElementById('playBtn').textContent = '▶ Play';
+                broadcastPlayState(false);
+            }}
+        }});
+
+        // Sync cameras toggle
         document.getElementById('syncBtn').addEventListener('click', (e) => {{
             syncCameras = !syncCameras;
             e.target.textContent = `Sync Cameras (${{syncCameras ? 'On' : 'Off'}})`;
@@ -659,24 +735,16 @@ def _build_timeseries_composite_html(
             console.log('Sync cameras:', syncCameras);
         }});
 
+        // Field selector (propagate to all frames)
         document.getElementById('fieldSelect').addEventListener('change', (e) => {{
             const field = e.target.value;
             console.log('Field changed to:', field);
-
-            // Propagate field change to all iframe viewers
             getAllViewers().forEach((viewerWindow) => {{
-                if (viewerWindow && viewerWindow.parent !== viewerWindow) {{
-                    // Try to trigger field change in the viewer
-                    // This is a placeholder - real implementation would use postMessage
-                    try {{
-                        const fieldSelect = viewerWindow.document.getElementById('cs-field-sel-' + FRAME_IDS[0]);
-                        if (fieldSelect) {{
-                            fieldSelect.value = field;
-                            fieldSelect.dispatchEvent(new Event('change'));
-                        }}
-                    }} catch (e) {{
-                        // Cross-origin or not ready
-                    }}
+                if (viewerWindow) {{
+                    viewerWindow.postMessage({{
+                        type: '4dpaper-timeseries-field',
+                        field: field
+                    }}, '*');
                 }}
             }});
         }});
@@ -695,6 +763,7 @@ def _build_timeseries_composite_html(
             }});
         }});
 
+        updateFrameDisplay();
         console.log('Timeseries composite loaded with', FRAME_IDS.length, 'frames');
     </script>
 </body>
@@ -1005,6 +1074,49 @@ def _controls_strip_snippet(
         )
     js_block = "<script>\n(function(){\n" + header + js_body + lock_js + "\n})();\n</script>\n"
     return html_block + js_block
+
+
+def _timeseries_sync_snippet(fig_id: str) -> str:
+    """
+    Add message listeners for timeseries composite viewer control.
+
+    Responds to:
+    - 4dpaper-timeseries-seek: jump to frame index
+    - 4dpaper-timeseries-play: set play/pause state
+    - 4dpaper-timeseries-field: change active field
+    """
+    return f"""<script>
+window.addEventListener('message', function(e){{
+    if(!e.data) return;
+    var d = e.data;
+
+    // Handle timeseries frame seeking (jump to frame index)
+    if(d.type === '4dpaper-timeseries-seek' && typeof _setTimeFrame === 'function') {{
+        var idx = parseInt(d.frameIndex || '0', 10);
+        _setTimeFrame(idx, true);
+    }}
+
+    // Handle timeseries play/pause control
+    if(d.type === '4dpaper-timeseries-play' && typeof _setPlaying === 'function') {{
+        _setPlaying(!!d.playing, true);
+        if(d.playing) {{
+            _timeLastTs = 0;
+            if(typeof _tickTime === 'function') {{
+                _timeRaf = requestAnimationFrame(_tickTime);
+            }}
+        }}
+    }}
+
+    // Handle timeseries field change (propagate to all frames)
+    if(d.type === '4dpaper-timeseries-field') {{
+        var fieldSelect = document.getElementById('cs-field-sel-{fig_id}');
+        if(fieldSelect) {{
+            fieldSelect.value = d.field;
+            fieldSelect.dispatchEvent(new Event('change'));
+        }}
+    }}
+}});
+</script>"""
 
 
 def _load_saved_field_state(fig_id: str, field: str, time_spec: str) -> tuple[str, str]:
@@ -1323,7 +1435,7 @@ def generate_html_figure(
                     time_global_range=time_global_range,
                     time_idx=idx,
                     time_field=field,
-                ) + "\n</body>"
+                ) + "\n" + _timeseries_sync_snippet(fig_id) + "\n</body>"
             html = html.replace("</body>", inj_html, 1)
     output_path.write_text(html, encoding="utf-8")
     _maybe_sign_output_html(output_path)
