@@ -465,129 +465,88 @@ def _generate_optimized_timeseries_html(
     style: dict,
     caption: str = "",
 ) -> None:
-    """Generate a single compressed HTML for timeseries with identical mesh."""
-    import gzip
-    import pyvista as pv
-    from scripts.data_loader import SimulationData
+    """Generate composite HTML for timeseries with identical mesh (simplified approach).
 
+    Strategy: Generate individual frame HTMLs then create a composite viewer that
+    loads them via iframes in a grid, reducing redundancy in the manifest/Lua layer
+    while keeping the per-frame HTML generation working.
+    """
     try:
+        from scripts.data_loader import SimulationData
+
         sim = SimulationData(str(src)).load()
-
-        ref_mesh = sim.get_mesh(step_indices[0])
-        if ref_mesh is None:
-            raise ValueError("Could not load mesh at first timestep")
-
         available_fields = [f.strip() for f in fields_attr.split(",") if f.strip()] if fields_attr else []
         if field and field not in available_fields:
             available_fields.insert(0, field)
         if not available_fields:
             available_fields = [field]
 
-        print(f"Compressing timeseries mesh for {ts_id}…", file=sys.stderr)
+        print(f"Generating optimized timeseries for {ts_id}…", file=sys.stderr)
 
-        trame_html_content = _export_mesh_to_vtkjs_html(
-            ref_mesh, ts_id,
-            available_fields=available_fields,
-            active_field=field,
-            background=style["background"],
-            axis_color=style["axis_color"],
-            cmap=style["cmap"],
-        )
-
-        mesh_json_str = _extract_mesh_json_from_trame(trame_html_content)
-        mesh_compressed = gzip.compress(mesh_json_str.encode('utf-8'), compresslevel=9)
-        mesh_b64 = _b64.b64encode(mesh_compressed).decode('ascii')
-
-        print(f"  Mesh size: {len(mesh_json_str)//1024}KB → {len(mesh_b64)//1024}KB (gzip+b64)", file=sys.stderr)
-
-        frame_data = {}
+        # Generate individual frame HTMLs using existing function
+        frame_ids = []
+        total_size = 0
         for frame_idx, time_idx in enumerate(step_indices):
-            mesh = sim.get_mesh(time_idx)
-            if mesh is None:
-                continue
+            frame_id = f"{ts_id}-frame-{frame_idx}"
+            frame_ids.append(frame_id)
 
-            for fname in available_fields:
-                if fname in mesh.array_names:
-                    arr = mesh[fname]
-                    if len(arr.shape) > 1 and arr.shape[1] == 1:
-                        arr = arr[:, 0]
-                    arr_f32 = arr.astype('float32')
-                    arr_b64 = _b64.b64encode(arr_f32.tobytes()).decode('ascii')
-                    frame_data[f"{fname}_{frame_idx}"] = arr_b64
+            out_html = figures_dir / f"{frame_id}.html"
+            if not is_cache_valid(out_html, src, extra_deps=[]):
+                print(f"  Generating {frame_id}…", file=sys.stderr)
+                try:
+                    generate_html_figure(
+                        src, field, str(time_idx), out_html,
+                        fig_id=frame_id, available_fields=available_fields,
+                        background=style["background"],
+                        axis_color=style["axis_color"],
+                        cmap=style["cmap"],
+                        decimate="auto",
+                    )
+                except Exception as exc:
+                    print(f"ERROR generating frame {frame_id}: {exc}", file=sys.stderr)
+                    raise
 
-        html = _build_optimized_timeseries_html(
+            frame_size = out_html.stat().st_size
+            total_size += frame_size
+            print(f"    {frame_id}: {frame_size//1024} KB", file=sys.stderr)
+
+        # Generate composite viewer HTML
+        composite_html = _build_timeseries_composite_html(
             ts_id=ts_id,
-            mesh_b64_compressed=mesh_b64,
-            frame_data=frame_data,
+            frame_ids=frame_ids,
             step_indices=step_indices,
-            field=field,
             available_fields=available_fields,
             caption=caption,
         )
 
         output_path = figures_dir / f"{ts_id}.html"
-        output_path.write_text(html, encoding='utf-8')
+        output_path.write_text(composite_html, encoding='utf-8')
 
-        print(f"Generated optimized timeseries: {output_path} ({output_path.stat().st_size // 1024} KB)", file=sys.stderr)
+        composite_size = output_path.stat().st_size
+        print(f"Generated composite timeseries: {output_path} ({composite_size//1024} KB)", file=sys.stderr)
+        print(f"  Total: {(total_size + composite_size)//1024} KB", file=sys.stderr)
 
     except Exception as exc:
         print(f"ERROR generating optimized timeseries {ts_id}: {exc}", file=sys.stderr)
         raise
 
 
-def _extract_mesh_json_from_trame(trame_html: str) -> str:
-    """Extract mesh JSON data from trame-generated HTML."""
-    import re
-    match = re.search(r'window\.vtkData\s*=\s*(\{.*?\});', trame_html, re.DOTALL)
-    if match:
-        return match.group(1)
-    match = re.search(r'"vtk":\s*(\{.*?\}),\s*"fields"', trame_html, re.DOTALL)
-    if match:
-        return match.group(1)
-    return json.dumps({})
-
-
-def _export_mesh_to_vtkjs_html(mesh, fig_id: str, available_fields: list[str] | None = None,
-                                active_field: str = "", background: str = "white",
-                                axis_color: str = "black", cmap: str = "coolwarm") -> str:
-    """Export mesh to vtk.js HTML using trame."""
-    import pyvista as pv
-    from trame.app import Trame
-    from trame.ui.vuetify import SinglePageLayout
-    from trame.widgets import vtklocal
-
-    try:
-        app = Trame(mode='local')
-        state, layout = app.state, app.layout
-
-        plotter = pv.Plotter(off_screen=True, notebook=False)
-        plotter.add_mesh(mesh, scalars=active_field if active_field in mesh.array_names else None,
-                        cmap=cmap, show_scalar_bar=True)
-        plotter.set_background(background)
-
-        with SinglePageLayout(app, full_height=True) as layout:
-            with layout.content:
-                view = vtklocal.VtkLocalView(plotter.ren_win)
-
-        return app.serve(mode='string')
-    except Exception as exc:
-        print(f"Warning: could not export mesh to vtk.js: {exc}", file=sys.stderr)
-        return "{}"
-
-
-def _build_optimized_timeseries_html(
+def _build_timeseries_composite_html(
     ts_id: str,
-    mesh_b64_compressed: str,
-    frame_data: dict,
+    frame_ids: list[str],
     step_indices: list[int],
-    field: str,
     available_fields: list[str],
     caption: str = "",
 ) -> str:
-    """Build optimized timeseries HTML with compressed shared mesh."""
+    """Build composite HTML for timeseries with iframe grid layout."""
 
-    frame_data_json = json.dumps(frame_data)
-    available_fields_json = json.dumps(available_fields)
+    frames_html = "\n".join(
+        f'    <div class="frame-container">'
+        f'      <iframe src="/state/figures/{fid}.html" frameborder="0" class="frame-iframe"></iframe>'
+        f'      <div class="frame-label">Frame {i} (t={step_indices[i]})</div>'
+        f'    </div>'
+        for i, fid in enumerate(frame_ids)
+    )
 
     return f'''<!DOCTYPE html>
 <html>
@@ -595,120 +554,141 @@ def _build_optimized_timeseries_html(
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Timeseries: {ts_id}</title>
-    <script src="https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js"></script>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: system-ui, -apple-system, sans-serif; background: #0d1117; color: #c9d1d9; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0d1117; color: #c9d1d9; }}
         .container {{ display: flex; flex-direction: column; height: 100vh; }}
-        .header {{ padding: 12px 16px; background: #161b22; border-bottom: 1px solid #30363d; }}
-        .controls {{ padding: 8px 16px; background: #0d1117; border-bottom: 1px solid #30363d; display: flex; gap: 12px; align-items: center; }}
-        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 8px; flex: 1; overflow: auto; padding: 8px; }}
-        .frame {{ background: #161b22; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }}
-        .frame canvas {{ flex: 1; min-height: 300px; }}
-        .frame-info {{ padding: 8px; font-size: 12px; color: #8b949e; border-top: 1px solid #30363d; }}
-        button {{ padding: 6px 12px; background: #238636; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }}
-        button:hover {{ background: #2ea043; }}
-        select {{ padding: 6px 12px; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; }}
-        label {{ display: flex; align-items: center; gap: 6px; font-size: 12px; }}
+        .header {{ padding: 16px; background: #161b22; border-bottom: 1px solid #30363d; }}
+        .header h1 {{ font-size: 24px; margin-bottom: 4px; }}
+        .header p {{ font-size: 13px; color: #8b949e; }}
+        .controls {{ padding: 12px 16px; background: #0d1117; border-bottom: 1px solid #30363d; display: flex; gap: 16px; align-items: center; }}
+        .control-group {{ display: flex; gap: 8px; align-items: center; }}
+        .control-group label {{ font-size: 13px; display: flex; align-items: center; gap: 6px; }}
+        select {{ padding: 6px 10px; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; font-size: 12px; }}
+        .grid-container {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 8px;
+            flex: 1;
+            overflow: auto;
+            padding: 8px;
+            background: #010409;
+        }}
+        .frame-container {{
+            position: relative;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }}
+        .frame-iframe {{
+            flex: 1;
+            min-height: 400px;
+            border: none;
+        }}
+        .frame-label {{
+            padding: 8px 12px;
+            background: #0d1117;
+            border-top: 1px solid #30363d;
+            font-size: 12px;
+            color: #8b949e;
+            font-family: monospace;
+        }}
+        .sync-btn {{
+            padding: 6px 12px;
+            background: #238636;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+        }}
+        .sync-btn:hover {{ background: #2ea043; }}
+        .sync-btn.active {{ background: #1f6feb; }}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h2>{ts_id}</h2>
-            {f'<p style="font-size:12px;color:#8b949e;">{caption}</p>' if caption else ''}
+            <h1>{ts_id}</h1>
+            {f'<p>{caption}</p>' if caption else ''}
         </div>
+
         <div class="controls">
-            <label>
-                Field:
+            <div class="control-group">
+                <label for="fieldSelect">Field:</label>
                 <select id="fieldSelect">
-                    {chr(10).join(f'<option value="{f}">{f}</option>' for f in available_fields)}
+                    {chr(10).join(f'                    <option value="{f}">{f}</option>' for f in available_fields)}
                 </select>
-            </label>
-            <label>
-                <input type="checkbox" id="syncCamera"> Sync Cameras
-            </label>
+            </div>
+            <button id="syncBtn" class="sync-btn">Sync Cameras (Off)</button>
         </div>
-        <div class="grid" id="grid"></div>
+
+        <div class="grid-container" id="gridContainer">
+{frames_html}
+        </div>
     </div>
 
     <script>
-        const MESH_B64_COMPRESSED = "{mesh_b64_compressed}";
-        const FRAME_DATA = {frame_data_json};
-        const AVAILABLE_FIELDS = {available_fields_json};
-        const STEP_INDICES = {json.dumps(step_indices)};
-        const ACTIVE_FIELD = "{field}";
+        const FRAME_IDS = {json.dumps(frame_ids)};
+        const AVAILABLE_FIELDS = {json.dumps(available_fields)};
 
-        let meshData = null;
-        let viewers = [];
         let syncCameras = false;
+        let viewers = [];
 
-        async function initMesh() {{
-            try {{
-                const compressedBytes = Uint8Array.from(atob(MESH_B64_COMPRESSED), c => c.charCodeAt(0));
-                const decompressed = pako.inflate(compressedBytes);
-                const decompressedStr = new TextDecoder().decode(decompressed);
-                meshData = JSON.parse(decompressedStr);
-                console.log('Mesh loaded:', meshData);
-            }} catch (e) {{
-                console.error('Failed to decompress mesh:', e);
-            }}
+        function getAllViewers() {{
+            return Array.from(document.querySelectorAll('.frame-iframe')).map(
+                (iframe) => iframe.contentWindow
+            ).filter(Boolean);
         }}
 
-        function createFrameViewer(frameIdx, timeIdx) {{
-            const container = document.createElement('div');
-            container.className = 'frame';
-
-            const canvas = document.createElement('canvas');
-            canvas.width = 400;
-            canvas.height = 300;
-            container.appendChild(canvas);
-
-            const info = document.createElement('div');
-            info.className = 'frame-info';
-            info.textContent = `Frame ${{frameIdx}} (t=${{timeIdx}})`;
-            container.appendChild(info);
-
-            document.getElementById('grid').appendChild(container);
-
-            // Placeholder: In production, would initialize vtk.js viewer here
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#1c2128';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#8b949e';
-            ctx.font = '14px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('Frame ' + frameIdx, canvas.width/2, canvas.height/2);
-            ctx.fillText('t=' + timeIdx, canvas.width/2, canvas.height/2 + 20);
-
-            return {{ canvas, container }};
-        }}
-
-        function initViewers() {{
-            const grid = document.getElementById('grid');
-            grid.innerHTML = '';
-            viewers = [];
-
-            STEP_INDICES.forEach((timeIdx, frameIdx) => {{
-                const viewer = createFrameViewer(frameIdx, timeIdx);
-                viewers.push(viewer);
-            }});
-        }}
-
-        document.getElementById('fieldSelect').addEventListener('change', (e) => {{
-            console.log('Field changed to:', e.target.value);
-            // TODO: Update all viewers with new field
-        }});
-
-        document.getElementById('syncCamera').addEventListener('change', (e) => {{
-            syncCameras = e.target.checked;
+        document.getElementById('syncBtn').addEventListener('click', (e) => {{
+            syncCameras = !syncCameras;
+            e.target.textContent = `Sync Cameras (${{syncCameras ? 'On' : 'Off'}})`;
+            e.target.classList.toggle('active', syncCameras);
             console.log('Sync cameras:', syncCameras);
         }});
 
-        (async () => {{
-            await initMesh();
-            initViewers();
-        }})();
+        document.getElementById('fieldSelect').addEventListener('change', (e) => {{
+            const field = e.target.value;
+            console.log('Field changed to:', field);
+
+            // Propagate field change to all iframe viewers
+            getAllViewers().forEach((viewerWindow) => {{
+                if (viewerWindow && viewerWindow.parent !== viewerWindow) {{
+                    // Try to trigger field change in the viewer
+                    // This is a placeholder - real implementation would use postMessage
+                    try {{
+                        const fieldSelect = viewerWindow.document.getElementById('cs-field-sel-' + FRAME_IDS[0]);
+                        if (fieldSelect) {{
+                            fieldSelect.value = field;
+                            fieldSelect.dispatchEvent(new Event('change'));
+                        }}
+                    }} catch (e) {{
+                        // Cross-origin or not ready
+                    }}
+                }}
+            }});
+        }});
+
+        // Setup camera sync via postMessage
+        window.addEventListener('message', (e) => {{
+            if (!syncCameras || e.data.type !== '4dpaper-camera') return;
+
+            getAllViewers().forEach((viewerWindow) => {{
+                if (viewerWindow && viewerWindow !== e.source) {{
+                    viewerWindow.postMessage({{
+                        type: '4dpaper-camera-apply',
+                        camera: e.data.camera
+                    }}, '*');
+                }}
+            }});
+        }});
+
+        console.log('Timeseries composite loaded with', FRAME_IDS.length, 'frames');
     </script>
 </body>
 </html>'''
@@ -1246,7 +1226,6 @@ def generate_html_figure(
         for f in fields_to_embed:
             time_data_b64[f] = []
         import time
-        step_indices = list(range(0, sim.n_steps, stride))
         for t_idx in step_indices:
             loop_start = time.time()
             # Human-readable time label (physical time value from the reader)
@@ -1662,7 +1641,7 @@ def generate_video_figure(
 
     # Pass 2 — render each frame and write MP4
     mp4_path.parent.mkdir(parents=True, exist_ok=True)
-    print(f"{fig_id}: rendering {n_steps} frames at {fps} fps …", file=sys.stderr)
+    print(f"{fig_id}: rendering {len(step_indices)} frames at {fps} fps (stride={stride}) …", file=sys.stderr)
     writer = imageio.get_writer(
         str(mp4_path),
         fps=fps,
@@ -1879,6 +1858,7 @@ def main() -> None:
             panels.append(ts)
 
     # Generate optimized timeseries HTML (compressed mesh, same across timesteps)
+    # Falls back to panel approach if optimization fails
     for ts in optimized_timeseries:
         ts_id = ts["id"]
         output_path = figures_dir / f"{ts_id}.html"
@@ -1901,8 +1881,24 @@ def main() -> None:
                 caption=ts["caption"],
             )
         except Exception as exc:
-            print(f"ERROR generating optimized timeseries {ts_id}: {exc}", file=sys.stderr)
-            sys.exit(1)
+            print(f"WARNING: optimized timeseries {ts_id} failed ({exc}), falling back to panel approach", file=sys.stderr)
+            # Fallback: convert to panel and re-add to panels list
+            ts_panel = {
+                "id": ts_id,
+                "subfigures": [
+                    {
+                        "src":    ts["src"],
+                        "id":     f"{ts_id}-{i}",
+                        "field":  ts["field"],
+                        "time":   str(idx),
+                        "fields": "",
+                    }
+                    for i, idx in enumerate(ts["step_indices"])
+                ],
+                "layout": f"{len(ts['step_indices'])}x1",
+                "caption": ts.get("caption", ""),
+            }
+            panels.append(ts_panel)
 
     for fig in figures:
         fig_id = fig["id"]
