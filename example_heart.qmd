@@ -35,4 +35,4 @@ Synchronized multi-panel view showing how transmembrane potential evolves across
 
 The whole-heart model has 300k+ faces. This example demonstrates automatic mesh decimation (configurable via `decimate` attribute) to maintain interactivity while preserving detail:
 
-{{< 4d-image id="highres-heart" src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/heartSim3D-1D/monodomainHeart/monodomainHeart.foam" field="Vm" decimate="auto" time="last" caption="High-resolution whole-heart simulation: Automatic decimation applied to mesh >150k faces. Use decimate=\"none\" to disable, or decimate=\"0.5\" to keep 50% of faces." >}}
+{{< 4d-image id="highres-heart" src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/heartSim3D-1D/monodomainHeart/monodomainHeart.foam" field="Vm" decimate="auto" stride ="4" time="last" caption="High-resolution whole-heart simulation: Automatic decimation applied to mesh >150k faces. Use decimate=\"none\" to disable, or decimate=\"0.5\" to keep 50% of faces." >}}

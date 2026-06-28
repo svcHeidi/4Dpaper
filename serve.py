@@ -53,10 +53,9 @@ def main():
     )
     args = parser.parse_args()
 
-    # Get port from: CLI args > environment variable > None (auto)
-    port = args.port or os.getenv("PORT")
-    if port:
-        port = int(port)
+    # Get port from: CLI args > environment variable > 5006
+    port = args.port or os.getenv("PORT") or 5006
+    port = int(port)
 
     print(f"Starting 4Dpapers Dashboard...")
     print(f"Application root: {app_root}")

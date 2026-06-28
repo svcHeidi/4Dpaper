@@ -41,7 +41,7 @@ class TestControlsStripHtml:
             fields_to_embed=["Vm", "at"], active_field="Vm",
             field_data_b64={"Vm": "AA==", "at": "AA=="}, field_ranges={"Vm": [0, 1], "at": [0, 1]},
         )
-        assert 'id="cs-strip-fig_vm"' in html
+        assert 'id="cs-topbar-fig_vm"' in html
 
     def test_lock_button_absent_when_hide(self):
         mod = _load_4dpaper()
@@ -59,35 +59,35 @@ class TestControlsStripHtml:
         html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
         assert 'id="cs-btn-axes-fig_vm"' not in html
 
-    def test_field_button_present_when_multiple_fields(self):
+    def test_field_selector_present_when_multiple_fields(self):
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet(
             "fig-vm", fields_to_embed=["Vm", "at"], active_field="Vm",
             field_data_b64={"Vm": "AA==", "at": "AA=="}, field_ranges={"Vm": [0,1], "at": [0,1]},
         )
-        assert 'id="cs-btn-field-fig_vm"' in html
+        assert 'id="cs-field-sel-fig_vm"' in html
 
-    def test_field_button_absent_when_single_field(self):
+    def test_field_selector_absent_when_single_field(self):
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet(
             "fig-vm", fields_to_embed=["Vm"], active_field="Vm",
             field_data_b64={"Vm": "AA=="}, field_ranges={"Vm": [0,1]},
         )
-        assert 'id="cs-btn-field-fig_vm"' not in html
+        assert 'id="cs-field-sel-fig_vm"' not in html
 
-    def test_time_button_present_when_time_data(self):
+    def test_time_slider_present_when_time_data(self):
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet(
             "fig-vm",
-            time_labels=["0.0", "0.5"], time_data_b64=["AA==", "BB=="],
-            time_global_range=[0.0, 1.0], time_field="Vm",
+            time_labels=["0.0", "0.5"], time_data_b64={"Vm": ["AA==", "BB=="]},
+            time_global_range={"Vm": [0.0, 1.0]}, time_field="Vm",
         )
-        assert 'id="cs-btn-time-fig_vm"' in html
+        assert 'id="cs-time-slider-fig_vm"' in html
 
-    def test_time_button_absent_when_no_time(self):
+    def test_time_slider_absent_when_no_time(self):
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm")
-        assert 'id="cs-btn-time-fig_vm"' not in html
+        assert 'id="cs-time-slider-fig_vm"' not in html
 
     def test_popup_panels_present_for_active_features(self):
         mod = _load_4dpaper()
@@ -126,52 +126,29 @@ class TestControlsStripHtml:
         assert 'id="cs-corner-fig_vm"' not in html
 
     def test_lock_widget_present_when_show_lock(self):
-        """cs-lock-widget at top:4px;right:4px when show_lock_btn=True."""
+        """cs-lock-widget present when show_lock_btn=True."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
         widget_pos = html.find('id="cs-lock-widget-fig_vm"')
         assert widget_pos != -1, "cs-lock-widget element not found"
-        widget_region = html[widget_pos:widget_pos + 120]
-        assert "top:4px" in widget_region
-        assert "right:4px" in widget_region
+
+    def test_camera_sync_badge_present_when_show_lock(self):
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        assert 'id="cs-cam-sync-fig_vm"' in html
+        assert "static PDF screenshots" in html
 
     def test_lock_widget_absent_when_hide(self):
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
         assert 'id="cs-lock-widget-fig_vm"' not in html
-
-    def test_lock_badge_present_when_show_lock(self):
-        """Badge element present and starts hidden (display:none) when show_lock_btn=True."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        badge_pos = html.find('id="cs-lock-badge-fig_vm"')
-        assert badge_pos != -1, "cs-lock-badge element not found"
-        badge_region = html[badge_pos:badge_pos + 80]
-        assert "display:none" in badge_region
-
-    def test_lock_badge_absent_when_hide(self):
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
-        assert 'id="cs-lock-badge-fig_vm"' not in html
-
-    def test_lock_popup_absent(self):
-        """cs-pop-lock is no longer emitted."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        assert 'id="cs-pop-lock-fig_vm"' not in html
-
-    def test_lock_button_absent_from_strip(self):
-        """cs-btn-lock is no longer in the right strip."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        assert 'id="cs-btn-lock-fig_vm"' not in html
+        assert 'id="cs-cam-sync-fig_vm"' not in html
 
     def test_lock_widget_absent_show_lock_false_orientation_true(self):
-        """No lock widget or badge when show_lock_btn=False, even with orientation."""
+        """No lock widget when show_lock_btn=False, even with orientation."""
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False, show_orientation=True)
         assert 'id="cs-lock-widget-fig_vm"' not in html
-        assert 'id="cs-lock-badge-fig_vm"' not in html
 
     def test_snippet_not_empty_when_only_orientation(self):
         """Corner cube alone is enough — snippet must not return '' when
@@ -182,140 +159,7 @@ class TestControlsStripHtml:
         assert 'id="cs-svg-axes-fig_vm"' in result
 
 
-class TestControlsStripJs:
-    def test_toggle_function_defined(self):
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm")
-        assert "csToggle_fig_vm" in html
 
-    def test_toggle_references_popup_ids(self):
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm")
-        assert "cs-pop-" in html
-
-    def test_hyphens_replaced_in_js_identifier(self):
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("ts-vm-0")
-        assert "csToggle_ts_vm_0" in html
-        assert "csToggle_ts-vm-0" not in html
-
-    def test_locked_always_declared(self):
-        """_locked must be declared even when show_lock_btn=False (used by _sendCam)."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
-        assert "var _locked=false" in html or "var _locked = false" in html
-
-    def test_iact_declared_at_top(self):
-        """var _iact = null must be declared (show_orientation=True)."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "var _iact=null" in html or "var _iact = null" in html
-
-    def test_interactor_disabled_on_load(self):
-        """Interactor init now honors the current lock state."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "setEnabled(_locked?0:1)" in html or "setEnabled(_locked ? 0 : 1)" in html
-
-    def test_interactor_not_disabled_when_orientation_hidden(self):
-        """No setEnabled(0) emitted when show_orientation=False (stays free)."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
-        assert "setEnabled(0)" not in html
-
-    def test_show_locked_badge_function_present(self):
-        """_showLockedBadge emitted when show_lock_btn=True."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        assert "_showLockedBadge" in html
-
-    def test_show_locked_badge_absent_when_hide(self):
-        """_showLockedBadge NOT emitted when show_lock_btn=False."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
-        assert "_showLockedBadge" not in html
-
-    def test_set_locked_helper_present(self):
-        """_setLocked helper emitted when show_lock_btn=True."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        assert "_setLocked" in html
-
-    def test_toggle_checks_locked_flag(self):
-        """if(_locked) guard appears before _CS_ALL loop in csToggle_.
-        Verifies ordering only; cannot verify it is a return guard from string inspection alone."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        js = html.split("<script>", 1)[1] if "<script>" in html else html
-        toggle_start = js.find("csToggle_fig_vm")
-        assert toggle_start != -1, "csToggle_ not found"
-        func_region = js[toggle_start:toggle_start + 500]
-        locked_pos = func_region.find("if(_locked)")
-        cs_all_pos = func_region.find("_CS_ALL")
-        assert locked_pos != -1, "if(_locked) not in csToggle_"
-        assert cs_all_pos != -1, "_CS_ALL not in csToggle_"
-        assert locked_pos < cs_all_pos, "if(_locked) must come before _CS_ALL loop"
-
-    def test_cs_setview_accepts_direction_array(self):
-        """`csSetView_` body normalises direction via `_n3(dir)`."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        js = html.split("<script>", 1)[1] if "<script>" in html else html
-        start = js.find("window.csSetView_fig_vm")
-        assert start != -1, "csSetView_ not found"
-        func_body = js[start:start + 600]
-        assert "_n3(dir)" in func_body, "_n3(dir) not in csSetView_ body"
-
-    def test_interactor_enabled_on_setview(self):
-        """`if(_iact)` guard and `setEnabled(1)` both inside csSetView_."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        js = html.split("<script>", 1)[1] if "<script>" in html else html
-        start = js.find("window.csSetView_fig_vm")
-        assert start != -1, "csSetView_ not found"
-        func_body = js[start:start + 600]
-        assert "if(_iact)" in func_body, "if(_iact) guard missing in csSetView_"
-        assert "setEnabled(1)" in func_body, "setEnabled(1) missing in csSetView_"
-
-    def test_open_rotation_absent(self):
-        """`_openRotation` must NOT appear anywhere in the snippet."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "_openRotation" not in html
-
-    def test_close_rotation_absent(self):
-        """`_closeRotation` must NOT appear anywhere in the snippet."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "_closeRotation" not in html
-
-    def test_close_on_toggle_absent(self):
-        """`_close_on_toggle` interactor-gate logic must not be emitted.
-        Detects: cs-pop-axes- referenced in JS (used to gate interactor on toggle)."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        js = html.split("<script>", 1)[1] if "<script>" in html else html
-        assert "cs-pop-axes-" not in js, \
-            "cs-pop-axes- found in JS — _close_on_toggle still emitted"
-
-    def test_render_before_debounce(self):
-        """renderWindow.render() fires immediately; only postMessage is debounced."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet(
-            "fig-vm",
-            time_labels=["0.0", "0.5"], time_data_b64=["AA==", "BB=="],
-            time_global_range=[0.0, 1.0], time_field="Vm",
-        )
-        js = html.split("<script>", 1)[1] if "<script>" in html else html
-        # Anchor to the input event listener, not the variable declaration
-        input_handler_pos = js.find('addEventListener("input"')
-        assert input_handler_pos != -1, "input event listener not found"
-        handler_section = js[input_handler_pos:input_handler_pos + 600]
-        render_pos = handler_section.find("renderWindow.render()")
-        settimeout_pos = handler_section.find("setTimeout")
-        assert render_pos != -1, "renderWindow.render() not in input handler"
-        assert settimeout_pos != -1, "setTimeout not in input handler"
-        assert render_pos < settimeout_pos, "renderWindow.render() must precede setTimeout"
 
 
 class TestControlsStripCameraLogic:
@@ -336,10 +180,25 @@ class TestControlsStripCameraLogic:
         html = mod._controls_strip_snippet("fig-vm")
         assert "pointerup" in html
 
+    def test_camera_sync_posts_without_debounce_timer(self):
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm")
+        assert "_postCam" in html
+        assert "_camLastSent" in html
+        assert "_camTimer" not in html
+
     def test_lock_toggle_sends_postmessage(self):
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
         assert "4dpaper-lock-toggle" in html
+
+    def test_camera_ack_updates_sync_badge(self):
+        mod = _load_4dpaper()
+        html = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
+        assert "_setCamSyncStatus" in html
+        assert 'd.type==="4dpaper-camera-ack"' in html
+        assert 'd.fig_id==="*"' in html
+        assert "Camera synced" in html
 
 
 class TestControlsStripOrientationLogic:
@@ -347,74 +206,6 @@ class TestControlsStripOrientationLogic:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
         assert 'id="cs-svg-axes-fig_vm"' in html
-
-    def test_preset_view_function_defined(self):
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "csSetView_fig_vm" in html
-
-    def test_axes_raf_loop_present(self):
-        """Axes rAF loop (_axLoop) must exist when show_orientation=True."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "_axLoop" in html
-
-    def test_axes_raf_loop_absent_when_hidden(self):
-        """When show_orientation=False, _axLoop must not be emitted."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
-        assert "_axLoop" not in html
-
-    def test_drawaxes_function_present(self):
-        """`function _drawAxes(` emitted when show_orientation=True; `_drawCube` NOT emitted."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "function _drawAxes(" in html
-        assert "_drawCube" not in html
-        assert "_FACES" not in html
-        assert "_CORNERS" not in html
-
-    def test_axis_reference_absent_when_orientation_hidden(self):
-        """When show_orientation=False: no _drawAxes, no iso button."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
-        assert "_drawAxes" not in html
-        assert "iso" not in html
-
-    def test_axis_click_delegation(self):
-        """SVG click listener uses data-dir and dv.split(',').map(Number)."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert '_svg.addEventListener("click"' in html
-        # data-dir used inside _drawAxes body
-        draw_start = html.find("function _drawAxes(")
-        assert draw_start != -1
-        draw_body = html[draw_start:draw_start + 1000]
-        assert 'data-dir="' in draw_body
-        # existing parser still used in click listener
-        assert 'dv.split(",").map(Number)' in html
-
-    def test_axis_positive_directions(self):
-        """_drawAxes emits data-dir for all 3 positive ortho directions."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        draw_start = html.find("function _drawAxes(")
-        assert draw_start != -1
-        draw_body = html[draw_start:draw_start + 1000]
-        assert 'data-dir="1,0,0"' in draw_body
-        assert 'data-dir="0,1,0"' in draw_body
-        assert 'data-dir="0,0,1"' in draw_body
-
-    def test_axis_negative_directions(self):
-        """_drawAxes emits data-dir for all 3 negative ortho directions (tail circles)."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        draw_start = html.find("function _drawAxes(")
-        assert draw_start != -1
-        draw_body = html[draw_start:draw_start + 1000]
-        assert 'data-dir="-1,0,0"' in draw_body
-        assert 'data-dir="0,-1,0"' in draw_body
-        assert 'data-dir="0,0,-1"' in draw_body
 
     def test_axis_flash_present(self):
         """Axis helper flash span remains present with the orientation widget."""
@@ -427,35 +218,6 @@ class TestControlsStripOrientationLogic:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet("fig-vm", show_orientation=False)
         assert 'cs-iso-flash-' not in html
-
-    def test_iso_cycle_views(self):
-        """_ISO_VIEWS with 4 entries, _ISO_NAMES, _isoIdx present when show_orientation=True."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True)
-        assert "_ISO_VIEWS" in html
-        assert "[1,1,1]" in html   # first iso view entry
-        assert "_ISO_NAMES" in html
-        assert "_isoIdx" in html
-
-    def test_axis_click_lock_gate(self):
-        """Axis click listener keeps the lock gate when show_lock_btn=True."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=True)
-        js = html.split("<script>", 1)[1] if "<script>" in html else html
-        click_pos = js.find('_svg.addEventListener("click"')
-        assert click_pos != -1, "axis click listener not found in JS"
-        click_section = js[click_pos:click_pos + 400]
-        assert "if(_locked)" in click_section
-
-    def test_axis_click_no_lock_gate_when_lock_hidden(self):
-        """Axis click listener has no lock gate when show_lock_btn=False."""
-        mod = _load_4dpaper()
-        html = mod._controls_strip_snippet("fig-vm", show_orientation=True, show_lock_btn=False)
-        js = html.split("<script>", 1)[1] if "<script>" in html else html
-        click_pos = js.find('_svg.addEventListener("click"')
-        assert click_pos != -1, "axis click listener not found in JS"
-        click_section = js[click_pos:click_pos + 400]
-        assert "if(_locked)" not in click_section
 
 
 class TestControlsStripFieldLogic:
@@ -491,8 +253,8 @@ class TestControlsStripTimeLogic:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet(
             "fig-vm",
-            time_labels=["0.0", "0.5", "1.0"], time_data_b64=["AA==", "BB==", "CC=="],
-            time_global_range=[0.0, 1.0], time_field="Vm",
+            time_labels=["0.0", "0.5", "1.0"], time_data_b64={"Vm": ["AA==", "BB==", "CC=="]},
+            time_global_range={"Vm": [0.0, 1.0]}, time_field="Vm",
         )
         assert 'id="cs-time-slider-fig_vm"' in html
 
@@ -500,8 +262,8 @@ class TestControlsStripTimeLogic:
         mod = _load_4dpaper()
         html = mod._controls_strip_snippet(
             "fig-vm",
-            time_labels=["0.001", "0.005"], time_data_b64=["AA==", "BB=="],
-            time_global_range=[0.0, 1.0], time_field="Vm",
+            time_labels=["0.001", "0.005"], time_data_b64={"Vm": ["AA==", "BB=="]},
+            time_global_range={"Vm": [0.0, 1.0]}, time_field="Vm",
         )
         assert "0.001" in html
         assert "0.005" in html

@@ -27,17 +27,17 @@ def _output_dir() -> Path:
 def main() -> int:
     output_dir = _output_dir()
     if not output_dir.exists():
-        print(f"[4dpaper] No output directory at {output_dir} — skipping HTML signing.", file=sys.stderr)
+        print(f"No output directory at {output_dir} — skipping HTML signing.", file=sys.stderr)
         return 0
 
     signed = 0
     for html_path in sorted(output_dir.rglob("*.html")):
         if sign_html_file_if_configured(html_path):
             signed += 1
-            print(f"[4dpaper] Signed rendered HTML: {html_path}", file=sys.stderr)
+            print(f"Signed rendered HTML: {html_path}", file=sys.stderr)
 
     if signed == 0:
-        print("[4dpaper] Rendered HTML signing disabled or no HTML outputs found.", file=sys.stderr)
+        print("Rendered HTML signing disabled or no HTML outputs found.", file=sys.stderr)
     return 0
 
 

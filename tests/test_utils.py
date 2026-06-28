@@ -96,6 +96,35 @@ class TestRunQuartoRenderPaperview:
         assert captured["cmd"][profile_idx + 1] == "paperview"
         assert captured["env"].get("FOURD_PAPER_VIEW") == "1"
         assert captured["env"].get("FOURD_APP_MODE") == "1"
+        assert captured["env"].get("FOURD_STRICT_STATIC_EXPORT") == "1"
+
+
+class TestRunQuartoRenderHtmlExport:
+    def test_html_export_uses_standalone_output_without_app_mode(self, tmp_path):
+        from unittest.mock import patch, MagicMock
+        from dashboard.utils import run_quarto_render
+
+        qmd = tmp_path / "paper.qmd"
+        qmd.write_text("# Test\n")
+        captured = {}
+
+        def fake_popen(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["env"] = kwargs.get("env", {})
+            proc = MagicMock()
+            proc.stdout.__iter__ = lambda s: iter([])
+            proc.wait.return_value = None
+            proc.returncode = 0
+            return proc
+
+        with patch("subprocess.Popen", fake_popen):
+            run_quarto_render(qmd, [], output_format="html-export")
+
+        assert "--profile" not in captured["cmd"]
+        assert "--output" in captured["cmd"]
+        output_idx = captured["cmd"].index("--output")
+        assert captured["cmd"][output_idx + 1] == "paper-standalone.html"
+        assert "FOURD_APP_MODE" not in captured["env"]
 
 
 class TestMaybeSignRenderedHtml:
@@ -111,7 +140,7 @@ class TestMaybeSignRenderedHtml:
             signed = maybe_sign_rendered_html(html, log_lines)
 
         assert signed is True
-        assert log_lines == ["[4dpaper] Signed HTML output: paper.html"]
+        assert log_lines == ["Signed HTML output: paper.html"]
 
     def test_raises_when_rendered_html_is_missing(self, tmp_path):
         from dashboard.utils import maybe_sign_rendered_html

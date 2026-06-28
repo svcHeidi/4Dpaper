@@ -165,6 +165,116 @@ def _surface_cell_count(surface) -> int:
     return int(getattr(surface, "n_cells", 0))
 
 
+def _has_polygon_cells(surface) -> bool:
+    """Return True if the mesh has any triangle/polygon cells (not just lines/points)."""
+    try:
+        return int(surface.GetNumberOfPolys()) > 0
+    except Exception:
+        return False
+
+
+def _prepare_surface(mesh):
+    """
+    Return a renderable surface from any mesh type.
+
+    For volumetric meshes (UnstructuredGrid, StructuredGrid, etc.) extract the
+    boundary surface.  For PolyData the mesh is already a surface representation
+    (including LINE-only Purkinje networks), so return it as-is — calling
+    vtkDataSetSurfaceFilter on a LINES-only PolyData would strip line connectivity
+    and return only the endpoint vertices.
+
+    Detection order:
+    1. VTK GetClassName() — works on real PyVista objects without an import.
+    2. isinstance(mesh, pv.PolyData) — fallback for subclasses.
+    3. extract_surface() — safe default for volumetric types and mocks.
+    """
+    try:
+        if mesh.GetClassName() == "vtkPolyData":
+            return mesh
+    except AttributeError:
+        pass
+    try:
+        import pyvista as pv
+        if isinstance(mesh, pv.PolyData):
+            return mesh
+    except (TypeError, ImportError):
+        pass
+    return mesh.extract_surface(algorithm="dataset_surface")
+
+
+def _add_mesh_auto(pl, surface, field: str, cmap: str, show_colorbar: bool,
+                   axis_color: str, clim=None, line_width: float = 2.0):
+    """
+    Add a mesh to a Plotter, choosing rendering style based on cell type.
+
+    Triangle/polygon meshes use smooth shading.  Line meshes (e.g. Purkinje
+    networks) use render_lines_as_tubes so they are visible in the 3D view.
+    """
+    is_line = not _has_polygon_cells(surface)
+    scalar_bar_args = {"title": field, "color": axis_color} if show_colorbar else {}
+    has_field = bool(field) and (
+        field in surface.point_data or field in surface.cell_data
+    )
+    common = dict(
+        scalars=field if has_field else None,
+        cmap=cmap,
+        show_scalar_bar=show_colorbar and has_field,
+        scalar_bar_args=scalar_bar_args if has_field else {},
+    )
+    if clim is not None:
+        common["clim"] = clim
+    if not has_field:
+        common["color"] = "#aaaaaa"
+        common["opacity"] = 0.9
+    if is_line:
+        pl.add_mesh(surface, line_width=line_width, render_lines_as_tubes=True, **common)
+    else:
+        pl.add_mesh(surface, smooth_shading=True, **common)
+
+
+def _get_overlay_at_time(overlay_sim, target_time: float):
+    """Return the overlay mesh whose simulation time is closest to target_time."""
+    times = overlay_sim.time_steps
+    if not times:
+        return None
+    nearest_idx = min(range(len(times)), key=lambda i: abs(times[i] - target_time))
+    return overlay_sim.get_mesh(nearest_idx)
+
+
+def _merge_overlay_mesh(primary, primary_field: str, overlay, overlay_field: str):
+    """
+    Merge a primary surface mesh with an overlay mesh under a single scalar field.
+
+    The overlay's scalar (overlay_field) is copied into the merged mesh under
+    primary_field so both datasets share one colormap.  All other point-data
+    arrays are stripped to keep the merged mesh compact.
+
+    Returns (merged_polydata, n_primary) where n_primary is the number of
+    primary mesh points, which callers need to reconstruct per-frame arrays.
+    """
+    import pyvista as pv
+    import numpy as np
+
+    n_primary = primary.n_points
+
+    # Build a clean primary PolyData with only the unified field
+    prim = pv.PolyData(primary.points, primary.cells)
+    if primary_field in primary.point_data:
+        prim.point_data[primary_field] = primary.point_data[primary_field].astype("float32")
+    elif primary_field in primary.cell_data:
+        tmp = primary.cell_data_to_point_data()
+        if primary_field in tmp.point_data:
+            prim.point_data[primary_field] = tmp.point_data[primary_field].astype("float32")
+
+    # Build a clean overlay PolyData with the overlay field renamed to primary_field
+    over = pv.PolyData(overlay.points, overlay.lines)
+    if overlay_field in overlay.point_data:
+        over.point_data[primary_field] = overlay.point_data[overlay_field].astype("float32")
+
+    merged = prim.merge(over)
+    return merged, n_primary
+
+
 def _decimate_quadric(surface, target_faces: int):
     import math
     import vtk
@@ -254,6 +364,14 @@ def _apply_decimation(surface, decimate_spec: str, label: str = ""):
     """Apply the parsed `decimate` shortcode setting."""
     spec = (decimate_spec or "auto").strip().lower()
     if spec in ("0", "none", "off", "false", "no"):
+        return surface
+
+    # Line/point meshes (e.g. Purkinje networks) have no polygon cells — skip.
+    if not _has_polygon_cells(surface):
+        print(
+            f"{label}: skipping decimation — no polygon cells (line/point mesh)",
+            file=sys.stderr,
+        )
         return surface
 
     target_reduction: float | None = None
@@ -1213,27 +1331,19 @@ def generate_png_figure(
     if mesh is None:
         raise RuntimeError(f"Could not load mesh at step {idx} from {src_path}")
 
-    surface = mesh.extract_surface(algorithm='dataset_surface')
+    surface = _prepare_surface(mesh)
     surface = _apply_decimation(surface, decimate, label=f"{fig_id or 'fig'}.png")
 
     pl = pv.Plotter(off_screen=True, window_size=(900, 600))
     pl.background_color = background if background != "transparent" else "white"
 
-    if field and (field in surface.point_data or field in surface.cell_data):
-        pl.add_mesh(
-            surface,
-            scalars=field,
-            cmap=cmap,
-            smooth_shading=True,
-            show_scalar_bar=show_colorbar,
-            scalar_bar_args={"title": field, "color": axis_color} if show_colorbar else {},
-        )
-    else:
-        pl.add_mesh(surface, color="#aaaaaa", opacity=0.9)
+    if field and field not in surface.point_data and field not in surface.cell_data:
         print(
             f"Warning: field '{field}' not found — rendering geometry only.",
             file=sys.stderr,
         )
+    _add_mesh_auto(pl, surface, field=field, cmap=cmap,
+                   show_colorbar=show_colorbar, axis_color=axis_color)
 
     # Apply saved camera if available, else fall back to isometric view.
     _cam_id = camera_fig_id or fig_id
@@ -1298,27 +1408,19 @@ def generate_html_figure(
     if mesh is None:
         raise RuntimeError(f"Could not load mesh at step {idx} from {src_path}")
 
-    surface = mesh.extract_surface(algorithm='dataset_surface')
+    surface = _prepare_surface(mesh)
     surface = _apply_decimation(surface, decimate, label=f"{fig_id or 'fig'}.html")
 
     pl = pv.Plotter(off_screen=True, window_size=(900, 600))
     pl.background_color = background if background != "transparent" else "white"
 
-    if field and (field in surface.point_data or field in surface.cell_data):
-        pl.add_mesh(
-            surface,
-            scalars=field,
-            cmap=cmap,
-            smooth_shading=True,
-            show_scalar_bar=show_colorbar,
-            scalar_bar_args={"title": field, "color": axis_color} if show_colorbar else {},
-        )
-    else:
-        pl.add_mesh(surface, color="#aaaaaa", opacity=0.9)
+    if field and field not in surface.point_data and field not in surface.cell_data:
         print(
             f"Warning: field '{field}' not found in mesh — rendering geometry only.",
             file=sys.stderr,
         )
+    _add_mesh_auto(pl, surface, field=field, cmap=cmap,
+                   show_colorbar=show_colorbar, axis_color=axis_color)
 
     # Apply camera — same logic as generate_png_figure so HTML and PDF start from
     # the same viewpoint.
@@ -1397,9 +1499,9 @@ def generate_html_figure(
                     time_data_b64[f].append("")
                 continue
                 
-            # 2. Extract Surface
+            # 2. Extract Surface (skip for PolyData — already surface representation)
             ex_start = time.time()
-            t_surface = t_mesh.extract_surface(algorithm="dataset_surface")
+            t_surface = _prepare_surface(t_mesh)
             ex_time = time.time() - ex_start
             
             # 3. Decimate

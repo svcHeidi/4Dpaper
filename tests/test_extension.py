@@ -431,6 +431,31 @@ class TestIsCacheValid:
         cam = tmp_path / "nonexistent_camera.json"
         assert mod.is_cache_valid(fig, src, camera_path=cam) is True
 
+    def test_stale_when_extra_dep_newer_than_fig(self, tmp_path):
+        mod = _load_4dpaper()
+        import os, time as _time
+        now = _time.time()
+        src = tmp_path / "case.foam"
+        src.write_text("")
+        fig = tmp_path / "fig.html"
+        fig.write_text("")
+        qmd = tmp_path / "paper.qmd"
+        qmd.write_text("# Paper\n")
+        os.utime(src, (now - 2, now - 2))
+        os.utime(fig, (now - 1, now - 1))
+        os.utime(qmd, (now, now))
+        assert mod.is_cache_valid(fig, src, extra_deps=[qmd]) is False
+
+
+class TestMainCacheDependencies:
+    def test_main_uses_qmd_and_shortcuts_as_single_figure_deps(self):
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.main)
+        assert "figure_extra_deps" in source
+        assert "qmd_extra_deps" in source
+        assert "shortcut_extra_deps" in source
+
 
 class TestParseVideoShortcodes:
     def test_finds_shortcode(self):

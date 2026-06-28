@@ -1209,23 +1209,57 @@ jupyter: python3
                 state.editorContent[state.activeTab] = content;
             }
 
-            const response = await fetch('/api/compile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    files: state.editorContent,
-                    format: state.viewMode,
-                    target: state.activePaper,
-                    csl: state.citationStyle
-                })
-            });
-
-            const result = await response.json();
-
-            // Show build log
+            // Show the build log panel immediately with a helpful loading message
             const logPanel = document.getElementById('build-log-panel');
             const logOutput = document.getElementById('build-log-output');
             const logTitle = document.getElementById('build-log-title');
+            
+            logTitle.style.color = '#3b82f6'; // Blue for loading
+            logTitle.textContent = 'Build Log — Compiling...';
+            logOutput.textContent = 'Starting Quarto compilation in the background...\n\nPlease wait.';
+            logPanel.style.display = 'flex';
+
+            // Start polling for real-time logs every 1 second
+            let logInterval = setInterval(async () => {
+                try {
+                    const statusRes = await fetch('/api/compile/status');
+                    if (statusRes.ok) {
+                        const statusData = await statusRes.json();
+                        if (statusData.log) {
+                            logOutput.textContent = statusData.log;
+                            
+                            // Smart parse the log to show current progress in the title
+                            const match = statusData.log.match(/\[([^\]]+) t=(\d+)\]/g);
+                            if (match && match.length > 0) {
+                                const lastMatch = match[match.length - 1];
+                                logTitle.textContent = `Build Log — Compiling... (Processing ${lastMatch})`;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Ignore errors during polling
+                }
+            }, 1000);
+
+            let result;
+            let response;
+            try {
+                response = await fetch('/api/compile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        files: state.editorContent,
+                        format: state.viewMode,
+                        target: state.activePaper,
+                        csl: state.citationStyle
+                    })
+                });
+                result = await response.json();
+            } finally {
+                clearInterval(logInterval); // Always stop polling when fetch finishes
+            }
+
+            // Show build log
             const logText = result.log || result.error || '';
             if (logText) {
                 logOutput.textContent = logText;
@@ -1322,27 +1356,36 @@ jupyter: python3
             btn.innerHTML = '<i class="ph-fill ph-spinner text-white animate-spin"></i><span>Exporting…</span>';
             try {
                 // Compile saves in-flight editor changes, then renders the chosen format.
-                const response = await fetch('/api/compile', {
+                const response = await fetch(fmt === 'pdf' ? '/api/export' : '/api/compile', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         files: state.editorContent,
-                        format: fmt === 'pdf' ? 'pdf' : 'html',
+                        format: fmt === 'pdf' ? 'pdf' : 'html-export',
                         target: state.activePaper,
                         csl: state.citationStyle
                     })
                 });
-                const result = await response.json();
-                if (!(response.ok && result.status === 'success')) {
-                    alert('Export failed:\n\n' + (result.error || 'Unknown error'));
-                    return;
-                }
+
                 if (fmt === 'pdf') {
-                    // Open the static paperview HTML and trigger the print/save-as-PDF dialog.
-                    const printUrl = '/output/' + result.filename + '?t=' + Date.now();
-                    const win = window.open(printUrl, '_blank');
-                    if (win) win.addEventListener('load', () => win.print());
+                    if (!response.ok) {
+                        const err = await response.json().catch(() => ({error: 'Export failed with status ' + response.status}));
+                        alert('Export failed:\n\n' + (err.error || 'Unknown error'));
+                        return;
+                    }
+                    const blob = await response.blob();
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    let filename = state.activePaper ? state.activePaper.replace(/\.qmd$/, '') : 'document';
+                    a.download = filename + '.pdf';
+                    document.body.appendChild(a); a.click(); a.remove();
+                    URL.revokeObjectURL(a.href);
                 } else {
+                    const result = await response.json();
+                    if (!(response.ok && result.status === 'success')) {
+                        alert('Export failed:\n\n' + (result.error || 'Unknown error'));
+                        return;
+                    }
                     // Download the compiled standalone HTML file.
                     const r = await fetch('/output/' + result.filename + '?t=' + Date.now());
                     const blob = await r.blob();

@@ -7,18 +7,18 @@ In the HTML version this is a fully interactive 3D viewer — you can rotate,
 zoom, and inspect the mesh. In the PDF version it is a high-resolution static
 render from the camera angle you locked in the dashboard.
 
-{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam" field="Vm" fields="Vm,activationTime,activationVelocity" id="fig-vm" style="vm-dark" caption="Transmembrane potential $V_m$ at mid-activation" >}}
+{{< 4d-image src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam" field="Vm" fields="Vm,activationTime,activationVelocity" id="fig-vm" style="vm-dark" caption="Transmembrane potential $V_m$ at mid-activation" >}}
 
 ## Activation Time
 
-{{< 4d-image src="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam" field="activationTime" id="fig-at" time="last" caption="Activation time distribution" >}}
+{{< 4d-image src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam" field="activationTime" id="fig-at" time="last" caption="Activation time distribution" >}}
 
 ## Transmembrane Potential Animation
 
 In the HTML output this is a fully interactive scrubber. In the PDF, videos cannot be embedded — use
 `{{< 4d-timeseries >}}` instead (see @sec-timeseries) for a static multi-frame strip.
 
-{{< 4d-video src="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam" field="Vm" fps="10" id="vid-vm" caption="Transmembrane potential $V_m$ over time (HTML only)" >}}
+{{< 4d-video src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam" field="Vm" fps="10" id="vid-vm" caption="Transmembrane potential $V_m$ over time (HTML only)" >}}
 
 ## Activation Time-Series (HTML + PDF) {#sec-timeseries}
 
@@ -28,7 +28,7 @@ panel rotates all). In the PDF export a composite PNG strip is rendered from the
 
 Use the 🔓 padlock button on any panel to lock the camera before exporting.
 
-{{< 4d-timeseries src="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam" field="Vm" id="ts-vm" steps="4" height="300px" caption="$V_m$ at four equally-spaced time steps — synced camera, HTML and PDF compatible" >}}
+{{< 4d-timeseries src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam" field="Vm" id="ts-vm" steps="4" height="300px" caption="$V_m$ at four equally-spaced time steps — synced camera, HTML and PDF compatible" >}}
 
 ## Side-by-Side Comparison (independent cameras)
 
@@ -37,9 +37,9 @@ camera angle before running Export PDF.
 
 {{< 4d-panel id="panel-compare" layout="2x1" height="500px"
     caption="$V_m$ (left) vs activation time (right) — independent cameras."
-    src1="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam"
+    src1="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam"
     id1="fig-vm" field1="Vm" fields1="Vm,activationTime,activationVelocity"
-    src2="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam"
+    src2="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam"
     id2="fig-at" field2="activationTime" fields2="Vm,activationTime,activationVelocity" >}}
 
 ## Side-by-Side Comparison (synchronised camera)
@@ -49,9 +49,9 @@ ack badge appears on every viewer simultaneously.
 
 {{< 4d-panel id="panel-sync" layout="2x1" height="500px" camera="sync"
     caption="$V_m$ (left) vs activation time (right) — synchronised camera."
-    src1="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam"
+    src1="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam"
     id1="fig-vm-sync" field1="Vm"
-    src2="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam"
+    src2="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam"
     id2="fig-at-sync" field2="activationTime" >}}
 
 ## ParaView Pipeline Figure
@@ -61,7 +61,7 @@ ack badge appears on every viewer simultaneously.
 interactive vtk.js viewer. This lets you embed any ParaView filter chain — clipping planes,
 streamlines, isovolumes — directly in the paper.
 
-{{< 4d-pvsm src="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/example_state.pvsm" data="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/Niederer.foam" id="fig-pvsm-vm" caption="Transmembrane voltage rendered via ParaView pipeline" >}}
+{{< 4d-pvsm src="/Users/simaocastro/cardiacFoamEP/cardiacFoam+GPUv1+frontendv1/NiedererEtAl2012/example_state.pvsm" data="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam" id="fig-pvsm-vm" caption="Transmembrane voltage rendered via ParaView pipeline" >}}
 
 ## Interactive 2D/3D Data Graphs (Plotly JSON)
 

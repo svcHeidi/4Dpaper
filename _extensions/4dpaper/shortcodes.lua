@@ -855,10 +855,45 @@ local function fourd_timeseries(args, kwargs)
         cap_html .. '</figure>')
     end
 
-    -- Timeseries is always sync — read manifest to get subfigure IDs, then embed
-    -- each as a direct srcdoc iframe with data-panel attribute.
-    -- Avoids data:text/html;base64 iframes which break vtk.js WebGL rendering.
-    local manifest_path = "state/figures/" .. id .. ".manifest.json"
+    -- First check if optimized composite HTML exists
+    -- Use PROJECT_ROOT or QUARTO_PROJECT_DIR as base directory
+    local base_dir = os.getenv("PROJECT_ROOT") or os.getenv("QUARTO_PROJECT_DIR") or "."
+    local composite_path = base_dir .. "/state/figures/" .. id .. ".html"
+    local composite_file = io.open(composite_path, "r")
+    if composite_file then
+      composite_file:close()
+
+      local relay_script = ""
+      if not _relay_injected then
+        _relay_injected = true
+        relay_script = _RELAY_SCRIPT
+      end
+
+      local cap_html = caption ~= "" and
+        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
+        caption .. '</figcaption>\n' or ""
+
+      if _app_mode then
+        return pandoc.RawBlock("html",
+          '<figure class="fourd-figure" style="margin:1.5rem 0;background:white;padding:0;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">\n' ..
+          '<iframe src="/state/figures/' .. id .. '.html" width="100%" height="' .. height .. '" ' ..
+          'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
+          cap_html .. '</figure>\n' .. relay_script)
+      else
+        local cf = io.open(composite_path, "r")
+        local content = cf:read("*all"); cf:close()
+        local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+        return pandoc.RawBlock("html",
+          '<figure class="fourd-figure" style="margin:1.5rem 0;background:white;padding:0;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">\n' ..
+          '<iframe srcdoc="' .. escaped .. '" width="100%" height="' .. height .. '" ' ..
+          'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
+          cap_html .. '</figure>\n' .. relay_script)
+      end
+    end
+
+    -- Fallback: read manifest to get subfigure IDs, render individual frames in grid
+    local base_dir = os.getenv("PROJECT_ROOT") or os.getenv("QUARTO_PROJECT_DIR") or "."
+    local manifest_path = base_dir .. "/state/figures/" .. id .. ".manifest.json"
     local mf = io.open(manifest_path, "r")
     if not mf then
       return pandoc.RawBlock("html",

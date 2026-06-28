@@ -17,8 +17,12 @@ def run_quarto_render(
     """Run `quarto render` and stream output to `log_lines`.
 
     `csl` (optional) is a CSL citation-style file applied via `--metadata csl=`.
-    Paperview output is named `<stem>-paperview.html` so each paper renders to a
-    distinct file.
+    Supported `output_format` values:
+      - `html`: dashboard preview HTML (app mode)
+      - `html-export`: standalone interactive HTML export
+      - `paperview`: static HTML used for PDF preview/export
+
+    Export outputs are named per-paper so preview builds do not overwrite them.
     """
     import os
     import shutil
@@ -57,9 +61,12 @@ def run_quarto_render(
     if output_format == "html":
         env["FOURD_APP_MODE"] = "1"
         cmd += ["--profile", "apphtml"]
+    elif output_format == "html-export":
+        cmd += ["--output", f"{qmd_path.stem}-standalone.html"]
     elif output_format == "paperview":
         env["FOURD_APP_MODE"] = "1"
         env["FOURD_PAPER_VIEW"] = "1"
+        env["FOURD_STRICT_STATIC_EXPORT"] = "1"
         cmd += ["--profile", "paperview"]
         # Per-paper output name (profile no longer hardcodes output-file) so
         # compiling paperII doesn't overwrite paperI's paperview HTML.
@@ -106,7 +113,7 @@ def maybe_sign_rendered_html(html_path: Path, log_lines: list[str]) -> bool:
     if not html_path.exists():
         raise FileNotFoundError(f"Rendered HTML not found: {html_path}")
     if sign_html_file_if_configured(html_path):
-        log_lines.append(f"[4dpaper] Signed HTML output: {html_path.name}")
+        log_lines.append(f"Signed HTML output: {html_path.name}")
         return True
     return False
 

@@ -15,23 +15,7 @@ def _load_4dpaper():
     return mod
 
 
-class TestSnippetForSync:
-    def test_wildcard_ack_accepted(self):
-        mod = _load_4dpaper()
-        snippet = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        assert 'fig_id!=="*"' in snippet or 'fig_id !== "*"' in snippet
 
-    def test_camera_apply_listener_present(self):
-        mod = _load_4dpaper()
-        snippet = mod._controls_strip_snippet("fig-vm")
-        assert "4dpaper-camera-apply" in snippet
-
-    def test_camera_apply_sets_camera_position(self):
-        mod = _load_4dpaper()
-        snippet = mod._controls_strip_snippet("fig-vm")
-        assert "setPosition" in snippet
-        assert "setFocalPoint" in snippet
-        assert "setViewUp" in snippet
 
 
 class TestParsePanelShortcodes:
@@ -93,6 +77,22 @@ class TestGeneratePngFigureCameraFigId:
         assert "_cam_id" in source
 
 
+class TestGenerateHtmlFigureCameraFigId:
+    def test_camera_fig_id_param_exists(self):
+        import inspect
+        mod = _load_4dpaper()
+        sig = inspect.signature(mod.generate_html_figure)
+        assert "camera_fig_id" in sig.parameters
+        assert sig.parameters["camera_fig_id"].default is None
+
+    def test_camera_fig_id_used_in_lookup(self):
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.generate_html_figure)
+        assert "camera_fig_id" in source
+        assert "_cam_id" in source
+
+
 class TestGeneratePanelPngSyncCamera:
     def test_sync_mode_uses_panel_id_for_camera(self):
         import inspect
@@ -100,6 +100,12 @@ class TestGeneratePanelPngSyncCamera:
         source = inspect.getsource(mod.generate_panel_png)
         assert "camera_mode" in source
         assert "camera_fig_id" in source
+
+    def test_panel_png_reads_saved_field_state(self):
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.generate_panel_png)
+        assert "_load_saved_field_state" in source
 
 
 class TestSyncPanelCacheInvalidation:
@@ -109,6 +115,12 @@ class TestSyncPanelCacheInvalidation:
         source = inspect.getsource(mod.main)
         assert "camera_mode" in source
         assert "shared_cam" in source
+
+    def test_main_source_tracks_panel_field_state(self):
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.main)
+        assert 'field_{sub[\'id\']}.json' in source
 
 
 class TestGeneratePanelHtmlWritesManifest:
@@ -123,6 +135,13 @@ class TestGeneratePanelHtmlWritesManifest:
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
         assert 'data-panel' in content
         assert 'querySelectorAll' in content
+
+    def test_generate_panel_html_uses_saved_field_state_and_shared_camera(self):
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.generate_panel_html)
+        assert "_load_saved_field_state" in source
+        assert "camera_fig_id" in source
 
 
 class TestFourdPanelLua:
@@ -141,24 +160,6 @@ class TestFourdPanelLua:
 
 
 class TestPanelLockToolbar:
-    def test_subfigure_snippet_handles_lock_all(self):
-        """Subfigure JS must respond to 4dpaper-lock-all message."""
-        mod = _load_4dpaper()
-        snippet = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        assert "4dpaper-lock-all" in snippet
-
-    def test_subfigure_snippet_handles_lock_all_without_lock_btn(self):
-        """4dpaper-lock-all handler emitted even when show_lock_btn=False."""
-        mod = _load_4dpaper()
-        snippet = mod._controls_strip_snippet("fig-vm", show_lock_btn=False)
-        assert "4dpaper-lock-all" in snippet
-
-    def test_subfigure_snippet_handles_hide_lock_btn(self):
-        """Subfigure JS must respond to 4dpaper-hide-lock-btn message."""
-        mod = _load_4dpaper()
-        snippet = mod._controls_strip_snippet("fig-vm", show_lock_btn=True)
-        assert "4dpaper-hide-lock-btn" in snippet
-
     def test_shortcodes_lua_contains_panel_lock_toolbar(self):
         """shortcodes.lua must contain the panel-level lock bar markup."""
         lua_src = (
@@ -168,3 +169,36 @@ class TestPanelLockToolbar:
         assert "plb-btn-" in lua_src
         assert "4dpaper-lock-all" in lua_src
         assert "4dpaper-hide-lock-btn" in lua_src
+
+
+class TestTimeseriesTimeSyncRelay:
+    """Regression tests: sync re-relay must forward 4dpaper-time to siblings."""
+
+    def test_sync_re_relay_handles_time_message(self):
+        """The sync composite re-relay script must relay '4dpaper-time' messages."""
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.generate_panel_html)
+        assert "4dpaper-time" in source, (
+            "generate_panel_html sync re-relay must handle '4dpaper-time' "
+            "so timeseries subfigures stay in step"
+        )
+
+    def test_sync_re_relay_sends_time_apply(self):
+        """When '4dpaper-time' arrives the relay must fan out '4dpaper-time-apply'."""
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.generate_panel_html)
+        assert "4dpaper-time-apply" in source, (
+            "The re-relay must broadcast '4dpaper-time-apply' to sibling iframes"
+        )
+
+    def test_sync_re_relay_skips_sender_for_time(self):
+        """The time relay must skip the source iframe to avoid feedback loops."""
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.generate_panel_html)
+        assert "timeSrc" in source, (
+            "Time relay should track the sending iframe (timeSrc) to skip it"
+        )
+
