@@ -1982,8 +1982,13 @@ def main() -> None:
         ts_id = ts["id"]
         output_path = figures_dir / f"{ts_id}.html"
 
-        # Cache check
-        if is_cache_valid(output_path, ts["src_path"], extra_deps=figure_extra_deps):
+        # Check if all frame HTMLs exist (not just composite)
+        frame_ids = [f"{ts_id}-frame-{i}" for i in range(len(ts["step_indices"]))]
+        frame_paths = [figures_dir / f"{fid}.html" for fid in frame_ids]
+        all_frames_exist = all(fp.exists() for fp in frame_paths)
+
+        # Cache check — also verify all frames exist
+        if all_frames_exist and is_cache_valid(output_path, ts["src_path"], extra_deps=figure_extra_deps):
             print(f"{ts_id}.html is up to date — skipping.", file=sys.stderr)
             continue
 
