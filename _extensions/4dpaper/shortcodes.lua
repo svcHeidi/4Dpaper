@@ -855,45 +855,8 @@ local function fourd_timeseries(args, kwargs)
         cap_html .. '</figure>')
     end
 
-    -- First check if optimized composite HTML exists
-    -- Use PROJECT_ROOT or QUARTO_PROJECT_DIR as base directory
-    local base_dir = os.getenv("PROJECT_ROOT") or os.getenv("QUARTO_PROJECT_DIR") or "."
-    local composite_path = base_dir .. "/state/figures/" .. id .. ".html"
-    local composite_file = io.open(composite_path, "r")
-    if composite_file then
-      composite_file:close()
-
-      local relay_script = ""
-      if not _relay_injected then
-        _relay_injected = true
-        relay_script = _RELAY_SCRIPT
-      end
-
-      local cap_html = caption ~= "" and
-        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
-        caption .. '</figcaption>\n' or ""
-
-      if _app_mode then
-        return pandoc.RawBlock("html",
-          '<figure class="fourd-figure" style="margin:1.5rem 0;background:white;padding:0;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">\n' ..
-          '<iframe src="/state/figures/' .. id .. '.html" width="100%" height="' .. height .. '" ' ..
-          'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
-          cap_html .. '</figure>\n' .. relay_script)
-      else
-        local cf = io.open(composite_path, "r")
-        local content = cf:read("*all"); cf:close()
-        local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-        return pandoc.RawBlock("html",
-          '<figure class="fourd-figure" style="margin:1.5rem 0;background:white;padding:0;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">\n' ..
-          '<iframe srcdoc="' .. escaped .. '" width="100%" height="' .. height .. '" ' ..
-          'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
-          cap_html .. '</figure>\n' .. relay_script)
-      end
-    end
-
-    -- Fallback: read manifest to get subfigure IDs, render individual frames in grid
-    local base_dir = os.getenv("PROJECT_ROOT") or os.getenv("QUARTO_PROJECT_DIR") or "."
-    local manifest_path = base_dir .. "/state/figures/" .. id .. ".manifest.json"
+    -- Read manifest to get subfigure IDs, render as sync panel (lock toolbar + grid)
+    local manifest_path = "state/figures/" .. id .. ".manifest.json"
     local mf = io.open(manifest_path, "r")
     if not mf then
       return pandoc.RawBlock("html",
@@ -903,21 +866,14 @@ local function fourd_timeseries(args, kwargs)
     end
     local manifest_str = mf:read("*all"); mf:close()
 
-    -- Simple JSON array parse for "subfigures": ["a","b",...]
+    -- Parse subfigures and layout
     local subfig_ids = {}
     for s in manifest_str:gmatch('"subfigures"%s*:%s*%[([^%]]*)%]') do
       for sub_id in s:gmatch('"([^"]+)"') do
         table.insert(subfig_ids, sub_id)
       end
     end
-    -- Layout: Nx1 where N = number of subfigures
     local ncols = math.max(1, #subfig_ids)
-
-    local relay_script = ""
-    if not _relay_injected then
-      _relay_injected = true
-      relay_script = _RELAY_SCRIPT
-    end
 
     if #subfig_ids == 0 then
       return pandoc.RawBlock("html",
@@ -926,40 +882,44 @@ local function fourd_timeseries(args, kwargs)
         'click <strong>Rebuild HTML</strong> in the dashboard.</div>')
     end
 
+    -- Build frame cells (same as sync panel)
     local ts_cells = {}
     for _, sub_id in ipairs(subfig_ids) do
       local fig_path = "state/figures/" .. sub_id .. ".html"
-      local cell_iframe
-      if _app_mode then
-        cell_iframe = '<iframe src="/state/figures/' .. sub_id .. '.html" ' ..
-                      'data-panel="' .. id .. '" ' ..
-                      'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
-      else
-        local fh = io.open(fig_path, "r")
-        if fh then
-          local content = fh:read("*all"); fh:close()
-          -- Hide per-frame topbars by injecting CSS
-          local with_topbar_css = content:gsub(
-            '</head>',
-            '<style>#cs-topbar-__FIGSAFE__{display:none!important;}div[id^="cs-topbar"]{display:none!important;}</style></head>'
-          )
-          local escaped = with_topbar_css:gsub("&", "&amp;"):gsub('"', "&quot;")
-          cell_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
+      local exists = io.open(fig_path, "r")
+      if exists then exists:close() end
+
+      if exists then
+        local cell_iframe
+        if _app_mode then
+          cell_iframe = '<iframe src="/state/figures/' .. sub_id .. '.html" ' ..
                         'data-panel="' .. id .. '" ' ..
                         'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
         else
-          cell_iframe = '<div style="background:#222;display:flex;align-items:center;' ..
-                        'justify-content:center;color:#888;font-family:sans-serif;font-size:0.85rem;">' ..
-                        '⚠ ' .. sub_id .. ' not rendered</div>'
+          local fh = io.open(fig_path, "r")
+          local content = fh:read("*all"); fh:close()
+          local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+          cell_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
+                        'data-panel="' .. id .. '" ' ..
+                        'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
         end
+        table.insert(ts_cells, cell_iframe)
+      else
+        table.insert(ts_cells,
+          '<div style="background:#222;display:flex;align-items:center;' ..
+          'justify-content:center;color:#888;font-family:sans-serif;font-size:0.85rem;">' ..
+          '⚠ ' .. sub_id .. ' not rendered</div>')
       end
-      table.insert(ts_cells, cell_iframe)
     end
 
-    local grid_style = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
-                       'grid-template-rows:1fr;gap:4px;' ..
-                       'width:100%;height:' .. height .. ';background:white;'
-    local lock_toolbar_ts = '<div id="plb-' .. id .. '" style="' ..
+    local relay_script = ""
+    if not _relay_injected then
+      _relay_injected = true
+      relay_script = _RELAY_SCRIPT
+    end
+
+    -- Lock toolbar (same as sync panel)
+    local lock_toolbar = '<div id="plb-' .. id .. '" style="' ..
       'display:flex;align-items:center;gap:8px;background:#181614;' ..
       'border-bottom:1px solid #3d3834;padding:3px 8px;' ..
       'font-family:system-ui,sans-serif;font-size:11px;">' ..
@@ -991,9 +951,18 @@ local function fourd_timeseries(args, kwargs)
       '.catch(function(){});' ..
       '});' ..
       '})();</script></div>'
+
+    -- Grid (same as sync panel)
+    local grid_style = (
+      'display:grid;' ..
+      'grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
+      'grid-template-rows:1fr;' ..
+      'gap:4px;width:100%;height:' .. height .. ';background:#111;'
+    )
+
     return pandoc.RawBlock("html",
-      '<figure class="fourd-figure" style="margin:1.5rem 0;background:white;padding:0;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">\n' ..
-      lock_toolbar_ts .. '\n' ..
+      '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+      lock_toolbar .. '\n' ..
       '<div style="' .. grid_style .. '">' .. table.concat(ts_cells) .. '</div>\n' ..
       (caption ~= "" and
         '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
