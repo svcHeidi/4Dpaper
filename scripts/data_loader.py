@@ -11,17 +11,16 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+from importlib.metadata import version as _pkg_version
 
 try:
     import pyvista as pv
 except Exception as exc:  # pragma: no cover - import-time environment failure
     try:
-        from importlib.metadata import version as _pkg_version
         _pyvista_ver = _pkg_version("pyvista")
     except Exception:
         _pyvista_ver = "unknown"
     try:
-        from importlib.metadata import version as _pkg_version
         _vtk_ver = _pkg_version("vtk")
     except Exception:
         _vtk_ver = "unknown"
@@ -217,7 +216,7 @@ class SimulationData:
 
         self._time_steps = list(self._proc_readers[0].time_values)
         LOG.info(
-            "[4dpaper] Decomposed case: %s processors, %s time steps",
+            "Decomposed case: %s processors, %s time steps",
             len(proc_dirs),
             len(self._time_steps),
         )

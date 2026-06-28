@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import time
 import traceback
 from pathlib import Path
@@ -27,8 +28,17 @@ _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)
 # Semaphore: only one Quarto render may run at a time to prevent resource exhaustion.
 _render_lock = asyncio.Semaphore(1)
 
+# Global store for the live compilation logs so the frontend can poll them
+_active_build_log: list[str] = []
+
 # Maximum total body size for the compile endpoint (50 MB across all files).
 _MAX_COMPILE_BODY_BYTES = 50 * 1024 * 1024
+_PLACEHOLDER_MARKERS = (
+    "not yet rendered",
+    "not rendered — click Rebuild HTML",
+    "run 'Export PDF'",
+    "run 'Rebuild HTML'",
+)
 
 
 def _find_main_qmd() -> Path:
@@ -82,6 +92,48 @@ def _resolve_csl(body: dict) -> "Path | None":
     return p if p.exists() else None
 
 
+def _validate_standalone_html_output(html_path: Path) -> None:
+    """Ensure a downloaded HTML export does not depend on app-served figure assets."""
+    text = html_path.read_text(encoding="utf-8")
+    if "../state/figures/" in text or "/state/figures/" in text:
+        raise ValueError(
+            "Standalone HTML export still references app-served figure assets under state/figures."
+        )
+    if any(marker in text for marker in _PLACEHOLDER_MARKERS):
+        raise ValueError(
+            "Standalone HTML export contains unresolved figure placeholders. Rebuild the figures first."
+        )
+
+
+def _validate_paperview_html_output(html_path: Path) -> None:
+    """Ensure the static HTML used for PDF export has all required figure assets."""
+    text = html_path.read_text(encoding="utf-8")
+    if any(marker in text for marker in _PLACEHOLDER_MARKERS):
+        raise ValueError(
+            "Paperview HTML contains unresolved figure placeholders. Static figure generation failed."
+        )
+
+    missing_assets: list[str] = []
+    for asset_ref in re.findall(r'src="((?:\.\./state/figures|/state/figures)/[^"]+)"', text):
+        if asset_ref.startswith("/state/figures/"):
+            asset_path = (_PROJECT_ROOT / asset_ref.lstrip("/")).resolve()
+        else:
+            asset_path = (html_path.parent / asset_ref).resolve()
+        if not asset_path.exists():
+            missing_assets.append(asset_ref)
+
+    if missing_assets:
+        sample = ", ".join(missing_assets[:3])
+        raise FileNotFoundError(
+            f"Paperview HTML references missing figure assets: {sample}"
+        )
+
+
+def _rewrite_paperview_asset_urls_for_pdf(html_text: str) -> str:
+    """Convert app-root `/state/...` asset URLs to project-relative paths for WeasyPrint."""
+    return html_text.replace('"/state/figures/', '"../state/figures/')
+
+
 class CompileHandler(SecureMixin, tornado.web.RequestHandler):
     """Compile the main QMD to HTML (interactive) or paperview HTML (static)."""
 
@@ -133,11 +185,18 @@ class CompileHandler(SecureMixin, tornado.web.RequestHandler):
 
             print(f"[CompileHandler] Starting Quarto render of {main_qmd.name}"
                   f"{f' (csl={csl_path.name})' if csl_path else ''}...")
-            log_lines: list[str] = []
+            
+            global _active_build_log
+            _active_build_log.clear()
+            log_lines: list[str] = _active_build_log
 
-            # Frontend sends "pdf" to mean the paperview static profile
             requested_format = body.get("format", "html")
-            render_format = "paperview" if requested_format == "pdf" else "html"
+            if requested_format == "pdf":
+                render_format = "paperview"
+            elif requested_format == "html-export":
+                render_format = "html-export"
+            else:
+                render_format = "html"
 
             # Run the blocking render in a thread-pool executor; hold the semaphore
             # so only one render runs at a time.
@@ -158,7 +217,12 @@ class CompileHandler(SecureMixin, tornado.web.RequestHandler):
                 })
                 return
 
-            filename = f"{stem}-paperview.html" if render_format == "paperview" else f"{stem}.html"
+            if render_format == "paperview":
+                filename = f"{stem}-paperview.html"
+            elif render_format == "html-export":
+                filename = f"{stem}-standalone.html"
+            else:
+                filename = f"{stem}.html"
             html_output = _PROJECT_ROOT / "_output" / filename
 
             # Wait up to 3 s for Quarto to finish flushing the file
@@ -176,6 +240,10 @@ class CompileHandler(SecureMixin, tornado.web.RequestHandler):
                 return
 
             maybe_sign_rendered_html(html_output, log_lines)
+            if render_format == "paperview":
+                _validate_paperview_html_output(html_output)
+            elif render_format == "html-export":
+                _validate_standalone_html_output(html_output)
 
             print(f"[CompileHandler] Successfully compiled: {filename}")
             self.write({
@@ -221,16 +289,43 @@ class ExportHandler(SecureMixin, tornado.web.RequestHandler):
             return
 
         try:
+            if len(self.request.body) > _MAX_COMPILE_BODY_BYTES:
+                self.set_status(413)
+                self.write({"error": "Request body exceeds 50 MB limit"})
+                return
+
             try:
                 body = json.loads(self.request.body) if self.request.body else {}
-            except (ValueError, TypeError):
+            except json.JSONDecodeError:
                 body = {}
+
+            files_to_save = body.get("files", {})
+
+            for file_path_str, content in files_to_save.items():
+                if len(content.encode("utf-8", errors="replace")) > 10 * 1024 * 1024:
+                    self.set_status(413)
+                    self.write({"error": f"File '{file_path_str}' exceeds 10 MB limit"})
+                    return
+
+                path = (_PROJECT_ROOT / file_path_str).resolve()
+                allowed, reason = _is_write_allowed(_PROJECT_ROOT / file_path_str)
+                if not allowed:
+                    self.set_status(403)
+                    self.write({"error": f"Write denied for '{file_path_str}': {reason}"})
+                    return
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+                print(f"[ExportHandler] Saved: {path.relative_to(_PROJECT_ROOT)}")
+
             main_qmd = _resolve_target(body)
             stem = main_qmd.stem
             csl_path = _resolve_csl(body)
 
             # Step 1: render paperview HTML (static, figures as saved-camera PNGs)
-            log_lines: list[str] = []
+            global _active_build_log
+            _active_build_log.clear()
+            log_lines: list[str] = _active_build_log
+            
             loop = asyncio.get_event_loop()
             async with _render_lock:
                 exit_code = await loop.run_in_executor(
@@ -254,10 +349,15 @@ class ExportHandler(SecureMixin, tornado.web.RequestHandler):
                 return
 
             maybe_sign_rendered_html(html_path, log_lines)
+            _validate_paperview_html_output(html_path)
 
-            # Step 2: HTML → PDF (base_url resolves relative image paths)
+            # Step 2: HTML → PDF. Rewrite app-root `/state/...` URLs into
+            # filesystem-relative paths so WeasyPrint can resolve figure assets.
+            html_text = _rewrite_paperview_asset_urls_for_pdf(
+                html_path.read_text(encoding="utf-8")
+            )
             pdf_bytes = weasyprint.HTML(
-                filename=str(html_path),
+                string=html_text,
                 base_url=str(html_path.parent),
             ).write_pdf()
 
@@ -307,8 +407,28 @@ class HealthCheckHandler(tornado.web.RequestHandler):
         })
 
 
+class CompileStatusHandler(SecureMixin, tornado.web.RequestHandler):
+    """Endpoint for polling real-time compilation logs from the frontend."""
+
+    def set_default_headers(self) -> None:
+        self.apply_cors_headers(methods="GET, OPTIONS")
+        self.set_header("Content-Type", "application/json")
+
+    def options(self) -> None:
+        self.finish()
+
+    def get(self) -> None:
+        if not self.check_auth():
+            return
+        
+        self.write({
+            "log": "\n".join(_active_build_log[-100:])
+        })
+
+
 ROUTES = [
     (r"/api/compile", CompileHandler),
     (r"/api/export", ExportHandler),
     (r"/api/health", HealthCheckHandler),
+    (r"/api/compile/status", CompileStatusHandler),
 ]

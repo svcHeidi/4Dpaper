@@ -15,6 +15,7 @@ state/
 
 # Local machine-specific config (contains absolute paths)
 dashboard/config.yaml
+_shortcuts.yml
 
 # Secrets — never commit these
 .env

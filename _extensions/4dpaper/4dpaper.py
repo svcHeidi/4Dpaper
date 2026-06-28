@@ -2,7 +2,6 @@
 """Render 4DPaper shortcode assets before Quarto runs."""
 from __future__ import annotations
 
-import array as _array
 import base64 as _b64
 import json
 import os
@@ -55,10 +54,11 @@ if (
         os.execv(str(_venv_python), [str(_venv_python)] + sys.argv)
     else:
         print(
-            f"[4dpaper] WARNING: venv python '{_venv_resolved}' is outside project root "
+            f"WARNING: venv python '{_venv_resolved}' is outside project root "
             f"'{_root_resolved}' — skipping execv re-launch for safety.",
             file=sys.stderr,
-)
+        )
+
 
 for _path in (_app_root, _project_root):
     if _path is not None and str(_path) not in sys.path:
@@ -76,12 +76,13 @@ _shortcut_resolver = ShortcutResolver(
     config_path=_project_root / "_shortcuts.yml",
     project_root=_project_root
 )
+_shortcuts_yml_path = _project_root / "_shortcuts.yml"
 
 
 def _maybe_sign_output_html(output_path: Path) -> None:
     """Apply a trailing signature block when HTML signing is configured."""
     if sign_html_file_if_configured(output_path):
-        print(f"[4dpaper] Signed HTML: {output_path}", file=sys.stderr)
+        print(f"Signed HTML: {output_path}", file=sys.stderr)
 
 
 def resolve_src_path(src_str: str) -> Path:
@@ -89,7 +90,7 @@ def resolve_src_path(src_str: str) -> Path:
     try:
         return _shortcut_resolver.resolve(src_str)
     except ValueError as exc:
-        print(f"[4dpaper] Warning: {exc}", file=sys.stderr)
+        print(f"Warning: {exc}", file=sys.stderr)
         path = Path(src_str)
         return path if path.is_absolute() else _project_root / path
 
@@ -157,12 +158,41 @@ def _surface_cell_count(surface) -> int:
     return int(getattr(surface, "n_cells", 0))
 
 
+def _decimate_quadric(surface, target_faces: int):
+    import math
+    import vtk
+    bounds = surface.bounds
+    dx = bounds[1] - bounds[0]
+    dy = bounds[3] - bounds[2]
+    dz = bounds[5] - bounds[4]
+    max_dim = max(dx, dy, dz)
+    
+    n = int(math.sqrt(target_faces / 3.0))
+    n = max(10, min(n, 256))
+    
+    nx = max(10, int(n * (dx / max_dim))) if max_dim > 0 else 10
+    ny = max(10, int(n * (dy / max_dim))) if max_dim > 0 else 10
+    nz = max(10, int(n * (dz / max_dim))) if max_dim > 0 else 10
+    
+    cluster = vtk.vtkQuadricClustering()
+    cluster.SetInputData(surface)
+    cluster.SetUseInputPoints(True)
+    cluster.CopyCellDataOn()
+    cluster.SetNumberOfXDivisions(nx)
+    cluster.SetNumberOfYDivisions(ny)
+    cluster.SetNumberOfZDivisions(nz)
+    cluster.Update()
+    
+    import pyvista as pv
+    return pv.wrap(cluster.GetOutput())
+
 def _decimate_surface(surface, target_faces: int = _DECIMATE_TARGET_FACES,
                       target_reduction: float | None = None):
     """Decimate a surface when it exceeds the face target."""
     n_faces = _surface_cell_count(surface)
     if target_reduction is not None:
         ratio = float(target_reduction)
+        target_faces = int(n_faces * (1.0 - ratio))
     else:
         if n_faces <= target_faces:
             return surface
@@ -178,11 +208,39 @@ def _decimate_surface(surface, target_faces: int = _DECIMATE_TARGET_FACES,
             preserve_topology=False,
         )
     except Exception as exc:
+        if "all triangles" in str(exc):
+            try:
+                if "vtkOriginalCellIds" in surface.cell_data:
+                    del surface.cell_data["vtkOriginalCellIds"]
+                if "vtkOriginalPointIds" in surface.point_data:
+                    del surface.point_data["vtkOriginalPointIds"]
+                surface = surface.triangulate()
+                return surface.decimate_pro(
+                    ratio,
+                    feature_angle=15.0,
+                    splitting=True,
+                    boundary_vertex_deletion=False,
+                    preserve_topology=False,
+                )
+            except Exception as e2:
+                print(
+                    f"WARNING: decimate_pro failed after triangulation ({e2}) — falling back to vtkQuadricClustering.",
+                    file=sys.stderr,
+                )
+                try:
+                    return _decimate_quadric(surface, target_faces)
+                except Exception as e3:
+                    print(f"WARNING: QuadricClustering failed ({e3}) — using original.", file=sys.stderr)
+                    return surface
         print(
-            f"[4dpaper] WARNING: decimate_pro failed ({exc}) — using original surface.",
+            f"WARNING: decimate_pro failed ({exc}) — falling back to vtkQuadricClustering.",
             file=sys.stderr,
         )
-        return surface
+        try:
+            return _decimate_quadric(surface, target_faces)
+        except Exception as e3:
+            print(f"WARNING: QuadricClustering failed ({e3}) — using original.", file=sys.stderr)
+            return surface
 
 
 def _apply_decimation(surface, decimate_spec: str, label: str = ""):
@@ -207,7 +265,7 @@ def _apply_decimation(surface, decimate_spec: str, label: str = ""):
     if n_after < n_before and n_before > 0:
         pct = 100.0 * (1.0 - n_after / n_before)
         print(
-            f"[4dpaper] {label}: decimated {n_before:,} → {n_after:,} faces ({pct:.1f}% reduction)",
+            f"{label}: decimated {n_before:,} → {n_after:,} faces ({pct:.1f}% reduction)",
             file=sys.stderr,
         )
     return result
@@ -228,6 +286,7 @@ def parse_video_shortcodes(text: str) -> list[dict]:
         kwargs.setdefault("fps", "10")
         kwargs.setdefault("time", "mid")
         kwargs.setdefault("field", "")
+        kwargs.setdefault("stride", "1")
         results.append(kwargs)
     return results
 
@@ -250,6 +309,7 @@ def parse_shortcodes(text: str) -> list[dict]:
         kwargs.setdefault("fields", "")
         kwargs.setdefault("style", "")
         kwargs.setdefault("decimate", "auto")
+        kwargs.setdefault("stride", "1")
         results.append(kwargs)
     return results
 
@@ -265,7 +325,7 @@ def parse_panel_shortcodes(text: str) -> list[dict]:
         for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
             kwargs[key] = val
         if "id" not in kwargs:
-            print("[4dpaper] Warning: 4d-panel shortcode missing 'id' — skipping.", file=sys.stderr)
+            print("Warning: 4d-panel shortcode missing 'id' — skipping.", file=sys.stderr)
             continue
         subfigures = []
         n = 1
@@ -279,7 +339,7 @@ def parse_panel_shortcodes(text: str) -> list[dict]:
             })
             n += 1
         if not subfigures:
-            print(f"[4dpaper] Warning: 4d-panel '{kwargs['id']}' has no sub-figures — skipping.", file=sys.stderr)
+            print(f"Warning: 4d-panel '{kwargs['id']}' has no sub-figures — skipping.", file=sys.stderr)
             continue
         results.append({
             "id":          kwargs["id"],
@@ -303,10 +363,10 @@ def parse_timeseries_shortcodes(text: str) -> list[dict]:
         for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
             kwargs[key] = val
         if "id" not in kwargs:
-            print("[4dpaper] Warning: 4d-timeseries shortcode missing 'id' — skipping.", file=sys.stderr)
+            print("Warning: 4d-timeseries shortcode missing 'id' — skipping.", file=sys.stderr)
             continue
         if "src" not in kwargs:
-            print("[4dpaper] Warning: 4d-timeseries shortcode missing 'src' — skipping.", file=sys.stderr)
+            print("Warning: 4d-timeseries shortcode missing 'src' — skipping.", file=sys.stderr)
             continue
         results.append({
             "id":          kwargs["id"],
@@ -343,7 +403,7 @@ def _expand_timeseries_steps(ts: dict, n_steps: int) -> list[int]:
             return result
     if n_steps <= 1:
         print(
-            f"[4dpaper] WARNING: timeseries '{ts['id']}' source has only {n_steps} step(s) "
+            f"WARNING: timeseries '{ts['id']}' source has only {n_steps} step(s) "
             "— generating single frame.", file=sys.stderr
         )
         return [0]
@@ -402,11 +462,11 @@ def load_styles(path: Path) -> dict:
         with path.open() as f:
             data = yaml.safe_load(f)
         if not isinstance(data, dict):
-            print(f"[4dpaper] WARNING: {path} is not a YAML mapping — ignoring styles.", file=sys.stderr)
+            print(f"WARNING: {path} is not a YAML mapping — ignoring styles.", file=sys.stderr)
             return {}
         return data
     except Exception as exc:
-        print(f"[4dpaper] WARNING: could not load {path}: {exc} — ignoring styles.", file=sys.stderr)
+        print(f"WARNING: could not load {path}: {exc} — ignoring styles.", file=sys.stderr)
         return {}
 
 
@@ -426,7 +486,7 @@ def resolve_style(styles_config: dict, style_name: str, field_name: str) -> dict
     if style_name:
         if style_name not in styles:
             print(
-                f"[4dpaper] WARNING: style '{style_name}' not found in styles config — using defaults.",
+                f"WARNING: style '{style_name}' not found in styles config — using defaults.",
                 file=sys.stderr,
             )
         else:
@@ -475,19 +535,29 @@ def apply_camera_state(pl, fig_id: str, camera_path: Path | None = None) -> None
 
         if "parallel_scale" in cam_data and cam_data["parallel_scale"] is not None:
             pl.camera.parallel_scale = float(cam_data["parallel_scale"])
-            print(f"[4dpaper] Applied saved camera for {fig_id} (scale={pl.camera.parallel_scale:.4f})")
+            print(f"Applied saved camera for {fig_id} (scale={pl.camera.parallel_scale:.4f})")
         else:
-            print(f"[4dpaper] Applied saved camera for {fig_id}")
+            print(f"Applied saved camera for {fig_id}")
 
         is_parallel = cam_data.get("parallel_projection", 0) == 1
         pl.camera.parallel_projection = is_parallel
 
     except (json.JSONDecodeError, KeyError, ValueError) as exc:
-        print(f"[4dpaper] Warning: could not apply camera for {fig_id}: {exc}. Falling back to isometric.")
+        print(f"Warning: could not apply camera for {fig_id}: {exc}. Falling back to isometric.")
         pl.isometric_view()
 
 
 _GOLDEN_TOPBAR_JS = '  function _b64ToF32(b64){if(!b64)return null;var bin=atob(b64),len=bin.length,bytes=new Uint8Array(len);for(var i=0;i<len;i++)bytes[i]=bin.charCodeAt(i);return new Float32Array(bytes.buffer);}\n  function _getDecodedField(name){if(!_decodedFieldData[name]&&FIELD_DATA[name])_decodedFieldData[name]=_b64ToF32(FIELD_DATA[name]);return _decodedFieldData[name]||null;}\n  function _getDecodedTime(name){if(!_decodedTimeData[name]){var src=TIME_DATA[name]||[];_decodedTimeData[name]=src.map(_b64ToF32);}return _decodedTimeData[name]||[];}\n  function _getTimeRange(name){return TIME_GLOBAL_RANGE[name]||[0.0,1.0];}\n  function _getRenderer(){if(_renderer&&_renderer.getActors)return _renderer;var rw=window.renderWindow;if(rw&&rw.getRenderers){var rs=rw.getRenderers();for(var i=0;i<rs.length;i++){var r=rs[i];if(r&&r.getActors&&r.getActors().length>0){_renderer=r;return r;}}for(var j=0;j<rs.length;j++){if(rs[j]){_renderer=rs[j];return _renderer;}}}return null;}\n  function _findMeshActor(){if(!window.__4dp_global_probe){window.__4dp_global_probe=true;var hits=Object.keys(window).filter(function(k){return /vtk|render|view|trame|scene|loca/i.test(k);});hits.forEach(function(k){try{var v=window[k];}catch(_){}});var canvases=document.querySelectorAll("canvas");canvases.forEach(function(c,ci){var keys=Object.keys(c).filter(function(k){return /vtk|render/i.test(k);});});try{var pIfr=parent&&parent.window;}catch(_){}try{var olv=window.OfflineLocalView;if(olv){["getRenderer","getRenderWindow","getRenderers","getViewer","getView","render","scene","viewer"].forEach(function(m){});}}catch(e){}try{var cs=document.querySelectorAll("canvas");if(cs&&cs[0]){var c=cs[0];var ck=[];for(var key in c){if(/vtk|render/i.test(key))ck.push(key);}}}catch(_){}}var r=_getRenderer();if(!r){if(!window.__4dp_no_r){window.__4dp_no_r=true;}return null;}if(!window.__4dp_probed){window.__4dp_probed=true;var rw=window.renderWindow;var rs=rw&&rw.getRenderers?rw.getRenderers():[];rs.forEach(function(rr,ri){var acts=rr.getActors?rr.getActors():[];var props=rr.getViewProps?rr.getViewProps():[];var all=[].concat(acts).concat(props);all.forEach(function(a,ai){var m=a&&a.getMapper&&a.getMapper();var d=m&&m.getInputData&&m.getInputData();var pd=d&&d.getPointData&&d.getPointData();var arrs=[];if(pd&&pd.getNumberOfArrays){for(var k=0;k<pd.getNumberOfArrays();k++){var arr=pd.getArrayByIndex&&pd.getArrayByIndex(k);arrs.push(arr&&arr.getName&&arr.getName());}}});});}var acts=r.getActors?r.getActors():[];var props=r.getViewProps?r.getViewProps():[];var all=[].concat(acts).concat(props);for(var i=0;i<all.length;i++){var a=all[i],m=a&&a.getMapper&&a.getMapper(),d=m&&m.getInputData&&m.getInputData();if(d&&d.getPointData&&d.getPointData())return a;}return null;}\n  function _getScalarTarget(){_meshActor=_meshActor||_findMeshActor();if(!_meshActor){return null;}var mapper=_meshActor.getMapper&&_meshActor.getMapper();var input=mapper&&mapper.getInputData&&mapper.getInputData();var pd=input&&input.getPointData&&input.getPointData();var scalars=pd&&pd.getScalars&&pd.getScalars();if(!mapper||!input||!pd||!scalars){return null;}return {mapper:mapper,input:input,pd:pd,scalars:scalars};}\n  function _applyScalarArray(arr,range,name){var t=_getScalarTarget();if(!t||!arr){return false;}var next=t.pd&&t.pd.getArrayByName?t.pd.getArrayByName(_displayScalarName):null;if(next&&next.setData){next.setData(arr,1);}else if(t.pd&&t.pd.getScalars&&t.pd.getScalars()&&t.pd.getScalars().setData){next=t.pd.getScalars();next.setData(arr,1);}else if(t.scalars&&t.scalars.newClone){next=t.scalars.newClone();if(next.setNumberOfComponents)next.setNumberOfComponents(1);if(next.setData)next.setData(arr,1);}else if(t.scalars&&t.scalars.newInstance){next=t.scalars.newInstance({numberOfComponents:1,values:arr});}else {return false;}if(next&&next.setName)next.setName(_displayScalarName);if(next&&t.pd.addArray)t.pd.addArray(next);if(_displayScalarName&&t.pd.setActiveScalars)t.pd.setActiveScalars(_displayScalarName);if(next&&t.pd.setScalars)t.pd.setScalars(next);if(next&&next.modified)next.modified();if(t.pd.modified)t.pd.modified();if(t.input.modified)t.input.modified();if(t.mapper.setColorByArrayName)t.mapper.setColorByArrayName(_displayScalarName);if(t.mapper.setScalarModeToUsePointData)t.mapper.setScalarModeToUsePointData();if(t.mapper.setScalarVisibility)t.mapper.setScalarVisibility(true);if(range&&t.mapper.setScalarRange)t.mapper.setScalarRange(range[0],range[1]);if(t.mapper.mapScalars)t.mapper.mapScalars(t.input,1.0);if(t.mapper.modified)t.mapper.modified();if(_meshActor.modified)_meshActor.modified();var _sbrw=window.renderWindow;if(_sbrw&&_sbrw.getRenderers){var _sbrs=_sbrw.getRenderers();for(var _sbi=0;_sbi<_sbrs.length;_sbi++){var _sbp=[].concat(_sbrs[_sbi].getActors?_sbrs[_sbi].getActors():[]).concat(_sbrs[_sbi].getViewProps?_sbrs[_sbi].getViewProps():[]);for(var _sbj=0;_sbj<_sbp.length;_sbj++){var _sba=_sbp[_sbj];if(_sba.getClassName&&_sba.getClassName().indexOf(\'ScalarBar\')>=0){if(name&&_sba.setAxisLabel)_sba.setAxisLabel(name);var _sbl=_sba.getScalarsToColors&&_sba.getScalarsToColors();if(_sbl&&range&&_sbl.setMappingRange){_sbl.setMappingRange(range[0],range[1]);if(_sbl.updateRange)_sbl.updateRange();}if(_sba.modified)_sba.modified();}}}}if(window.renderWindow){window.renderWindow.render();}return true;}\n  function _emitTimeSync(){if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1)parent.postMessage({type:"4dpaper-time",fig_id:FIG_ID,idx:_timeIdx,playing:_timePlaying},"*");}\n  function _setTimeFrame(idx,silent){var frames=_getDecodedTime(ACTIVE_FIELD);if(!frames||idx<0||idx>=frames.length){return;}_timeIdx=idx;var slider=document.getElementById("cs-time-slider-__FIGSAFE__");if(slider)slider.value=String(idx);var label=document.getElementById("cs-time-val-__FIGSAFE__");if(label)label.textContent=(TIME_LABELS[idx]||String(idx));var arr=frames[idx];if(arr)_applyScalarArray(arr,_getTimeRange(ACTIVE_FIELD),ACTIVE_FIELD);if(!silent)_emitTimeSync();}\n  function _setPlaying(v,silent){_timePlaying=!!v;var btn=document.getElementById("cs-play-__FIGSAFE__");if(btn)btn.innerHTML=_timePlaying?"&#x23F8;":"&#x25B6;";if(!_timePlaying&&_timeRaf){cancelAnimationFrame(_timeRaf);_timeRaf=0;}if(!silent)_emitTimeSync();}\n  function _tickTime(ts){if(!_timePlaying)return;if(!_timeLastTs)_timeLastTs=ts;if(ts-_timeLastTs>=180){var frames=_getDecodedTime(ACTIVE_FIELD);if(frames&&frames.length){_setTimeFrame((_timeIdx+1)%frames.length);} _timeLastTs=ts;}_timeRaf=requestAnimationFrame(_tickTime);}\n  function _bindControls(){if(_controlsBound)return;_controlsBound=true;var slider=document.getElementById("cs-time-slider-__FIGSAFE__");if(slider)slider.addEventListener("input",function(){_setPlaying(false,true);_setTimeFrame(parseInt(this.value||"0",10)||0);});var play=document.getElementById("cs-play-__FIGSAFE__");if(play)play.addEventListener("click",function(){if(_locked){if(typeof _showLockedBadge==="function")_showLockedBadge();return;}var nv=!_timePlaying;_setPlaying(nv);_timeLastTs=0;if(nv)_timeRaf=requestAnimationFrame(_tickTime);});var fieldSel=document.getElementById("cs-field-sel-__FIGSAFE__");if(fieldSel)fieldSel.addEventListener("change",function(){var f=this.value,arr=_getDecodedField(f),range=FIELD_RANGES[f];if(arr&&_applyScalarArray(arr,range,f)){ACTIVE_FIELD=f;var badge=document.getElementById("cs-field-badge-__FIGSAFE__");if(badge){badge.textContent=f;badge.style.display="inline-block";badge.style.background="rgba(74,158,255,0.18)";badge.style.color="#9ecbff";setTimeout(function(){badge.style.display="none";},900);}if(TIME_DATA[f]&&TIME_DATA[f].length>_timeIdx){_setTimeFrame(_timeIdx);}}});if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1){var label=document.getElementById("cs-time-val-__FIGSAFE__");if(label)label.textContent=(TIME_LABELS[_timeIdx]||String(_timeIdx));}}\n  function _setLocked(v){\n    _locked=v;if(v){_setPlaying(false);}\n    var w=document.getElementById("cs-lock-widget-__FIGSAFE__");\n    if(w)w.innerHTML=v?"&#x1F512;":"&#x1F513;";\n    var s=document.getElementById("cs-lock-shield-__FIGSAFE__");\n    if(s)s.style.display=v?"block":"none";\n    var rw=window.renderWindow;\n    var i=(rw&&rw.getInteractor?rw.getInteractor():null);\n    if(i&&i.setEnabled)i.setEnabled(v?0:1);\n    var c=_cont||(i&&i.getContainer?i.getContainer():null);\n    if(c&&c.style){c.style.pointerEvents=v?"none":"";c.style.touchAction=v?"none":"";}\n    if(v&&i&&i.stopAnimating)i.stopAnimating();\n  }\n  function _n3(v){var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);return l<1e-10?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}\n  function _cr(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}\n  function _dt(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}\n  function _rot(v,ax,deg){var a=_n3(ax),x=v[0],y=v[1],z=v[2],c=Math.cos(deg*Math.PI/180),s=Math.sin(deg*Math.PI/180),d=a[0]*x+a[1]*y+a[2]*z;return[x*c+(a[1]*z-a[2]*y)*s+a[0]*d*(1-c),y*c+(a[2]*x-a[0]*z)*s+a[1]*d*(1-c),z*c+(a[0]*y-a[1]*x)*s+a[2]*d*(1-c)];}\n  window.csSetView___FIGSAFE__=function(dir,vup){if(!_renderer || _locked)return;var cam=_renderer.getActiveCamera(),fp=cam.getFocalPoint(),dist=cam.getDistance(),pn=_n3(dir),up=vup?_n3(vup):((Math.abs(pn[2])>0.9)?[0,1,0]:[0,0,1]);cam.setPosition(fp[0]+pn[0]*dist,fp[1]+pn[1]*dist,fp[2]+pn[2]*dist);cam.setViewUp(up[0],up[1],up[2]);cam.setFocalPoint(fp[0],fp[1],fp[2]);_renderer.resetCameraClippingRange();if(window.renderWindow)window.renderWindow.render();_sendCam(_renderer);};\n  window.csRotate___FIGSAFE__=function(dx,dy){if(!_renderer || _locked)return;var cam=_renderer.getActiveCamera(),pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp(),rel=[pos[0]-fp[0],pos[1]-fp[1],pos[2]-fp[2]],right=_n3(_cr(rel,vup)),pitch=_rot(rel,right,dy),yawAxis=_n3(vup),yaw=_rot(pitch,yawAxis,dx);cam.setPosition(fp[0]+yaw[0],fp[1]+yaw[1],fp[2]+yaw[2]);cam.setViewUp(vup[0],vup[1],vup[2]);_renderer.resetCameraClippingRange();if(window.renderWindow)window.renderWindow.render();_sendCam(_renderer);};\n  var _camTimer=null;\n  function _sendCam(r){if(_locked)return;clearTimeout(_camTimer);_camTimer=setTimeout(function(){var c=r.getActiveCamera();var d={position:c.getPosition(),focal_point:c.getFocalPoint(),view_up:c.getViewUp(),parallel_scale:c.getParallelScale(),parallel_projection:c.getParallelProjection()?1:0};parent.postMessage({type:"4dpaper-camera",fig_id:FIG_ID,camera:d},"*");},300);}\n  var _svg=null;\n  function _drawAxes(){if(!_renderer||!_svg)return;var cam=_renderer.getActiveCamera(),pos=cam.getPosition(),fp=cam.getFocalPoint(),vup=cam.getViewUp(),vd=_n3([fp[0]-pos[0],fp[1]-pos[1],fp[2]-pos[2]]),right=_n3(_cr(vd,vup)),up=_cr(right,vd),cx=28,cy=28,R=22;function proj(v){return[cx+R*_dt(v,right),cy-R*_dt(v,up)];}var axes=[{w:[1,0,0],col:"#ff6666",lcol:"#ff9999",lbl:"X",hpd:\'data-dir="1,0,0"\'},{w:[0,1,0],col:"#66cc66",lcol:"#99cc99",lbl:"Y",hpd:\'data-dir="0,1,0"\'},{w:[0,0,1],col:"#6699ff",lcol:"#99aaff",lbl:"Z",hpd:\'data-dir="0,0,1"\'}];var h="";axes.forEach(function(ax){var tip=proj(ax.w),tx=tip[0].toFixed(1),ty=tip[1].toFixed(1),dx=tip[0]-cx,dy=tip[1]-cy,len=Math.sqrt(dx*dx+dy*dy)||1,nx=-dy/len*3.5,ny=dx/len*3.5,bx1=(tip[0]-dx/len*7+nx).toFixed(1),by1=(tip[1]-dy/len*7+ny).toFixed(1),bx2=(tip[0]-dx/len*7-nx).toFixed(1),by2=(tip[1]-dy/len*7-ny).toFixed(1);h+=\'<line x1="\'+cx+\'" y1="\'+cy+\'" x2="\'+tx+\'" y2="\'+ty+\'" \'+ax.hpd+\' stroke="\'+ax.col+\'" stroke-width="2.5"/>\';h+=\'<polygon points="\'+tx+","+ty+" "+bx1+","+by1+" "+bx2+","+by2+\'" \'+ax.hpd+\' fill="\'+ax.col+\'"/>\';h+=\'<text x="\'+(tip[0]+dx/len*5).toFixed(1)+\'" y="\'+(tip[1]+dy/len*5+3).toFixed(1)+\'" \'+ax.hpd+\' font-size="9" fill="\'+ax.lcol+\'" font-family="monospace">\'+ax.lbl+\'</text>\';});_svg.innerHTML=h;}\n  function _axLoop(){_drawAxes();requestAnimationFrame(_axLoop);}\n  (function _wR(){\n    var rw=window.renderWindow;\n    var r=_getRenderer();\n    if(r){\n          var i=rw&&rw.getInteractor?rw.getInteractor():null;_cont=i?i.getContainer():null;\n          if(_cont){\n            _cont.addEventListener("mouseenter",function(){_isHovered=true;window.focus();});\n            _cont.addEventListener("mouseleave",function(){_isHovered=false;});\n            _cont.addEventListener("wheel",function(e){e.preventDefault();},{passive:false});\n          }\n          _bindControls();\n          _svg=document.getElementById("cs-svg-axes-__FIGSAFE__");_svg.addEventListener("click",function(e){var dv=e.target.getAttribute("data-dir");if(!dv)return;if(_locked){if(typeof _showLockedBadge==="function")_showLockedBadge();return;}csSetView___FIGSAFE__(dv.split(",").map(Number));});_axLoop();\n          if(TIME_DATA[ACTIVE_FIELD]&&TIME_DATA[ACTIVE_FIELD].length>1)_setTimeFrame(_timeIdx);\n          document.addEventListener("pointerup",function(){_sendCam(_renderer);});\n          document.addEventListener("mouseup",function(){_sendCam(_renderer);});\n          document.addEventListener("touchend",function(){_sendCam(_renderer);});\n          window.addEventListener("message",function(e){\n            if(!e.data)return;var d=e.data;\n            if(d.type==="4dpaper-camera-apply"){if(_locked)return;var cam=d.camera,c=_renderer.getActiveCamera();if(cam.position)c.setPosition(cam.position[0],cam.position[1],cam.position[2]);if(cam.focal_point)c.setFocalPoint(cam.focal_point[0],cam.focal_point[1],cam.focal_point[2]);if(cam.view_up)c.setViewUp(cam.view_up[0],cam.view_up[1],cam.view_up[2]);if(cam.parallel_scale!=null)c.setParallelScale(cam.parallel_scale);if(cam.parallel_projection!=null)c.setParallelProjection(!!cam.parallel_projection);window.renderWindow.render();}\n            else if(d.type==="4dpaper-time-apply"&&d.fig_id!==FIG_ID){_setPlaying(!!d.playing,true);_timeLastTs=0;_setTimeFrame(parseInt(d.idx||"0",10)||0,true);}\n            else if(d.type==="4dpaper-lock-state"&&d.fig_id===FIG_ID)_setLocked(!!d.locked);\n            else if(d.type==="4dpaper-lock-ack"&&d.fig_id===FIG_ID){if(d.status!=="ok")_setLocked(!_locked);}\n            else if(d.type==="4dpaper-lock-all")_setLocked(!!d.locked);\n            else if(d.type==="4dpaper-hide-lock-btn"){var w=document.getElementById("cs-lock-widget-__FIGSAFE__");if(w)w.style.display="none";var s=document.getElementById("cs-lock-sep-__FIGSAFE__");if(s)s.style.display="none";}\n          });\n          return;\n    }\n    setTimeout(_wR,200);\n  })();\n  _bindControls();\n  window.addEventListener("keydown",function(e){if(!_renderer||!_isHovered||_locked)return;var k=e.key.toLowerCase();if(k==="x")csSetView___FIGSAFE__([1,0,0],[0,0,1]);else if(k==="y")csSetView___FIGSAFE__([0,1,0],[0,0,1]);else if(k==="z")csSetView___FIGSAFE__([0,0,1],[0,1,0]);else if(k==="i")csSetView___FIGSAFE__([1,1,1],[0,0,1]);else if(e.key==="ArrowUp")csRotate___FIGSAFE__(0,-90);else if(e.key==="ArrowDown")csRotate___FIGSAFE__(0,90);else if(e.key==="ArrowLeft")csRotate___FIGSAFE__(-90,0);else if(e.key==="ArrowRight")csRotate___FIGSAFE__(90,0);if(e.key.startsWith("Arrow"))e.preventDefault();});'
+
+_GOLDEN_TOPBAR_JS = _GOLDEN_TOPBAR_JS.replace(
+    """var _camTimer=null;
+  function _sendCam(r){if(_locked)return;clearTimeout(_camTimer);_camTimer=setTimeout(function(){var c=r.getActiveCamera();var d={position:c.getPosition(),focal_point:c.getFocalPoint(),view_up:c.getViewUp(),parallel_scale:c.getParallelScale(),parallel_projection:c.getParallelProjection()?1:0};parent.postMessage({type:"4dpaper-camera",fig_id:FIG_ID,camera:d},"*");},300);}
+""",
+    """var _camLastSent=0;
+  function _postCam(r){var c=r.getActiveCamera();var d={position:c.getPosition(),focal_point:c.getFocalPoint(),view_up:c.getViewUp(),parallel_scale:c.getParallelScale(),parallel_projection:c.getParallelProjection()?1:0};parent.postMessage({type:"4dpaper-camera",fig_id:FIG_ID,camera:d},"*");}
+  function _sendCam(r){if(_locked)return;var now=Date.now();if(now-_camLastSent<40)return;_camLastSent=now;_postCam(r);}
+""",
+)
 
 
 def _controls_strip_snippet(
@@ -573,10 +643,16 @@ def _controls_strip_snippet(
         )
         if show_lock_btn:
             inner += (
+                f'<span id="cs-lock-cluster-{fig_id_safe}" style="margin-left:auto;display:flex;'
+                'align-items:center;gap:6px;flex-shrink:0;">'
+                f'<span id="cs-cam-sync-{fig_id_safe}" title="The saved camera is used for static PDF screenshots." '
+                'style="display:none;padding:1px 6px;border-radius:999px;font-size:9px;'
+                'line-height:1.4;font-family:system-ui,sans-serif;"></span>'
                 f'<button id="cs-lock-widget-{fig_id_safe}" title="Lock / unlock camera" '
-                'style="margin-left:auto;background:none;border:none;cursor:pointer;'
+                'style="background:none;border:none;cursor:pointer;'
                 'color:#ccc;font-size:12px;flex-shrink:0;padding:0 2px;line-height:1;">'
                 '&#x1F513;</button>'
+                '</span>'
             )
         topbar = (
             f'<div id="cs-topbar-{fig_id_safe}" style="position:fixed;top:0;left:0;right:0;'
@@ -631,6 +707,24 @@ def _controls_strip_snippet(
     lock_js = ""
     if show_lock_btn:
         lock_js = (
+            '\n  function _setCamSyncStatus(state){var _cs=document.getElementById("cs-cam-sync-' + fig_id_safe + '");'
+            'if(!_cs)return;'
+            'if(state==="syncing"){_cs.style.display="inline-block";_cs.textContent="Syncing…";'
+            '_cs.style.background="rgba(255,204,77,0.16)";_cs.style.color="#ffe08a";'
+            '_cs.title="Saving the current camera for PDF export.";return;}'
+            'if(state==="ok"){_cs.style.display="inline-block";_cs.textContent="Camera synced";'
+            '_cs.style.background="rgba(76,175,80,0.16)";_cs.style.color="#9ee6a3";'
+            '_cs.title="The saved camera is used for static PDF screenshots.";return;}'
+            'if(state==="error"){_cs.style.display="inline-block";_cs.textContent="Sync failed";'
+            '_cs.style.background="rgba(244,67,54,0.16)";_cs.style.color="#ffb3ad";'
+            '_cs.title="Camera sync failed. PDF export will keep the last saved view.";return;}'
+            '_cs.style.display="none";}'
+            '\n  var _origSendCam=_sendCam;'
+            '_sendCam=function(r){_setCamSyncStatus("syncing");_origSendCam(r);};'
+            '\n  window.addEventListener("message",function(e){'
+            'if(!e.data)return;var d=e.data;'
+            'if(d.type==="4dpaper-camera-ack"&&(d.fig_id===FIG_ID||d.fig_id==="*")){'
+            '_setCamSyncStatus(d.status==="ok"?"ok":"error");}});'
             '\n  (function(){var _lw=document.getElementById("cs-lock-widget-' + fig_id_safe + '");'
             'if(_lw)_lw.addEventListener("click",function(){var nv=!_locked;_setLocked(nv);'
             'parent.postMessage({type:"4dpaper-lock-toggle",fig_id:FIG_ID,locked:nv},"*");});'
@@ -638,6 +732,23 @@ def _controls_strip_snippet(
         )
     js_block = "<script>\n(function(){\n" + header + js_body + lock_js + "\n})();\n</script>\n"
     return html_block + js_block
+
+
+def _load_saved_field_state(fig_id: str, field: str, time_spec: str) -> tuple[str, str]:
+    """Return the saved field/time selection for one figure when present."""
+    field_state_path = _project_root / "state" / f"field_{fig_id}.json"
+    next_field = field
+    next_time = time_spec
+    if field_state_path.exists():
+        try:
+            state_data = json.loads(field_state_path.read_text())
+            if "field" in state_data:
+                next_field = state_data["field"]
+            if "time" in state_data:
+                next_time = state_data["time"]
+        except Exception:
+            pass
+    return next_field, next_time
 
 
 
@@ -662,7 +773,7 @@ def generate_png_figure(
 
     if sim.n_steps == 0:
         raise RuntimeError(
-            f"[4dpaper] Simulation at {src_path} has no time steps."
+            f"Simulation at {src_path} has no time steps."
         )
 
     n = sim.n_steps
@@ -678,7 +789,7 @@ def generate_png_figure(
 
     mesh = sim.get_mesh(idx)
     if mesh is None:
-        raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
+        raise RuntimeError(f"Could not load mesh at step {idx} from {src_path}")
 
     surface = mesh.extract_surface(algorithm='dataset_surface')
     surface = _apply_decimation(surface, decimate, label=f"{fig_id or 'fig'}.png")
@@ -698,7 +809,7 @@ def generate_png_figure(
     else:
         pl.add_mesh(surface, color="#aaaaaa", opacity=0.9)
         print(
-            f"[4dpaper] Warning: field '{field}' not found — rendering geometry only.",
+            f"Warning: field '{field}' not found — rendering geometry only.",
             file=sys.stderr,
         )
 
@@ -711,7 +822,7 @@ def generate_png_figure(
     pl.save_graphic(str(output_path.with_suffix(".pdf")))
     pl.screenshot(str(output_path))
     pl.close()
-    print(f"[4dpaper] Generated (PNG): {output_path}")
+    print(f"Generated (PNG): {output_path}")
 
 
 def generate_html_figure(
@@ -720,6 +831,7 @@ def generate_html_figure(
     time_spec: str,
     output_path: Path,
     fig_id: str | None = None,
+    camera_fig_id: str | None = None,
     available_fields: list[str] | None = None,
     camera_preview_only: bool = False,
     background: str = "white",
@@ -729,6 +841,7 @@ def generate_html_figure(
     show_lock_btn: bool = True,
     show_orientation: bool = True,
     decimate: str = "auto",
+    stride: int = 1,
 ) -> None:
     """
     Generate a self-contained vtk.js HTML figure using PyVista.
@@ -743,7 +856,7 @@ def generate_html_figure(
 
     if sim.n_steps == 0:
         raise RuntimeError(
-            f"[4dpaper] Simulation at {src_path} has no time steps. "
+            f"Simulation at {src_path} has no time steps. "
             "Ensure the case has been solved and time directories exist."
         )
 
@@ -761,7 +874,7 @@ def generate_html_figure(
 
     mesh = sim.get_mesh(idx)
     if mesh is None:
-        raise RuntimeError(f"[4dpaper] Could not load mesh at step {idx} from {src_path}")
+        raise RuntimeError(f"Could not load mesh at step {idx} from {src_path}")
 
     surface = mesh.extract_surface(algorithm='dataset_surface')
     surface = _apply_decimation(surface, decimate, label=f"{fig_id or 'fig'}.html")
@@ -781,14 +894,15 @@ def generate_html_figure(
     else:
         pl.add_mesh(surface, color="#aaaaaa", opacity=0.9)
         print(
-            f"[4dpaper] Warning: field '{field}' not found in mesh — rendering geometry only.",
+            f"Warning: field '{field}' not found in mesh — rendering geometry only.",
             file=sys.stderr,
         )
 
     # Apply camera — same logic as generate_png_figure so HTML and PDF start from
     # the same viewpoint.
-    camera_path = (_project_root / "state" / f"camera_{fig_id}.json" if fig_id else None)
-    apply_camera_state(pl, fig_id or "unnamed", camera_path)
+    _cam_id = camera_fig_id or fig_id
+    camera_path = (_project_root / "state" / f"camera_{_cam_id}.json" if _cam_id else None)
+    apply_camera_state(pl, _cam_id or "unnamed", camera_path)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pl.export_html(str(output_path))
@@ -820,7 +934,7 @@ def generate_html_figure(
     for f in fields_to_embed:
         arr_np = _get_arr(f)
         if arr_np is None:
-            print(f"[4dpaper] Warning: field '{f}' not found — skipping from switcher.", file=sys.stderr)
+            print(f"Warning: field '{f}' not found — skipping from switcher.", file=sys.stderr)
             continue
         arr_f32 = arr_np.astype("float32").ravel()
         field_data_b64[f] = _b64.b64encode(arr_f32.tobytes()).decode("ascii")
@@ -836,7 +950,7 @@ def generate_html_figure(
 
     if sim.n_steps > 1 and fields_to_embed:
         print(
-            f"[4dpaper] {fig_id or 'fig'}: embedding {sim.n_steps} timesteps "
+            f"{fig_id or 'fig'}: embedding {sim.n_steps} timesteps "
             f"× {len(fields_to_embed)} field(s) for timeline …",
             file=sys.stderr,
         )
@@ -844,19 +958,35 @@ def generate_html_figure(
         _tg_max: dict[str, float] = {f: float("-inf") for f in fields_to_embed}
         for f in fields_to_embed:
             time_data_b64[f] = []
-        for t_idx in range(sim.n_steps):
+        import time
+        step_indices = list(range(0, sim.n_steps, stride))
+        for t_idx in step_indices:
+            loop_start = time.time()
             # Human-readable time label (physical time value from the reader)
             if t_idx < len(sim.time_steps):
                 time_labels.append(f"{sim.time_steps[t_idx]:.4g}")
             else:
                 time_labels.append(str(t_idx))
+            
+            # 1. Load Mesh
             t_mesh = sim.get_mesh(t_idx)
             if t_mesh is None:
                 for f in fields_to_embed:
                     time_data_b64[f].append("")
                 continue
+                
+            # 2. Extract Surface
+            ex_start = time.time()
             t_surface = t_mesh.extract_surface(algorithm="dataset_surface")
+            ex_time = time.time() - ex_start
+            
+            # 3. Decimate
+            dec_start = time.time()
             t_surface = _apply_decimation(t_surface, decimate, label=f"{fig_id or 'fig'} t={t_idx}")
+            dec_time = time.time() - dec_start
+            
+            # 4. Process Arrays & Encode
+            enc_start = time.time()
             t_pts = None  # lazily computed cell→point conversion, shared by all fields
             for f in fields_to_embed:
                 arr_np = None
@@ -874,6 +1004,14 @@ def generate_html_figure(
                     _tg_max[f] = max(_tg_max[f], float(arr_f32.max()))
                 else:
                     time_data_b64[f].append("")
+            enc_time = time.time() - enc_start
+            
+            total_time = time.time() - loop_start
+            print(
+                f"[{fig_id} t={t_idx}] extracted: {ex_time:.2f}s | "
+                f"decimated: {dec_time:.2f}s | encoded: {enc_time:.2f}s | "
+                f"total: {total_time:.2f}s", file=sys.stderr
+            )
         for f in fields_to_embed:
             time_global_range[f] = (
                 [_tg_min[f], _tg_max[f]] if _tg_min[f] != float("inf") else [0.0, 1.0]
@@ -887,7 +1025,7 @@ def generate_html_figure(
     if fig_id:
         if "</body>" not in html:
             print(
-                f"[4dpaper] Warning: no </body> in {output_path.name} "
+                f"Warning: no </body> in {output_path.name} "
                 "— camera sync badge not injected.",
                 file=sys.stderr,
             )
@@ -917,7 +1055,7 @@ def generate_html_figure(
     output_path.write_text(html, encoding="utf-8")
     _maybe_sign_output_html(output_path)
 
-    print(f"[4dpaper] Generated: {output_path}", file=sys.stderr)
+    print(f"Generated: {output_path}", file=sys.stderr)
 
 
 def generate_panel_html(panel: dict, figures_dir: Path) -> None:
@@ -937,11 +1075,11 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
         ncols, nrows = int(ncols_s), int(nrows_s)
     except (ValueError, AttributeError):
         raise ValueError(
-            f"[4dpaper] 4d-panel layout must be 'COLSxROWS' (e.g. '2x2', '3x1'), got: '{layout}'"
+            f"4d-panel layout must be 'COLSxROWS' (e.g. '2x2', '3x1'), got: '{layout}'"
         )
     if ncols < 1 or nrows < 1:
         raise ValueError(
-            f"[4dpaper] 4d-panel layout dimensions must be positive integers, got: '{layout}'"
+            f"4d-panel layout dimensions must be positive integers, got: '{layout}'"
         )
 
     height = panel.get("height", "800px")
@@ -954,13 +1092,16 @@ def generate_panel_html(panel: dict, figures_dir: Path) -> None:
         src = resolve_src_path(sub["src"])
         out = figures_dir / f"{sub['id']}.html"
         af = [f.strip() for f in sub.get("fields", "").split(",") if f.strip()] or None
+        saved_field, saved_time = _load_saved_field_state(sub["id"], sub["field"], sub["time"])
+        camera_fig_id = panel["id"] if camera_mode == "sync" else sub["id"]
         # For timeseries: only show colorbar and lock button on the first panel
         # For sync-mode panels: never show lock button (panel-level toolbar handles it)
         is_first = sub_idx == 0
         generate_html_figure(
-            src, sub["field"], sub["time"], out, fig_id=sub["id"], available_fields=af,
+            src, saved_field, saved_time, out,
+            fig_id=sub["id"], camera_fig_id=camera_fig_id, available_fields=af,
             show_colorbar=is_first if is_timeseries else True,
-            show_lock_btn=(is_first if is_timeseries else True) and camera_mode != "sync",
+            show_lock_btn=not is_timeseries and camera_mode != "sync",
             show_orientation=is_first if is_timeseries else True,
         )
 
@@ -991,6 +1132,17 @@ window.addEventListener("message",function(e){{
     for(var k=0;k<iframes3.length;k++){{iframes3[k].contentWindow.postMessage(e.data,"*");}}
   }}
   if(e.data.type==="4dpaper-field-update"){{top.postMessage(e.data,"*");}}
+  if(e.data.type==="4dpaper-time"){{
+    /* Timeseries sync: fan out time-apply to all subfigures except the sender */
+    var timeSrc=e.source;
+    var iframesT=document.querySelectorAll("iframe");
+    var timeApply={{type:"4dpaper-time-apply",fig_id:e.data.fig_id,idx:e.data.idx,playing:e.data.playing}};
+    for(var t=0;t<iframesT.length;t++){{
+      if(iframesT[t].contentWindow!==timeSrc){{
+        iframesT[t].contentWindow.postMessage(timeApply,"*");
+      }}
+    }}
+  }}
   if(e.data.type==="4dpaper-lock-query"||e.data.type==="4dpaper-lock-toggle"){{
     top.postMessage(e.data,"*");
   }}
@@ -1049,7 +1201,7 @@ window.addEventListener("message",function(e){
     out_path = figures_dir / f"{panel['id']}.html"
     out_path.write_text(composite, encoding="utf-8")
     _maybe_sign_output_html(out_path)
-    print(f"[4dpaper] Generated panel (HTML): {out_path}", file=sys.stderr)
+    print(f"Generated panel (HTML): {out_path}", file=sys.stderr)
 
     # Write manifest so Lua can embed subfigures as direct srcdoc iframes
     # (avoids data:text/html;base64 iframes which break vtk.js WebGL rendering).
@@ -1061,7 +1213,7 @@ window.addEventListener("message",function(e){
     }
     manifest_path = figures_dir / f"{panel['id']}.manifest.json"
     manifest_path.write_text(json.dumps(manifest))
-    print(f"[4dpaper] Wrote manifest: {manifest_path}", file=sys.stderr)
+    print(f"Wrote manifest: {manifest_path}", file=sys.stderr)
 
 
 def generate_panel_png(panel: dict, figures_dir: Path) -> None:
@@ -1080,11 +1232,11 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
         ncols, nrows = int(ncols_s), int(nrows_s)
     except (ValueError, AttributeError):
         raise ValueError(
-            f"[4dpaper] 4d-panel layout must be 'COLSxROWS' (e.g. '2x2', '3x1'), got: '{layout}'"
+            f"4d-panel layout must be 'COLSxROWS' (e.g. '2x2', '3x1'), got: '{layout}'"
         )
     if ncols < 1 or nrows < 1:
         raise ValueError(
-            f"[4dpaper] 4d-panel layout dimensions must be positive integers, got: '{layout}'"
+            f"4d-panel layout dimensions must be positive integers, got: '{layout}'"
         )
 
     camera_mode = panel.get("camera_mode", "independent")
@@ -1093,9 +1245,10 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
     for sub_idx, sub in enumerate(panel["subfigures"]):
         src = resolve_src_path(sub["src"])
         out = figures_dir / f"{sub['id']}.png"
+        saved_field, saved_time = _load_saved_field_state(sub["id"], sub["field"], sub["time"])
         cam_id = panel["id"] if camera_mode == "sync" else sub["id"]
         show_cb = (sub_idx == 0) if is_timeseries else True
-        generate_png_figure(src, sub["field"], sub["time"], out,
+        generate_png_figure(src, saved_field, saved_time, out,
                             fig_id=sub["id"], camera_fig_id=cam_id, show_colorbar=show_cb)
 
     # Infer canvas size from actual subfigure dimensions (no fixed 1920×1080).
@@ -1118,7 +1271,7 @@ def generate_panel_png(panel: dict, figures_dir: Path) -> None:
 
     out_path = figures_dir / f"{panel['id']}.png"
     canvas.save(str(out_path))
-    print(f"[4dpaper] Generated panel (PNG): {out_path}")
+    print(f"Generated panel (PNG): {out_path}")
 
 
 # ── Video figure generation ───────────────────────────────────────────────────
@@ -1164,6 +1317,7 @@ def generate_video_figure(
     video_html_path: Path,
     fig_id: str,
     preview_html_path: Path | None = None,
+    stride: int = 1,
 ) -> None:
     """
     Generate an MP4 animation + PDF frame PNG + HTML fragment for a 4d-video shortcode.
@@ -1184,13 +1338,14 @@ def generate_video_figure(
     sim = SimulationData(str(src_path)).load()
     n_steps = sim.n_steps
     if n_steps == 0:
-        raise RuntimeError(f"[4dpaper] Simulation at {src_path} has no time steps.")
+        raise RuntimeError(f"Simulation at {src_path} has no time steps.")
 
     # Pass 1 — compute global scalar range across all timesteps
-    print(f"[4dpaper] {fig_id}: computing global range over {n_steps} frames …", file=sys.stderr)
+    print(f"{fig_id}: computing global range over {n_steps} frames …", file=sys.stderr)
     global_min = float("inf")
     global_max = float("-inf")
-    for idx in range(n_steps):
+    step_indices = list(range(0, n_steps, stride))
+    for idx in step_indices:
         mesh = sim.get_mesh(idx)
         if mesh is None:
             continue
@@ -1204,7 +1359,7 @@ def generate_video_figure(
         global_max = max(global_max, float(arr.max()))
     if global_min == float("inf"):
         print(
-            f"[4dpaper] Warning: field '{field}' not found — rendering geometry only.",
+            f"Warning: field '{field}' not found — rendering geometry only.",
             file=sys.stderr,
         )
         global_min, global_max = 0.0, 1.0
@@ -1220,7 +1375,7 @@ def generate_video_figure(
 
     # Pass 2 — render each frame and write MP4
     mp4_path.parent.mkdir(parents=True, exist_ok=True)
-    print(f"[4dpaper] {fig_id}: rendering {n_steps} frames at {fps} fps …", file=sys.stderr)
+    print(f"{fig_id}: rendering {n_steps} frames at {fps} fps …", file=sys.stderr)
     writer = imageio.get_writer(
         str(mp4_path),
         fps=fps,
@@ -1231,7 +1386,8 @@ def generate_video_figure(
         macro_block_size=1,
     )
     try:
-        for idx in range(n_steps):
+        total_frames = len(step_indices)
+        for i, idx in enumerate(step_indices):
             mesh = sim.get_mesh(idx)
             if mesh is None:
                 continue
@@ -1253,14 +1409,14 @@ def generate_video_figure(
             frame = pl.screenshot(return_img=True)
             pl.close()
             writer.append_data(frame)
-            if (idx + 1) % 10 == 0 or idx == n_steps - 1:
+            if (i + 1) % 10 == 0 or i == total_frames - 1:
                 print(
-                    f"[4dpaper] {fig_id}: frame {idx + 1}/{n_steps}",
+                    f"{fig_id}: frame {i + 1}/{total_frames}",
                     file=sys.stderr,
                 )
     finally:
         writer.close()
-    print(f"[4dpaper] Generated (MP4): {mp4_path}", file=sys.stderr)
+    print(f"Generated (MP4): {mp4_path}", file=sys.stderr)
 
     # Generate PDF frame (representative timestep, full resolution)
     if time_spec == "first":
@@ -1293,7 +1449,7 @@ def generate_video_figure(
         frame_path.parent.mkdir(parents=True, exist_ok=True)
         pl.screenshot(str(frame_path))
         pl.close()
-        print(f"[4dpaper] Generated (frame PNG): {frame_path}", file=sys.stderr)
+        print(f"Generated (frame PNG): {frame_path}", file=sys.stderr)
 
     # Generate interactive vtk.js preview served at /state/figures/<id>-preview.html
     # The paper page relay opens this as an overlay when "Camera View" is clicked.
@@ -1309,7 +1465,7 @@ def generate_video_figure(
         )
     except Exception as exc:
         print(
-            f"[4dpaper] Warning: could not generate preview for {fig_id}: {exc}.",
+            f"Warning: could not generate preview for {fig_id}: {exc}.",
             file=sys.stderr,
         )
 
@@ -1319,16 +1475,17 @@ def generate_video_figure(
     video_html_path.parent.mkdir(parents=True, exist_ok=True)
     video_html_path.write_text(video_html, encoding="utf-8")
     _maybe_sign_output_html(video_html_path)
-    print(f"[4dpaper] Generated (video HTML): {video_html_path}", file=sys.stderr)
+    print(f"Generated (video HTML): {video_html_path}", file=sys.stderr)
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 def main() -> None:
     if os.environ.get("QUARTO_NO_EXECUTE"):
-        print("[4dpaper] --no-execute mode: skipping figure generation.", file=sys.stderr)
+        print("--no-execute mode: skipping figure generation.", file=sys.stderr)
         return
 
+    strict_static_export = os.environ.get("FOURD_STRICT_STATIC_EXPORT") == "1"
     qmd_path = os.environ.get("QUARTO_DOCUMENT_PATH", "")
     # QUARTO_OUTPUT_FORMAT is not reliably set for project-level pre-render hooks.
     # We always generate both .html and .png so both HTML and PDF output work.
@@ -1360,9 +1517,9 @@ def main() -> None:
             qmd_files = sorted(project_dir.glob("*.qmd"))
 
         if not qmd_files:
-            print("[4dpaper] No .qmd files found — skipping.", file=sys.stderr)
+            print("No .qmd files found — skipping.", file=sys.stderr)
             return
-        print(f"[4dpaper] Scanning {len(qmd_files)} QMD file(s) in {project_dir}", file=sys.stderr)
+        print(f"Scanning {len(qmd_files)} QMD file(s) in {project_dir}", file=sys.stderr)
 
     figures = []
     videos = []
@@ -1378,7 +1535,7 @@ def main() -> None:
         graphs.extend(parse_graph_shortcodes(text))
 
     if not any([figures, videos, panels, ts_raw, graphs]):
-        print("[4dpaper] No 4d-image, 4d-video, 4d-panel, 4d-timeseries, or 4d-graph shortcodes found.", file=sys.stderr)
+        print("No 4d-image, 4d-video, 4d-panel, 4d-timeseries, or 4d-graph shortcodes found.", file=sys.stderr)
         return
 
     figures_dir = _project_root / "state" / "figures"
@@ -1388,6 +1545,9 @@ def main() -> None:
     styles_yml_path = _project_root / "_4dpaper_styles.yml"
     styles_config = load_styles(styles_yml_path)
     styles_extra_deps = [styles_yml_path] if styles_yml_path.exists() else []
+    qmd_extra_deps = [qmd for qmd in qmd_files if qmd.exists()]
+    shortcut_extra_deps = [_shortcuts_yml_path] if _shortcuts_yml_path.exists() else []
+    figure_extra_deps = styles_extra_deps + qmd_extra_deps + shortcut_extra_deps
 
     # Expand timeseries into panel-compatible dicts and merge into panels list
     if ts_raw:
@@ -1398,7 +1558,7 @@ def main() -> None:
             sim = _SimData(str(src)).load()
             n_steps = sim.n_steps
         except Exception as exc:
-            print(f"[4dpaper] ERROR loading simulation for timeseries '{ts['id']}': {exc}", file=sys.stderr)
+            print(f"ERROR loading simulation for timeseries '{ts['id']}': {exc}", file=sys.stderr)
             sys.exit(1)
         step_indices = _expand_timeseries_steps(ts, n_steps)
         ts["subfigures"] = [
@@ -1433,15 +1593,7 @@ def main() -> None:
             available_fields = [field] if field else []
 
         field_state_path = _project_root / "state" / f"field_{fig_id}.json"
-        if field_state_path.exists():
-            try:
-                state_data = json.loads(field_state_path.read_text())
-                if "field" in state_data:
-                    field = state_data["field"]
-                if "time" in state_data:
-                    time_spec = state_data["time"]
-            except Exception:
-                pass
+        field, time_spec = _load_saved_field_state(fig_id, field, time_spec)
 
         # Always generate both .html (for web) and .png (for PDF).
         # QUARTO_OUTPUT_FORMAT is not reliably set for project pre-render hooks,
@@ -1452,10 +1604,10 @@ def main() -> None:
             out_html.exists()
             and _here.stat().st_mtime > out_html.stat().st_mtime
         )
-        if not script_newer and is_cache_valid(out_html, src, field_path=field_state_path, extra_deps=styles_extra_deps):
-            print(f"[4dpaper] {fig_id}.html is up to date — skipping.", file=sys.stderr)
+        if not script_newer and is_cache_valid(out_html, src, field_path=field_state_path, extra_deps=figure_extra_deps):
+            print(f"{fig_id}.html is up to date — skipping.", file=sys.stderr)
         else:
-            print(f"[4dpaper] Generating {fig_id}.html …", file=sys.stderr)
+            print(f"Generating {fig_id}.html …", file=sys.stderr)
             try:
                 generate_html_figure(
                     src, field, time_spec, out_html,
@@ -1464,9 +1616,10 @@ def main() -> None:
                     axis_color=style["axis_color"],
                     cmap=style["cmap"],
                     decimate=fig.get("decimate", "auto"),
+                    stride=int(fig.get("stride", "1")),
                 )
             except Exception as exc:
-                print(f"[4dpaper] ERROR generating {fig_id}.html: {exc}", file=sys.stderr)
+                print(f"ERROR generating {fig_id}.html: {exc}", file=sys.stderr)
                 sys.exit(1)
 
         out_png = figures_dir / f"{fig_id}.png"
@@ -1476,23 +1629,23 @@ def main() -> None:
             try:
                 cam = json.loads(camera_path.read_text())
                 print(
-                    f"[4dpaper] Camera for {fig_id}: position={cam.get('position')}  "
+                    f"Camera for {fig_id}: position={cam.get('position')}  "
                     f"(from state/camera_{fig_id}.json — rotate the 3D figure in the "
                     f"HTML preview to update)"
                 )
             except Exception:
-                print(f"[4dpaper] Camera for {fig_id}: file exists but is invalid — will use isometric view")
+                print(f"Camera for {fig_id}: file exists but is invalid — will use isometric view")
         else:
             print(
-                f"[4dpaper] Camera for {fig_id}: NOT SET — isometric view will be used. "
+                f"Camera for {fig_id}: NOT SET — isometric view will be used. "
                 f"Rotate the figure in the HTML preview to save a camera position."
             )
         # Always regenerate PNG when a camera file exists...
-        png_fresh = is_cache_valid(out_png, src, camera_path=camera_path, field_path=field_state_path, extra_deps=styles_extra_deps)
+        png_fresh = is_cache_valid(out_png, src, camera_path=camera_path, field_path=field_state_path, extra_deps=figure_extra_deps)
         if png_fresh:
-            print(f"[4dpaper] {fig_id}.png is up to date — skipping.")
+            print(f"{fig_id}.png is up to date — skipping.")
         else:
-            print(f"[4dpaper] Generating {fig_id}.png …")
+            print(f"Generating {fig_id}.png …")
             try:
                 generate_png_figure(
                     src, field, time_spec, out_png, fig_id=fig_id,
@@ -1502,8 +1655,12 @@ def main() -> None:
                     decimate=fig.get("decimate", "auto"),
                 )
             except Exception as exc:
-                print(f"[4dpaper] WARNING: could not generate {fig_id}.png: {exc}")
-                print(f"[4dpaper]   PNG is needed for PDF export only — HTML render continues.")
+                if strict_static_export:
+                    print(f"ERROR: could not generate {fig_id}.png: {exc}")
+                    print("  Static figure generation is required for PDF/paperview export.")
+                    sys.exit(1)
+                print(f"WARNING: could not generate {fig_id}.png: {exc}")
+                print("  PNG is needed for PDF export only — HTML render continues.")
 
     # ── Video shortcode processing ─────────────────────────────────────────────
     for vid in videos:
@@ -1512,6 +1669,7 @@ def main() -> None:
         field = vid["field"]
         time_spec = vid.get("time", "mid")
         fps = int(vid.get("fps", "10"))
+        stride = int(vid.get("stride", "1"))
 
         mp4_path = figures_dir / f"{fig_id}-video.mp4"
         frame_path = figures_dir / f"{fig_id}-frame.png"
@@ -1519,8 +1677,8 @@ def main() -> None:
         preview_html_path = figures_dir / f"{fig_id}-preview.html"
         camera_path = _project_root / "state" / f"camera_{fig_id}.json"
 
-        mp4_valid = is_cache_valid(mp4_path, src, camera_path=camera_path)
-        frame_valid = is_cache_valid(frame_path, src, camera_path=camera_path)
+        mp4_valid = is_cache_valid(mp4_path, src, camera_path=camera_path, extra_deps=qmd_extra_deps + shortcut_extra_deps)
+        frame_valid = is_cache_valid(frame_path, src, camera_path=camera_path, extra_deps=qmd_extra_deps + shortcut_extra_deps)
         # Also invalidate video HTML when this script changes (contains injected content)
         script_newer_vid = (
             video_html_path.exists()
@@ -1528,23 +1686,24 @@ def main() -> None:
         )
         html_valid = (
             not script_newer_vid
-            and is_cache_valid(video_html_path, src, camera_path=camera_path)
+            and is_cache_valid(video_html_path, src, camera_path=camera_path, extra_deps=qmd_extra_deps + shortcut_extra_deps)
         )
 
         if mp4_valid and frame_valid and html_valid:
-            print(f"[4dpaper] {fig_id} video outputs are up to date — skipping.", file=sys.stderr)
+            print(f"{fig_id} video outputs are up to date — skipping.", file=sys.stderr)
             continue
 
-        print(f"[4dpaper] Generating video for {fig_id} …", file=sys.stderr)
+        print(f"Generating video for {fig_id} …", file=sys.stderr)
         try:
             generate_video_figure(
                 src, field, fps, time_spec,
                 mp4_path, frame_path, video_html_path,
                 fig_id=fig_id,
                 preview_html_path=preview_html_path,
+                stride=stride,
             )
         except Exception as exc:
-            print(f"[4dpaper] ERROR generating video {fig_id}: {exc}", file=sys.stderr)
+            print(f"ERROR generating video {fig_id}: {exc}", file=sys.stderr)
             sys.exit(1)
 
     # ── Panel shortcode processing ─────────────────────────────────────────────
@@ -1560,6 +1719,9 @@ def main() -> None:
             src = resolve_src_path(sub["src"])
             if src.exists():
                 sub_mtimes.append(src.stat().st_mtime)
+            field_state = _project_root / "state" / f"field_{sub['id']}.json"
+            if field_state.exists():
+                sub_mtimes.append(field_state.stat().st_mtime)
         # Camera deps: sync panels use one shared file; independent use per-subfigure files
         if camera_mode == "sync":
             shared_cam = _project_root / "state" / f"camera_{panel_id}.json"
@@ -1578,23 +1740,23 @@ def main() -> None:
         max_dep_mtime = max(sub_mtimes) if sub_mtimes else 0.0
 
         if out_html.exists() and out_html.stat().st_mtime >= max_dep_mtime:
-            print(f"[4dpaper] {panel_id}.html is up to date — skipping.", file=sys.stderr)
+            print(f"{panel_id}.html is up to date — skipping.", file=sys.stderr)
         else:
-            print(f"[4dpaper] Generating panel {panel_id}.html …", file=sys.stderr)
+            print(f"Generating panel {panel_id}.html …", file=sys.stderr)
             try:
                 generate_panel_html(panel, figures_dir)
             except Exception as exc:
-                print(f"[4dpaper] ERROR generating panel {panel_id}.html: {exc}", file=sys.stderr)
+                print(f"ERROR generating panel {panel_id}.html: {exc}", file=sys.stderr)
                 sys.exit(1)
 
         if out_png.exists() and out_png.stat().st_mtime >= max_dep_mtime:
-            print(f"[4dpaper] {panel_id}.png is up to date — skipping.")
+            print(f"{panel_id}.png is up to date — skipping.")
         else:
-            print(f"[4dpaper] Generating panel {panel_id}.png …")
+            print(f"Generating panel {panel_id}.png …")
             try:
                 generate_panel_png(panel, figures_dir)
             except Exception as exc:
-                print(f"[4dpaper] ERROR generating panel {panel_id}.png: {exc}")
+                print(f"ERROR generating panel {panel_id}.png: {exc}")
                 sys.exit(1)
 
     for graph in graphs:
@@ -1607,15 +1769,15 @@ def main() -> None:
         script_newer = out_html.exists() and _here.stat().st_mtime > out_html.stat().st_mtime
         cache_ok = (
             not script_newer
-            and is_cache_valid(out_html, src)
-            and is_cache_valid(out_png, src)
+            and is_cache_valid(out_html, src, extra_deps=qmd_extra_deps + shortcut_extra_deps)
+            and is_cache_valid(out_png, src, extra_deps=qmd_extra_deps + shortcut_extra_deps)
         )
         
         if cache_ok:
-            print(f"[4dpaper] {fig_id} Graph outputs are up to date -- skipping.", file=sys.stderr)
+            print(f"{fig_id} Graph outputs are up to date -- skipping.", file=sys.stderr)
             continue
             
-        print(f"[4dpaper] Generating Graph figure for {fig_id} ({src}) ...", file=sys.stderr)
+        print(f"Generating Graph figure for {fig_id} ({src}) ...", file=sys.stderr)
         try:
             import plotly.io as pio
             import plotly.graph_objects as go
@@ -1638,7 +1800,7 @@ def main() -> None:
                         pct = 100.0 * (1.0 - n_after / n_before)
                         tname = trace.get("name", "")
                         print(
-                            f"[4dpaper] {fig_id} RDP{f' ({tname})' if tname else ''}: "
+                            f"{fig_id} RDP{f' ({tname})' if tname else ''}: "
                             f"{n_before:,} → {n_after:,} points ({pct:.1f}% reduction)",
                             file=sys.stderr,
                         )
@@ -1664,7 +1826,7 @@ def main() -> None:
             out_html.write_text(html_content, encoding="utf-8")
             _maybe_sign_output_html(out_html)
         except Exception as exc:
-            print(f"[4dpaper] ERROR generating Graph figure {fig_id}: {exc}", file=sys.stderr)
+            print(f"ERROR generating Graph figure {fig_id}: {exc}", file=sys.stderr)
             sys.exit(1)
 
 
