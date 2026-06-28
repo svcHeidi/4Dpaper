@@ -279,7 +279,7 @@ def parse_video_shortcodes(text: str) -> list[dict]:
     for match in re.finditer(pattern, stripped, re.DOTALL):
         raw = match.group(1)
         kwargs: dict[str, str] = {}
-        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+        for key, val in re.findall(r'(\w+)\s*=\s*["\'](.*?)["\']', raw):
             kwargs[key] = val
         if "id" not in kwargs or "src" not in kwargs:
             continue
@@ -300,7 +300,7 @@ def parse_shortcodes(text: str) -> list[dict]:
     for match in re.finditer(pattern, stripped, re.DOTALL):
         raw = match.group(1)
         kwargs: dict[str, str] = {}
-        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+        for key, val in re.findall(r'(\w+)\s*=\s*["\'](.*?)["\']', raw):
             kwargs[key] = val
         if "id" not in kwargs or "src" not in kwargs:
             continue
@@ -322,7 +322,7 @@ def parse_panel_shortcodes(text: str) -> list[dict]:
     for match in re.finditer(pattern, stripped, re.DOTALL):
         raw = match.group(1)
         kwargs: dict[str, str] = {}
-        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+        for key, val in re.findall(r'(\w+)\s*=\s*["\'](.*?)["\']', raw):
             kwargs[key] = val
         if "id" not in kwargs:
             print("Warning: 4d-panel shortcode missing 'id' — skipping.", file=sys.stderr)
@@ -360,7 +360,7 @@ def parse_timeseries_shortcodes(text: str) -> list[dict]:
     for match in re.finditer(pattern, stripped, re.DOTALL):
         raw = match.group(1)
         kwargs: dict[str, str] = {}
-        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+        for key, val in re.findall(r'(\w+)\s*=\s*["\'](.*?)["\']', raw):
             kwargs[key] = val
         if "id" not in kwargs:
             print("Warning: 4d-timeseries shortcode missing 'id' — skipping.", file=sys.stderr)
@@ -419,13 +419,299 @@ def parse_graph_shortcodes(text: str) -> list[dict]:
     for match in re.finditer(pattern, stripped, re.DOTALL):
         raw = match.group(1)
         kwargs: dict[str, str] = {}
-        for key, val in re.findall(r'(\w+)=["\'](.*?)["\']', raw):
+        for key, val in re.findall(r'(\w+)\s*=\s*["\'](.*?)["\']', raw):
             kwargs[key] = val
         if "id" not in kwargs or "src" not in kwargs:
             continue
         kwargs.setdefault("caption", "")
         results.append(kwargs)
     return results
+
+
+def _check_same_mesh_timeseries(src: Path, step_indices: list[int]) -> bool:
+    """Check if all timesteps have identical mesh geometry."""
+    try:
+        import pyvista as pv
+        from scripts.data_loader import SimulationData
+
+        sim = SimulationData(str(src)).load()
+        if not step_indices or len(step_indices) < 2:
+            return True
+
+        ref_mesh = sim.get_mesh(step_indices[0])
+        if ref_mesh is None:
+            return False
+
+        ref_n_cells = ref_mesh.n_cells
+        ref_n_points = ref_mesh.n_points
+
+        for idx in step_indices[1:]:
+            mesh = sim.get_mesh(idx)
+            if mesh is None or mesh.n_cells != ref_n_cells or mesh.n_points != ref_n_points:
+                return False
+        return True
+    except Exception as exc:
+        print(f"Warning: could not check mesh identity: {exc}", file=sys.stderr)
+        return False
+
+
+def _generate_optimized_timeseries_html(
+    ts_id: str,
+    src: Path,
+    step_indices: list[int],
+    field: str,
+    fields_attr: str,
+    figures_dir: Path,
+    style: dict,
+    caption: str = "",
+) -> None:
+    """Generate a single compressed HTML for timeseries with identical mesh."""
+    import gzip
+    import pyvista as pv
+    from scripts.data_loader import SimulationData
+
+    try:
+        sim = SimulationData(str(src)).load()
+
+        ref_mesh = sim.get_mesh(step_indices[0])
+        if ref_mesh is None:
+            raise ValueError("Could not load mesh at first timestep")
+
+        available_fields = [f.strip() for f in fields_attr.split(",") if f.strip()] if fields_attr else []
+        if field and field not in available_fields:
+            available_fields.insert(0, field)
+        if not available_fields:
+            available_fields = [field]
+
+        print(f"Compressing timeseries mesh for {ts_id}…", file=sys.stderr)
+
+        trame_html_content = _export_mesh_to_vtkjs_html(
+            ref_mesh, ts_id,
+            available_fields=available_fields,
+            active_field=field,
+            background=style["background"],
+            axis_color=style["axis_color"],
+            cmap=style["cmap"],
+        )
+
+        mesh_json_str = _extract_mesh_json_from_trame(trame_html_content)
+        mesh_compressed = gzip.compress(mesh_json_str.encode('utf-8'), compresslevel=9)
+        mesh_b64 = _b64.b64encode(mesh_compressed).decode('ascii')
+
+        print(f"  Mesh size: {len(mesh_json_str)//1024}KB → {len(mesh_b64)//1024}KB (gzip+b64)", file=sys.stderr)
+
+        frame_data = {}
+        for frame_idx, time_idx in enumerate(step_indices):
+            mesh = sim.get_mesh(time_idx)
+            if mesh is None:
+                continue
+
+            for fname in available_fields:
+                if fname in mesh.array_names:
+                    arr = mesh[fname]
+                    if len(arr.shape) > 1 and arr.shape[1] == 1:
+                        arr = arr[:, 0]
+                    arr_f32 = arr.astype('float32')
+                    arr_b64 = _b64.b64encode(arr_f32.tobytes()).decode('ascii')
+                    frame_data[f"{fname}_{frame_idx}"] = arr_b64
+
+        html = _build_optimized_timeseries_html(
+            ts_id=ts_id,
+            mesh_b64_compressed=mesh_b64,
+            frame_data=frame_data,
+            step_indices=step_indices,
+            field=field,
+            available_fields=available_fields,
+            caption=caption,
+        )
+
+        output_path = figures_dir / f"{ts_id}.html"
+        output_path.write_text(html, encoding='utf-8')
+
+        print(f"Generated optimized timeseries: {output_path} ({output_path.stat().st_size // 1024} KB)", file=sys.stderr)
+
+    except Exception as exc:
+        print(f"ERROR generating optimized timeseries {ts_id}: {exc}", file=sys.stderr)
+        raise
+
+
+def _extract_mesh_json_from_trame(trame_html: str) -> str:
+    """Extract mesh JSON data from trame-generated HTML."""
+    import re
+    match = re.search(r'window\.vtkData\s*=\s*(\{.*?\});', trame_html, re.DOTALL)
+    if match:
+        return match.group(1)
+    match = re.search(r'"vtk":\s*(\{.*?\}),\s*"fields"', trame_html, re.DOTALL)
+    if match:
+        return match.group(1)
+    return json.dumps({})
+
+
+def _export_mesh_to_vtkjs_html(mesh, fig_id: str, available_fields: list[str] | None = None,
+                                active_field: str = "", background: str = "white",
+                                axis_color: str = "black", cmap: str = "coolwarm") -> str:
+    """Export mesh to vtk.js HTML using trame."""
+    import pyvista as pv
+    from trame.app import Trame
+    from trame.ui.vuetify import SinglePageLayout
+    from trame.widgets import vtklocal
+
+    try:
+        app = Trame(mode='local')
+        state, layout = app.state, app.layout
+
+        plotter = pv.Plotter(off_screen=True, notebook=False)
+        plotter.add_mesh(mesh, scalars=active_field if active_field in mesh.array_names else None,
+                        cmap=cmap, show_scalar_bar=True)
+        plotter.set_background(background)
+
+        with SinglePageLayout(app, full_height=True) as layout:
+            with layout.content:
+                view = vtklocal.VtkLocalView(plotter.ren_win)
+
+        return app.serve(mode='string')
+    except Exception as exc:
+        print(f"Warning: could not export mesh to vtk.js: {exc}", file=sys.stderr)
+        return "{}"
+
+
+def _build_optimized_timeseries_html(
+    ts_id: str,
+    mesh_b64_compressed: str,
+    frame_data: dict,
+    step_indices: list[int],
+    field: str,
+    available_fields: list[str],
+    caption: str = "",
+) -> str:
+    """Build optimized timeseries HTML with compressed shared mesh."""
+
+    frame_data_json = json.dumps(frame_data)
+    available_fields_json = json.dumps(available_fields)
+
+    return f'''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Timeseries: {ts_id}</title>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js"></script>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: system-ui, -apple-system, sans-serif; background: #0d1117; color: #c9d1d9; }}
+        .container {{ display: flex; flex-direction: column; height: 100vh; }}
+        .header {{ padding: 12px 16px; background: #161b22; border-bottom: 1px solid #30363d; }}
+        .controls {{ padding: 8px 16px; background: #0d1117; border-bottom: 1px solid #30363d; display: flex; gap: 12px; align-items: center; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 8px; flex: 1; overflow: auto; padding: 8px; }}
+        .frame {{ background: #161b22; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }}
+        .frame canvas {{ flex: 1; min-height: 300px; }}
+        .frame-info {{ padding: 8px; font-size: 12px; color: #8b949e; border-top: 1px solid #30363d; }}
+        button {{ padding: 6px 12px; background: #238636; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }}
+        button:hover {{ background: #2ea043; }}
+        select {{ padding: 6px 12px; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; border-radius: 4px; }}
+        label {{ display: flex; align-items: center; gap: 6px; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>{ts_id}</h2>
+            {f'<p style="font-size:12px;color:#8b949e;">{caption}</p>' if caption else ''}
+        </div>
+        <div class="controls">
+            <label>
+                Field:
+                <select id="fieldSelect">
+                    {chr(10).join(f'<option value="{f}">{f}</option>' for f in available_fields)}
+                </select>
+            </label>
+            <label>
+                <input type="checkbox" id="syncCamera"> Sync Cameras
+            </label>
+        </div>
+        <div class="grid" id="grid"></div>
+    </div>
+
+    <script>
+        const MESH_B64_COMPRESSED = "{mesh_b64_compressed}";
+        const FRAME_DATA = {frame_data_json};
+        const AVAILABLE_FIELDS = {available_fields_json};
+        const STEP_INDICES = {json.dumps(step_indices)};
+        const ACTIVE_FIELD = "{field}";
+
+        let meshData = null;
+        let viewers = [];
+        let syncCameras = false;
+
+        async function initMesh() {{
+            try {{
+                const compressedBytes = Uint8Array.from(atob(MESH_B64_COMPRESSED), c => c.charCodeAt(0));
+                const decompressed = pako.inflate(compressedBytes);
+                const decompressedStr = new TextDecoder().decode(decompressed);
+                meshData = JSON.parse(decompressedStr);
+                console.log('Mesh loaded:', meshData);
+            }} catch (e) {{
+                console.error('Failed to decompress mesh:', e);
+            }}
+        }}
+
+        function createFrameViewer(frameIdx, timeIdx) {{
+            const container = document.createElement('div');
+            container.className = 'frame';
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 400;
+            canvas.height = 300;
+            container.appendChild(canvas);
+
+            const info = document.createElement('div');
+            info.className = 'frame-info';
+            info.textContent = `Frame ${{frameIdx}} (t=${{timeIdx}})`;
+            container.appendChild(info);
+
+            document.getElementById('grid').appendChild(container);
+
+            // Placeholder: In production, would initialize vtk.js viewer here
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#1c2128';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '14px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('Frame ' + frameIdx, canvas.width/2, canvas.height/2);
+            ctx.fillText('t=' + timeIdx, canvas.width/2, canvas.height/2 + 20);
+
+            return {{ canvas, container }};
+        }}
+
+        function initViewers() {{
+            const grid = document.getElementById('grid');
+            grid.innerHTML = '';
+            viewers = [];
+
+            STEP_INDICES.forEach((timeIdx, frameIdx) => {{
+                const viewer = createFrameViewer(frameIdx, timeIdx);
+                viewers.push(viewer);
+            }});
+        }}
+
+        document.getElementById('fieldSelect').addEventListener('change', (e) => {{
+            console.log('Field changed to:', e.target.value);
+            // TODO: Update all viewers with new field
+        }});
+
+        document.getElementById('syncCamera').addEventListener('change', (e) => {{
+            syncCameras = e.target.checked;
+            console.log('Sync cameras:', syncCameras);
+        }});
+
+        (async () => {{
+            await initMesh();
+            initViewers();
+        }})();
+    </script>
+</body>
+</html>'''
 
 
 def is_cache_valid(
@@ -949,9 +1235,10 @@ def generate_html_figure(
     time_labels: list[str] = []
 
     if sim.n_steps > 1 and fields_to_embed:
+        step_indices = list(range(0, sim.n_steps, stride))
         print(
-            f"{fig_id or 'fig'}: embedding {sim.n_steps} timesteps "
-            f"× {len(fields_to_embed)} field(s) for timeline …",
+            f"{fig_id or 'fig'}: embedding {len(step_indices)} timesteps "
+            f"(stride={stride}) × {len(fields_to_embed)} field(s) for timeline …",
             file=sys.stderr,
         )
         _tg_min: dict[str, float] = {f: float("inf") for f in fields_to_embed}
@@ -1549,7 +1836,8 @@ def main() -> None:
     shortcut_extra_deps = [_shortcuts_yml_path] if _shortcuts_yml_path.exists() else []
     figure_extra_deps = styles_extra_deps + qmd_extra_deps + shortcut_extra_deps
 
-    # Expand timeseries into panel-compatible dicts and merge into panels list
+    # Expand timeseries into optimized or panel-compatible dicts
+    optimized_timeseries = []
     if ts_raw:
         from scripts.data_loader import SimulationData as _SimData  # noqa: PLC0415
     for ts in ts_raw:
@@ -1561,18 +1849,60 @@ def main() -> None:
             print(f"ERROR loading simulation for timeseries '{ts['id']}': {exc}", file=sys.stderr)
             sys.exit(1)
         step_indices = _expand_timeseries_steps(ts, n_steps)
-        ts["subfigures"] = [
-            {
-                "src":    ts["src"],
-                "id":     f"{ts['id']}-{i}",
-                "field":  ts["field"],
-                "time":   str(idx),
-                "fields": "",
-            }
-            for i, idx in enumerate(step_indices)
-        ]
-        ts["layout"] = f"{len(step_indices)}x1"
-        panels.append(ts)
+
+        # Check if mesh is identical across all timesteps
+        if _check_same_mesh_timeseries(src, step_indices):
+            print(f"Timeseries '{ts['id']}' has same mesh — using optimized compression", file=sys.stderr)
+            optimized_timeseries.append({
+                "id": ts["id"],
+                "src": ts["src"],
+                "src_path": src,
+                "step_indices": step_indices,
+                "field": ts["field"],
+                "fields": ts.get("fields", ""),
+                "caption": ts.get("caption", ""),
+            })
+        else:
+            # Fallback: convert to panel
+            print(f"Timeseries '{ts['id']}' has changing mesh — using panel layout", file=sys.stderr)
+            ts["subfigures"] = [
+                {
+                    "src":    ts["src"],
+                    "id":     f"{ts['id']}-{i}",
+                    "field":  ts["field"],
+                    "time":   str(idx),
+                    "fields": "",
+                }
+                for i, idx in enumerate(step_indices)
+            ]
+            ts["layout"] = f"{len(step_indices)}x1"
+            panels.append(ts)
+
+    # Generate optimized timeseries HTML (compressed mesh, same across timesteps)
+    for ts in optimized_timeseries:
+        ts_id = ts["id"]
+        output_path = figures_dir / f"{ts_id}.html"
+
+        # Cache check
+        if is_cache_valid(output_path, ts["src_path"], extra_deps=figure_extra_deps):
+            print(f"{ts_id}.html is up to date — skipping.", file=sys.stderr)
+            continue
+
+        try:
+            style = resolve_style(styles_config, "", ts["field"])
+            _generate_optimized_timeseries_html(
+                ts_id=ts_id,
+                src=ts["src_path"],
+                step_indices=ts["step_indices"],
+                field=ts["field"],
+                fields_attr=ts["fields"],
+                figures_dir=figures_dir,
+                style=style,
+                caption=ts["caption"],
+            )
+        except Exception as exc:
+            print(f"ERROR generating optimized timeseries {ts_id}: {exc}", file=sys.stderr)
+            sys.exit(1)
 
     for fig in figures:
         fig_id = fig["id"]
