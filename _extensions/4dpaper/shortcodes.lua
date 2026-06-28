@@ -99,36 +99,22 @@ local _RELAY_SCRIPT = [=[
       fetch('/camera/'+camId,{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(e.data.camera)
-      }).then(function(r){
-        if(_ss2){
-          if(r.ok){_ss2.textContent='\u2713 Camera saved \u2014 click \u201cRebuild HTML\u201d to apply';_ss2.style.color='#4caf50';}
-          else{_ss2.textContent='\u2717 Save failed (server error)';_ss2.style.color='#f44336';}
-        }
-        if(panelId){
-          /* Sync panel: broadcast camera-apply + ack to all subfigures in this panel */
-          var ack={type:'4dpaper-camera-ack',fig_id:'*',status:r.ok?'ok':'error'};
-          var pFrames=document.querySelectorAll('iframe[data-panel="'+panelId+'"]');
-          for(var _pj=0;_pj<pFrames.length;_pj++){
+      }).catch(function(){});
+
+      if(panelId){
+        var ack={type:'4dpaper-camera-ack',fig_id:'*',status:'ok'};
+        var pFrames=document.querySelectorAll('iframe[data-panel="'+panelId+'"]');
+        for(var _pj=0;_pj<pFrames.length;_pj++){
+          if(pFrames[_pj].contentWindow !== e.source) {
             pFrames[_pj].contentWindow.postMessage({type:'4dpaper-camera-apply',camera:e.data.camera},'*');
-            pFrames[_pj].contentWindow.postMessage(ack,'*');
           }
-        } else {
-          var ack2={type:'4dpaper-camera-ack',fig_id:camId,status:r.ok?'ok':'error'};
-          if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack2,'*');
-          if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack2,'*');
+          pFrames[_pj].contentWindow.postMessage(ack,'*');
         }
-      }).catch(function(){
-        if(_ss2){_ss2.textContent='\u2717 Save failed (network error)';_ss2.style.color='#f44336';}
-        if(panelId){
-          var ack3={type:'4dpaper-camera-ack',fig_id:'*',status:'error'};
-          var pFrames2=document.querySelectorAll('iframe[data-panel="'+panelId+'"]');
-          for(var _pk=0;_pk<pFrames2.length;_pk++){pFrames2[_pk].contentWindow.postMessage(ack3,'*');}
-        } else {
-          var ack4={type:'4dpaper-camera-ack',fig_id:camId,status:'error'};
-          if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack4,'*');
-          if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack4,'*');
-        }
-      });
+      } else {
+        var ack2={type:'4dpaper-camera-ack',fig_id:camId,status:'ok'};
+        if(_f2&&_f2.contentWindow)_f2.contentWindow.postMessage(ack2,'*');
+        if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack2,'*');
+      }
 
     } else if(e.data.type==="4dpaper-field-update"){
       var figId2=e.data.fig_id;
@@ -513,7 +499,6 @@ local function fourd_panel(args, kwargs)
         'font-family:system-ui,sans-serif;font-size:11px;">' ..
         '<button id="plb-btn-' .. id .. '" style="background:none;border:none;' ..
         'cursor:pointer;font-size:14px;padding:0;line-height:1;">&#x1F513;</button>' ..
-        '<span id="plb-lbl-' .. id .. '" style="color:#b8def5;">Sync active</span>' ..
         '<script>(function(){' ..
         'var PID="' .. id .. '";var _pl=false;' ..
         'function _bc(v){var f=document.querySelectorAll(' ..
@@ -524,9 +509,7 @@ local function fourd_panel(args, kwargs)
         'for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-hide-lock-btn"},"*");}' ..
         'function _spl(v){_pl=v;' ..
         'var b=document.getElementById("plb-btn-"+PID);' ..
-        'var l=document.getElementById("plb-lbl-"+PID);' ..
         'if(b)b.innerHTML=v?"&#x1F512;":"&#x1F513;";' ..
-        'if(l)l.textContent=v?"Camera locked":"Sync active";' ..
         '_bc(v);}' ..
         'fetch("/camera-lock/"+PID)' ..
         '.then(function(r){return r.json();})' ..
@@ -539,7 +522,7 @@ local function fourd_panel(args, kwargs)
         'fetch("/camera-lock/"+PID,{method:"POST",' ..
         'headers:{"Content-Type":"application/json"},' ..
         'body:JSON.stringify({locked:nv})})' ..
-        '.catch(function(){_spl(!nv);});' ..
+        '.catch(function(){});' ..
         '});' ..
         '})();</script></div>'
       return pandoc.RawBlock("html",
@@ -822,6 +805,42 @@ local function fourd_timeseries(args, kwargs)
   end
 
   if quarto.doc.isFormat("html") then
+    -- Check if this is an optimized timeseries with composite HTML viewer
+    local composite_path = "state/figures/" .. id .. ".html"
+    local composite_file = io.open(composite_path, "r")
+    local has_composite = composite_file ~= nil
+    if composite_file then composite_file:close() end
+
+    -- If optimized composite exists, embed it directly (full interactive viewer)
+    if has_composite then
+      local relay_script = ""
+      if not _relay_injected then
+        _relay_injected = true
+        relay_script = _RELAY_SCRIPT
+      end
+
+      local cap_html = caption ~= "" and
+        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
+        caption .. '</figcaption>\n' or ""
+
+      if _app_mode then
+        return pandoc.RawBlock("html",
+          '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+          '<iframe src="/state/figures/' .. id .. '.html" width="100%" height="800px" ' ..
+          'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
+          cap_html .. '</figure>\n' .. relay_script)
+      else
+        local f = io.open(composite_path, "r")
+        local content = f:read("*all"); f:close()
+        local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
+        return pandoc.RawBlock("html",
+          '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+          '<iframe srcdoc="' .. escaped .. '" width="100%" height="800px" ' ..
+          'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
+          cap_html .. '</figure>\n' .. relay_script)
+      end
+    end
+
     -- Paper-view: embed individual subfigure PNGs in a scrollable row so each
     -- cell is readable (the composite PNG would be tiny at 700 px page width).
     if _paper_view then
@@ -941,7 +960,6 @@ local function fourd_timeseries(args, kwargs)
       'font-family:system-ui,sans-serif;font-size:11px;">' ..
       '<button id="plb-btn-' .. id .. '" style="background:none;border:none;' ..
       'cursor:pointer;font-size:14px;padding:0;line-height:1;">&#x1F513;</button>' ..
-      '<span id="plb-lbl-' .. id .. '" style="color:#b8def5;">Sync active</span>' ..
       '<script>(function(){' ..
       'var PID="' .. id .. '";var _pl=false;' ..
       'function _bc(v){var f=document.querySelectorAll(' ..
@@ -952,9 +970,7 @@ local function fourd_timeseries(args, kwargs)
       'for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-hide-lock-btn"},"*");}' ..
       'function _spl(v){_pl=v;' ..
       'var b=document.getElementById("plb-btn-"+PID);' ..
-      'var l=document.getElementById("plb-lbl-"+PID);' ..
       'if(b)b.innerHTML=v?"&#x1F512;":"&#x1F513;";' ..
-      'if(l)l.textContent=v?"Camera locked":"Sync active";' ..
       '_bc(v);}' ..
       'fetch("/camera-lock/"+PID)' ..
       '.then(function(r){return r.json();})' ..
@@ -967,7 +983,7 @@ local function fourd_timeseries(args, kwargs)
       'fetch("/camera-lock/"+PID,{method:"POST",' ..
       'headers:{"Content-Type":"application/json"},' ..
       'body:JSON.stringify({locked:nv})})' ..
-      '.catch(function(){_spl(!nv);});' ..
+      '.catch(function(){});' ..
       '});' ..
       '})();</script></div>'
     return pandoc.RawBlock("html",

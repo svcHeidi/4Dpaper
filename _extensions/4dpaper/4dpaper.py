@@ -533,6 +533,17 @@ def _generate_optimized_timeseries_html(
         print(f"Generated composite timeseries: {output_path} ({composite_size//1024} KB)", file=sys.stderr)
         print(f"  Total: {(total_size + composite_size)//1024} KB", file=sys.stderr)
 
+        # Generate manifest file (for Lua filter compatibility)
+        manifest = {
+            "id": ts_id,
+            "subfigures": frame_ids,
+            "layout": f"{len(frame_ids)}x1",
+            "caption": caption,
+        }
+        manifest_path = figures_dir / f"{ts_id}.manifest.json"
+        manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+        print(f"Wrote manifest: {manifest_path}", file=sys.stderr)
+
     except Exception as exc:
         print(f"ERROR generating optimized timeseries {ts_id}: {exc}", file=sys.stderr)
         raise
