@@ -524,6 +524,7 @@ def _generate_optimized_timeseries_html(
             step_indices=step_indices,
             available_fields=available_fields,
             caption=caption,
+            figures_dir=figures_dir,
         )
 
         output_path = figures_dir / f"{ts_id}.html"
@@ -555,16 +556,41 @@ def _build_timeseries_composite_html(
     step_indices: list[int],
     available_fields: list[str],
     caption: str = "",
+    figures_dir: Path | None = None,
 ) -> str:
     """Build composite HTML for timeseries with iframe grid layout."""
 
-    frames_html = "\n".join(
-        f'    <div class="frame-container">'
-        f'      <iframe src="/state/figures/{fid}.html" frameborder="0" class="frame-iframe"></iframe>'
-        f'      <div class="frame-label">Frame {i} (t={step_indices[i]})</div>'
-        f'    </div>'
-        for i, fid in enumerate(frame_ids)
-    )
+    # Build frame HTML blocks - embed content directly as srcdoc for compatibility
+    frames_html_parts = []
+    for i, fid in enumerate(frame_ids):
+        if figures_dir:
+            frame_path = figures_dir / f"{fid}.html"
+            if frame_path.exists():
+                frame_content = frame_path.read_text(encoding='utf-8')
+                # Escape for srcdoc attribute
+                escaped = frame_content.replace('&', '&amp;').replace('"', '&quot;')
+                frames_html_parts.append(
+                    f'    <div class="frame-container">'
+                    f'      <iframe srcdoc="{escaped}" frameborder="0" class="frame-iframe"></iframe>'
+                    f'      <div class="frame-label">Frame {i} (t={step_indices[i]})</div>'
+                    f'    </div>'
+                )
+            else:
+                frames_html_parts.append(
+                    f'    <div class="frame-container" style="background:#222;display:flex;align-items:center;justify-content:center;">'
+                    f'      <div style="color:#888;">⚠ Frame {i} not found</div>'
+                    f'    </div>'
+                )
+        else:
+            # Fallback: use external src (for standalone composite generation)
+            frames_html_parts.append(
+                f'    <div class="frame-container">'
+                f'      <iframe src="/state/figures/{fid}.html" frameborder="0" class="frame-iframe"></iframe>'
+                f'      <div class="frame-label">Frame {i} (t={step_indices[i]})</div>'
+                f'    </div>'
+            )
+
+    frames_html = "\n".join(frames_html_parts)
 
     return f'''<!DOCTYPE html>
 <html>
