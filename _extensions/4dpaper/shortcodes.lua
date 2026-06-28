@@ -805,41 +805,6 @@ local function fourd_timeseries(args, kwargs)
   end
 
   if quarto.doc.isFormat("html") then
-    -- Check if this is an optimized timeseries with composite HTML viewer
-    local composite_path = "state/figures/" .. id .. ".html"
-    local composite_file = io.open(composite_path, "r")
-    local has_composite = composite_file ~= nil
-    if composite_file then composite_file:close() end
-
-    -- If optimized composite exists, embed it directly (full interactive viewer)
-    if has_composite then
-      local relay_script = ""
-      if not _relay_injected then
-        _relay_injected = true
-        relay_script = _RELAY_SCRIPT
-      end
-
-      local cap_html = caption ~= "" and
-        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' ..
-        caption .. '</figcaption>\n' or ""
-
-      if _app_mode then
-        return pandoc.RawBlock("html",
-          '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-          '<iframe src="/state/figures/' .. id .. '.html" width="100%" height="800px" ' ..
-          'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
-          cap_html .. '</figure>\n' .. relay_script)
-      else
-        local f = io.open(composite_path, "r")
-        local content = f:read("*all"); f:close()
-        local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-        return pandoc.RawBlock("html",
-          '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-          '<iframe srcdoc="' .. escaped .. '" width="100%" height="800px" ' ..
-          'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>\n' ..
-          cap_html .. '</figure>\n' .. relay_script)
-      end
-    end
 
     -- Paper-view: embed individual subfigure PNGs in a scrollable row so each
     -- cell is readable (the composite PNG would be tiny at 700 px page width).
@@ -953,11 +918,11 @@ local function fourd_timeseries(args, kwargs)
 
     local grid_style = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
                        'grid-template-rows:1fr;gap:4px;' ..
-                       'width:100%;height:' .. height .. ';background:#111;'
+                       'width:100%;height:' .. height .. ';background:white;'
     local lock_toolbar_ts = '<div id="plb-' .. id .. '" style="' ..
-      'display:flex;align-items:center;gap:8px;background:#181614;' ..
-      'border-bottom:1px solid #3d3834;padding:3px 8px;' ..
-      'font-family:system-ui,sans-serif;font-size:11px;">' ..
+      'display:flex;align-items:center;gap:8px;background:white;' ..
+      'border-bottom:1px solid #e0e0e0;padding:8px;' ..
+      'font-family:system-ui,sans-serif;font-size:12px;">' ..
       '<button id="plb-btn-' .. id .. '" style="background:none;border:none;' ..
       'cursor:pointer;font-size:14px;padding:0;line-height:1;">&#x1F513;</button>' ..
       '<script>(function(){' ..
