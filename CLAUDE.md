@@ -228,21 +228,102 @@ configuration instead of making the source files browsable.
 
 ## 6. Supported Data Formats
 
-Handled by `scripts/data_loader.py` (`SimulationData` class):
+All formats handled by `scripts/data_loader.py` (`SimulationData` class). 4Dpapers supports **27+ file formats** across scientific computing, CFD, FEA, geometry, and visualization domains.
 
-| Extension(s) | Format | Notes |
-|---|---|---|
-| `.foam`, `.openfoam` | OpenFOAM | Auto-detects reconstructed vs. decomposed (parallel) |
-| `.vtu` | VTK Unstructured Grid | Single timestep or time-step directory |
-| `.vtp` | VTK PolyData | Surface mesh |
-| `.vtk` | VTK Legacy | |
-| `.pvd` | VTK Collection | Time-series metadata |
-| `.stl`, `.obj`, `.ply` | Surface meshes | Static geometry, no scalar data |
-| `.case` | EnSight Gold | Time-series |
-| `.cgns` | CGNS | Time-series |
-| `.exo`, `.e`, `.ex2` | Exodus II | FEA time-series |
-| `.xdmf`, `.xmf` | XDMF/HDF5 | Companion `.h5` required |
-| `.vtk.series` | ParaView JSON time-series | JSON envelope listing individual `.vtk` files with timestamps; used for non-OpenFOAM solvers |
+### 6.1 OpenFOAM & CFD Formats
+
+| Format | Extensions | Time-Series | Scalar Fields | Notes |
+|--------|-----------|-------------|---------------|-------|
+| **OpenFOAM** | `.foam`, `.openfoam` | YES | YES | Auto-merges decomposed/parallel cases (processor* directories) |
+| **EnSight Gold** | `.case` | YES | YES | Standard CFD post-processor format |
+| **CGNS** | `.cgns` | YES | YES | Multi-discipline interchange standard; all bases/families enabled |
+
+### 6.2 VTK Family (Primary Format)
+
+| Format | Extensions | Time-Series | Scalar Fields | Notes |
+|--------|-----------|-------------|---------------|-------|
+| **VTK Unstructured Grid** | `.vtu` | Multi* | YES | ASCII or binary; single file or directory of files |
+| **VTK Collection** | `.pvd` | YES | YES | ParaView collection format; indexes multiple timesteps |
+| **VTK Legacy** | `.vtk` | NO | YES | Older VTK format; single timestep |
+| **VTK PolyData** | `.vtp` | NO | YES | Surface mesh format |
+| **VTK Series** | `.vtk.series` | YES | YES | JSON index file + individual `.vtk` files; used for non-OpenFOAM solvers |
+| **VTU Directory** | `dir/*.vtu` | YES | YES | Auto-detected as time-sequence; files sorted by name/timestamp |
+
+*Multi: Multiple `.vtu` files in a directory are treated as time-series with automatic sequencing.
+
+### 6.3 FEA/Structural Analysis Formats
+
+| Format | Extensions | Time-Series | Scalar Fields | Notes |
+|--------|-----------|-------------|---------------|-------|
+| **Exodus II** | `.exo`, `.e`, `.ex2` | YES | YES | SEACAS standard for FEA results; supports nodal & elemental fields |
+| **XDMF** | `.xdmf`, `.xmf` | YES | YES | Requires co-located `.h5` HDF5 companion file in same directory |
+
+### 6.4 Surface Mesh Formats (Static Geometry)
+
+| Format | Extensions | Time-Series | Scalar Fields | Notes |
+|--------|-----------|-------------|---------------|-------|
+| **Stereolithography** | `.stl` | NO | LIMITED | CAD geometry; single static mesh |
+| **Wavefront OBJ** | `.obj` | NO | LIMITED | 3D model format; vertex colors supported |
+| **PLY (Polygon)** | `.ply` | NO | YES | ASCII, binary_little_endian, or gzip-compressed (`.ply.gz`) |
+| **PLY Compressed** | `.ply.gz` | NO | YES | Gzip-compressed PLY; automatic decompression & parsing |
+
+**Special PLY Handling:** Custom `_CustomPLYReader` handles ASCII and binary_little_endian formats with automatic fallback to PyVista. Utility function `SimulationData.compress_ply()` available for on-demand gzip compression of PLY files.
+
+### 6.5 Mesh Generation & CAD Formats (via meshio)
+
+*Requires optional dependency: `pip install meshio`*
+
+| Format | Extensions | Time-Series | Scalar Fields | Notes |
+|--------|-----------|-------------|---------------|-------|
+| **Gmsh** | `.msh` | NO | YES | Versions 2.2, 4.1+ supported; tags and physical regions preserved |
+| **Salome MED** | `.med` | MAYBE | YES | Multi-physics pre/post-processing format |
+| **HDF5 (Generic)** | `.hdf5` | CONDITIONAL | YES | `.h5` extension reserved for FLUENT CFF reader; use `.hdf5` for generic HDF5 |
+| **Abaqus Mesh** | `.inp` | NO | NO | **Mesh topology only** (not `.odb` output databases); geometry import only |
+
+### 6.6 Visualization & Data Formats
+
+| Format | Extensions | Purpose | Notes |
+|--------|-----------|---------|-------|
+| **Plotly JSON** | `.json` | Interactive 2D/3D charts and graphs | Rendered via `4d-graph` shortcode; embedded Plotly Figure Object |
+
+### 6.7 Reference/Data Files
+
+The upload handler also accepts for staging/documentation:
+- `.series` — VTK series index files
+- `.bib` — Bibliography (BibTeX)
+- `.qmd` — Quarto Markdown
+- `.md` — Markdown documentation
+- `.csv` — Data tables
+- `.txt` — Plain text
+
+### 6.8 Format Support Matrix
+
+| Format | Library | Decimation | Live Field Switch | Play Button | PDF Export | Known Limitations |
+|--------|---------|------------|-------------------|-------------|------------|-------------------|
+| OpenFOAM | PyVista | YES | YES | YES | YES | None |
+| VTK/VTU/PVD | PyVista | YES | YES | YES | YES | None |
+| Exodus II | PyVista | YES | YES | YES | YES | None |
+| CGNS | PyVista | YES | YES | YES | YES | None |
+| EnSight | PyVista | YES | YES | YES | YES | None |
+| XDMF | PyVista | YES | YES | YES | YES | Requires .h5 file |
+| STL/OBJ/PLY | PyVista | YES | LIMITED | NO | YES | No scalar animation |
+| Gmsh/MED | meshio | YES | LIMITED | MAYBE | YES | Requires optional dep |
+| Abaqus `.inp` | meshio | YES | NO | NO | YES | Mesh only; requires optional dep |
+| Plotly `.json` | Plotly | N/A | N/A | CONDITIONAL | YES | Chart format only |
+
+### 6.9 Library Dependencies
+
+- **pyvista[jupyter]==0.47.3** — Primary mesh I/O & rendering (VTK wrapper)
+- **vtk==9.6.1** — Backend; pinned for `window.renderWindow` vtk.js export stability
+- **numpy** — Array operations for scalar field manipulation
+- **meshio** — Optional; unlocks `.med`, `.msh`, `.inp`, `.hdf5` support
+- **plotly>=5.0.0** — Graph rendering
+
+### 6.10 Size & Performance Constraints
+
+- **Maximum upload size:** 5 GB per file
+- **Automatic decimation:** Triggered if mesh > 150k faces (quadric clustering)
+- **Decimation target:** Configurable via `decimate` shortcode attribute (default: 0.75 reduction ratio)
 
 ---
 
