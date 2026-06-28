@@ -925,9 +925,9 @@ local function fourd_timeseries(args, kwargs)
                        'grid-template-rows:1fr;gap:4px;' ..
                        'width:100%;height:' .. height .. ';background:white;'
     local lock_toolbar_ts = '<div id="plb-' .. id .. '" style="' ..
-      'display:flex;align-items:center;gap:8px;background:white;' ..
-      'border-bottom:1px solid #e0e0e0;padding:8px;' ..
-      'font-family:system-ui,sans-serif;font-size:12px;">' ..
+      'display:flex;align-items:center;gap:8px;background:#181614;' ..
+      'border-bottom:1px solid #3d3834;padding:3px 8px;' ..
+      'font-family:system-ui,sans-serif;font-size:11px;">' ..
       '<button id="plb-btn-' .. id .. '" style="background:none;border:none;' ..
       'cursor:pointer;font-size:14px;padding:0;line-height:1;">&#x1F513;</button>' ..
       '<script>(function(){' ..
