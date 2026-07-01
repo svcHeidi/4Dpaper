@@ -33,3 +33,28 @@ _shortcuts.yml
 
 # Local brainstorming workspace
 .superpowers/
+
+# Runtime cache
+.cache/
+
+# Generated outputs (large, not for version control)
+*.standalone-*.html
+example_heart-standalone*.html
+# Root-level PDFs (compiled exports belong in _output/, not the repo root)
+/*.pdf
+
+# Pre-refactor backups and one-off scripts (scratch work)
+original_4dpaper.py
+build_4dpaper.py
+create_new_entrypoint.py
+extract_mesh.py
+extract_module.py
+extract_parser.py
+master_refactor.py
+split_4dpaper_refactor.py
+move_golden_js.py
+new_header.py
+tmp_*.py
+
+# Internal agent/AI notes (not user-facing)
+AGENT_FIGURES_CAPABILITIES.md

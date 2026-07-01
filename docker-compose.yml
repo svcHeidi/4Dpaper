@@ -1,5 +1,13 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage (local build):      docker compose up
+# Usage (prebuilt image):   IMAGE=ghcr.io/yourname/4dpapers:latest docker compose up
+# ─────────────────────────────────────────────────────────────────────────────
 services:
   4dpapers:
+    # Set IMAGE in your shell / .env to pull a prebuilt image from GHCR:
+    #   IMAGE=ghcr.io/<your-github-username>/4dpapers:latest
+    # Leave IMAGE unset to build locally from source.
+    image: ${IMAGE:-4dpapers-local}
     build:
       context: .
       dockerfile: Dockerfile
@@ -38,3 +46,4 @@ services:
     #         - driver: nvidia
     #           count: 1
     #           capabilities: [gpu]
+

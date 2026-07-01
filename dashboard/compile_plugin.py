@@ -191,7 +191,7 @@ class CompileHandler(SecureMixin, tornado.web.RequestHandler):
             log_lines: list[str] = _active_build_log
 
             requested_format = body.get("format", "html")
-            if requested_format == "pdf":
+            if requested_format in ("pdf", "paperview"):
                 render_format = "paperview"
             elif requested_format == "html-export":
                 render_format = "html-export"

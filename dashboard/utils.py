@@ -99,10 +99,10 @@ def run_quarto_render(
     thread = threading.Thread(target=_read, daemon=True)
     thread.start()
     try:
-        proc.wait(timeout=300)
+        proc.wait(timeout=1800)
     except subprocess.TimeoutExpired:
         proc.terminate()
-        log_lines.append("CRITICAL ERROR: Quarto render timed out after 300 seconds.")
+        log_lines.append("CRITICAL ERROR: Quarto render timed out after 1800 seconds.")
         return 1
     thread.join()
     return proc.returncode
@@ -123,10 +123,15 @@ def save_camera_state(
     focal_point: list[float],
     view_up: list[float],
     parallel_scale: float | None,
+    parallel_projection: int | None = None,
     *,
     output_path: Path,
-) -> None:
-    """Serialize PyVista camera state to JSON."""
+) -> bool:
+    """Serialize PyVista camera state to JSON.
+
+    Returns True when the on-disk file changed, False when the payload was
+    identical and no rewrite was needed.
+    """
     payload: dict = {
         "position":    list(position),
         "focal_point": list(focal_point),
@@ -134,8 +139,18 @@ def save_camera_state(
     }
     if parallel_scale is not None:
         payload["parallel_scale"] = float(parallel_scale)
+    if parallel_projection is not None:
+        payload["parallel_projection"] = int(parallel_projection)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.exists():
+        try:
+            existing = json.loads(output_path.read_text())
+        except json.JSONDecodeError:
+            existing = None
+        if existing == payload:
+            return False
     output_path.write_text(json.dumps(payload, indent=2))
+    return True
 
 
 def load_camera_state(path: Path) -> dict | None:

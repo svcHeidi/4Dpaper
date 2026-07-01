@@ -29,6 +29,7 @@ _OLLAMA_URL: str = os.environ.get(
 )
 _OPENAI_API_KEY: str | None = os.environ.get("OPENAI_API_KEY") or None
 _ANTHROPIC_API_KEY: str | None = os.environ.get("ANTHROPIC_API_KEY") or None
+_GEMINI_API_KEY: str | None = os.environ.get("GEMINI_API_KEY") or None
 _EXPOSE_AGENTS: bool = os.environ.get("FOURD_EXPOSE_AGENTS", "0").strip() == "1"
 
 # Path to agents.yaml — sit next to serve.py at the project root
@@ -43,6 +44,7 @@ _PROVIDER_DEFAULTS: dict[str, list[str]] = {
     "ollama": ["llama3", "mistral", "phi3", "gemma3"],
     "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
     "anthropic": ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-3-5"],
+    "gemini": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3.5-flash", "gemini-pro-latest"],
 }
 
 # Hardcoded fallback persona list — used when agents.yaml is absent or
@@ -148,6 +150,13 @@ class ProvidersHandler(SecureMixin, tornado.web.RequestHandler):
                 "available": _ANTHROPIC_API_KEY is not None,
                 "default_model": "claude-sonnet-4-5",
                 "models": _PROVIDER_DEFAULTS["anthropic"] if _ANTHROPIC_API_KEY else [],
+            },
+            {
+                "id": "gemini",
+                "name": "Google Gemini",
+                "available": _GEMINI_API_KEY is not None,
+                "default_model": "gemini-2.5-pro",
+                "models": _PROVIDER_DEFAULTS["gemini"] if _GEMINI_API_KEY else [],
             },
         ]
 
@@ -263,6 +272,16 @@ class AIChatHandler(SecureMixin, tornado.web.RequestHandler):
                 self.write({"status": "error", "detail": "Anthropic routing coming soon."})
                 return
 
+            elif provider == "gemini":
+                if not _GEMINI_API_KEY:
+                    self.set_status(400)
+                    self.write({
+                        "status": "error",
+                        "detail": "Gemini is not configured on this server (GEMINI_API_KEY not set).",
+                    })
+                    return
+                reply_content = self._call_gemini(model, full_messages)
+
             else:
                 self.set_status(400)
                 self.write({"status": "error", "detail": f"Unknown provider: {provider}"})
@@ -310,6 +329,20 @@ class AIChatHandler(SecureMixin, tornado.web.RequestHandler):
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {_OPENAI_API_KEY}",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode())
+        return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+    def _call_gemini(self, model: str, messages: list[dict]) -> str:
+        req_body = json.dumps({"model": model, "messages": messages}).encode()
+        req = urllib.request.Request(
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            data=req_body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {_GEMINI_API_KEY}",
             },
         )
         with urllib.request.urlopen(req, timeout=60) as resp:

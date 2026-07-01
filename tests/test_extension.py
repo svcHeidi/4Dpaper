@@ -200,7 +200,7 @@ class TestGeneratePanelHtml:
         def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text(f"<html>content-{fig_id}</html>")
 
-        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+        with patch("lib.render.generate_html_figure", side_effect=fake_gen_html):
             mod.generate_panel_html(self._make_panel(), tmp_path)
 
         out = tmp_path / "panel-test.html"
@@ -213,7 +213,7 @@ class TestGeneratePanelHtml:
         def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text("<html>x</html>")
 
-        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+        with patch("lib.render.generate_html_figure", side_effect=fake_gen_html):
             mod.generate_panel_html(self._make_panel("2x1"), tmp_path)
 
         html = (tmp_path / "panel-test.html").read_text()
@@ -228,7 +228,7 @@ class TestGeneratePanelHtml:
         def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text("<html>x</html>")
 
-        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+        with patch("lib.render.generate_html_figure", side_effect=fake_gen_html):
             mod.generate_panel_html(self._make_panel(), tmp_path)
 
         html = (tmp_path / "panel-test.html").read_text()
@@ -243,7 +243,7 @@ class TestGeneratePanelHtml:
         def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text(f"<html>unique-{fig_id}</html>")
 
-        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+        with patch("lib.render.generate_html_figure", side_effect=fake_gen_html):
             mod.generate_panel_html(self._make_panel(), tmp_path)
 
         import base64, re
@@ -261,9 +261,7 @@ class TestGeneratePanelHtml:
         def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text("<html>x</html>")
 
-        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html), patch.object(
-            mod, "_maybe_sign_output_html"
-        ) as mock_sign:
+        with patch("lib.render.generate_html_figure", side_effect=fake_gen_html), patch("lib.utils.sign_html_file_if_configured") as mock_sign:
             mod.generate_panel_html(self._make_panel(), tmp_path)
 
         mock_sign.assert_called_once_with(tmp_path / "panel-test.html")
@@ -275,7 +273,7 @@ class TestGeneratePanelHtml:
         def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text("<html>x</html>")
 
-        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+        with patch("lib.render.generate_html_figure", side_effect=fake_gen_html):
             with pytest.raises(ValueError, match="layout"):
                 mod.generate_panel_html(self._make_panel("bad"), tmp_path)
 
@@ -287,7 +285,7 @@ class TestGeneratePanelHtml:
         def fake_gen_html(src, field, time_spec, output_path, fig_id=None, available_fields=None, **kwargs):
             output_path.write_text("<html>x</html>")
 
-        with patch.object(mod, "generate_html_figure", side_effect=fake_gen_html):
+        with patch("lib.render.generate_html_figure", side_effect=fake_gen_html):
             mod.generate_panel_html(self._make_panel("3x1", subs), tmp_path)
 
         html = (tmp_path / "panel-test.html").read_text()
@@ -320,7 +318,7 @@ class TestGeneratePanelPng:
     def test_creates_composite_png(self, tmp_path):
         from unittest.mock import patch
         mod = _load_4dpaper()
-        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("red")):
+        with patch("lib.render.generate_png_figure", side_effect=self._fake_png_gen("red")):
             mod.generate_panel_png(self._make_panel(), tmp_path)
         assert (tmp_path / "panel-test.png").exists()
 
@@ -329,7 +327,7 @@ class TestGeneratePanelPng:
         from PIL import Image
         mod = _load_4dpaper()
         # Subfigures are 1920×1080; 2x1 → 2 cols × 1 row = 3840×1080
-        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("blue")):
+        with patch("lib.render.generate_png_figure", side_effect=self._fake_png_gen("blue")):
             mod.generate_panel_png(self._make_panel("2x1", 2), tmp_path)
         img = Image.open(tmp_path / "panel-test.png")
         assert img.size == (1920 * 2, 1080 * 1)
@@ -339,7 +337,7 @@ class TestGeneratePanelPng:
         from PIL import Image
         mod = _load_4dpaper()
         # Subfigures are 1920×1080; 2x2 → 2 cols × 2 rows = 3840×2160
-        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("green")):
+        with patch("lib.render.generate_png_figure", side_effect=self._fake_png_gen("green")):
             mod.generate_panel_png(self._make_panel("2x2", 4), tmp_path)
         img = Image.open(tmp_path / "panel-test.png")
         assert img.size == (1920 * 2, 1080 * 2)
@@ -347,7 +345,7 @@ class TestGeneratePanelPng:
     def test_invalid_layout_raises(self, tmp_path):
         from unittest.mock import patch
         mod = _load_4dpaper()
-        with patch.object(mod, "generate_png_figure", side_effect=self._fake_png_gen("red")):
+        with patch("lib.render.generate_png_figure", side_effect=self._fake_png_gen("red")):
             with pytest.raises(ValueError, match="layout"):
                 mod.generate_panel_png(self._make_panel("bad"), tmp_path)
 

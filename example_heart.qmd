@@ -31,8 +31,64 @@ Synchronized multi-panel view showing how transmembrane potential evolves across
 
 {{< 4d-timeseries id="niederer-ts" src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/NiedererEtAl2011/NiedererEtAl2011verification/Niederer.foam" field="Vm" fields="Vm,activationTime" steps="4" height="400px" caption="Niederer verification: Transmembrane potential evolution over 4 representative timesteps." >}}
 
-### High-Resolution Heart: Decimation in Action
 
-The whole-heart model has 300k+ faces. This example demonstrates automatic mesh decimation (configurable via `decimate` attribute) to maintain interactivity while preserving detail:
+## Cardiac Electrophysiology: Heart and Purkinje Network
 
-{{< 4d-image id="highres-heart" src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/heartSim3D-1D/monodomainHeart/monodomainHeart.foam" field="Vm" decimate="auto" stride ="4" time="last" caption="High-resolution whole-heart simulation: Automatic decimation applied to mesh >150k faces. Use decimate=\"none\" to disable, or decimate=\"0.5\" to keep 50% of faces." >}}
+The figures below show the bidomain cardiac simulation from the 3D-1D coupled model. The Purkinje network (a 1D conduction system embedded in the heart wall) activates first and drives the myocardial wavefront.
+
+### Heart alone — transmembrane potential Vm
+
+Full 3D myocardial mesh coloured by transmembrane potential Vm (coolwarm). At t ≈ 25 ms the activation wavefront driven by the Purkinje network is clearly visible:
+
+{{< 4d-image id="heart-vm" src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/heartSim3D-1D/monodomainHeart/monodomainHeart.foam" field="Vm" cmap="coolwarm" decimate="auto" stride="8" time="5" caption="Myocardial transmembrane potential Vm at t ≈ 25 ms. Press ▶ to animate the full activation sequence." >}}
+
+### Purkinje network alone — transmembrane potential Vm\_V
+
+The 1D Purkinje conduction network rendered as tubes, coloured by Vm\_V. The network depolarises ahead of the myocardium and has fully repolarised by t ≈ 0.4 s:
+
+{{< 4d-image id="purkinje-vm" src="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/heartSim3D-1D/monodomainHeart/postProcessing/purkinjeNetworkVTK/purkinjeNetwork.vtk.series" field="Vm_V" cmap="plasma" decimate="none" stride="8" time="5" caption="Purkinje network transmembrane potential Vm\_V at t ≈ 25 ms. Press ▶ to animate." >}}
+
+### Combined view — myocardium + Purkinje network
+
+Both datasets rendered as separate actors in a single vtk.js scene. The heart is 60 % opaque to reveal the Purkinje network beneath the epicardial surface. Pressing ▶ animates both simultaneously, with the Purkinje timestep snapped to the nearest physical time of the primary (heart) axis:
+
+{{< 4d-multi-image id="heart-purkinje-combined"
+    src1="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/heartSim3D-1D/monodomainHeart/monodomainHeart.foam"
+    field1="Vm" cmap1="coolwarm" decimate1="auto" opacity1="0.6" colorbar1="true"
+    src2="/Users/simaocastro/noFrontendCardiacFoam_minor_errors/tutorials/heartSim3D-1D/monodomainHeart/postProcessing/purkinjeNetworkVTK/purkinjeNetwork.vtk.series"
+    field2="Vm_V" cmap2="plasma" decimate2="none" colorbar2="false"
+    time="5" stride="8"
+    caption="Coupled 3D-1D cardiac simulation: myocardium (coolwarm) and Purkinje network (plasma) at t ≈ 25 ms. Both datasets animate synchronously." >}}
+
+## Static Images & Diagrams
+
+4Dpapers papers frequently include static images alongside interactive 3D figures—methodology diagrams, photos, plots, schematics, or reference images. Use Quarto's native Markdown syntax for these:
+
+### Basic Image
+
+```markdown
+![Heart diagram](data/heart-diagram.png)
+```
+
+### With Figure Width & Caption
+
+```markdown
+![Cardiac geometry sketch showing myocardium (red) and Purkinje network (blue) pathways.](data/cardiac-anatomy.png){width=60% fig-align="center"}
+```
+
+### Multiple Images in a Row
+
+```markdown
+![Left: Transmembrane potential scale.](data/vm-scale.png){width=48%}
+![Right: Activation time scale.](data/activation-scale.png){width=48%}
+```
+
+### Numbered Figures with Reference
+
+```markdown
+![My reference image](data/setup.png){#fig-setup}
+
+See @fig-setup for the experimental setup.
+```
+
+**Tip:** Place static images in the `data/` directory alongside your 3D case files. Quarto will automatically embed them in both HTML (web) and PDF (static) outputs. No shortcode parsing needed—just plain Markdown.

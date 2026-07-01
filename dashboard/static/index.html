@@ -405,6 +405,8 @@
     <!-- MathJax for LaTeX rendering -->
     <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+    <!-- Marked for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
     <!-- CodeMirror for code editing -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material-darker.min.css">
@@ -542,7 +544,7 @@
             </div>
 
             <!-- AI Chat View -->
-            <div class="flex-1 flex flex-col hidden" id="chatContent" data-view="chat">
+            <div class="flex-1 flex flex-col hidden min-h-0" id="chatContent" data-view="chat">
 
                 <!-- Persona + settings toggle -->
                 <div class="p-3 border-b border-app-border flex-shrink-0 flex items-center justify-between">
@@ -580,7 +582,7 @@
 
                 <!-- Messages Area -->
                 <div id="chatMessages" class="flex-1 overflow-auto custom-scrollbar p-4 space-y-4 text-sm text-app-textLight">
-                    <div class="text-xs text-app-text text-center mt-4">Start chatting with the agent...</div>
+                    <div class="text-xs text-app-text text-center mt-4">Start chatting with your 4Dpapers advisor...</div>
                 </div>
 
                 <!-- Input Area -->
@@ -604,49 +606,11 @@
             <div class="pane editor-pane">
             <!-- Tab Bar -->
             <div class="tab-bar custom-scrollbar">
-                <div class="tab active">
-                    <i class="ph-fill ph-file-code text-blue-400"></i>
-                    analysis_report.qmd
-                    <button class="ml-2 hover:bg-gray-700 rounded p-0.5" onclick="this.parentElement.remove()">
-                        <i class="ph-duotone ph-x text-xs"></i>
-                    </button>
-                </div>
-                <div class="tab">
-                    <i class="ph-duotone ph-file-text text-gray-400"></i>
-                    simulation_setup.qmd
-                </div>
-                <div class="tab">
-                    <i class="ph-duotone ph-file-text text-gray-400"></i>
-                    introduction.qmd
-                </div>
             </div>
 
             <!-- Editor Content -->
             <div class="pane-content">
-                <textarea id="code-editor" class="editor-content">---
-title: "Cardiac Electrophysiology Analysis"
-subtitle: "Niederer et al. (2012) Benchmark"
-author:
-  - name: "Your Name"
-    affiliation: "Your Institution"
-date: today
-abstract: |
-  This paper uses the 4DPaper extension to embed interactive 3D simulation
-  visualisations directly in the HTML output, and high-resolution static
-  figures in the PDF export.
-format:
-  html:
-    code-fold: true
-    toc: true
-  theme:
-    light: cosmo
-    dark: darkly
-jupyter: python3
----
-
-{{< include sections/01_introduction.qmd >}}
-{{< include sections/02_simulation_setup.qmd >}}
-</textarea>
+                <textarea id="code-editor" class="editor-content"></textarea>
             </div>
         </div>
 
@@ -658,13 +622,22 @@ jupyter: python3
             <!-- Preview Header -->
             <div class="pane-header">
                 <span class="text-xs font-semibold text-app-text uppercase tracking-widest">Preview</span>
-                <div class="ml-auto flex items-center bg-app-bg/50 rounded-lg p-0.5 border border-app-border/50">
+                <div class="ml-auto flex items-center gap-2">
+                    <button
+                        id="build-log-toggle"
+                        type="button"
+                        style="display:none; background:none; border:1px solid rgba(42,48,71,0.8); color:#9CA3AF; cursor:pointer; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; padding:6px 10px; border-radius:8px;"
+                    >
+                        Details
+                    </button>
+                    <div class="flex items-center bg-app-bg/50 rounded-lg p-0.5 border border-app-border/50">
                     <button id="view-mode-interactive" class="px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all bg-app-accent text-white shadow-sm">
                         Interactive
                     </button>
                     <button id="view-mode-pdf" class="px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all text-app-text hover:text-app-textLight">
                         PDF
                     </button>
+                    </div>
                 </div>
             </div>
 
@@ -672,7 +645,7 @@ jupyter: python3
             <div id="build-log-panel" style="display:none; flex-direction: column; border-bottom: 1px solid #2A3047; background: #0D1117; max-height: 180px;">
                 <div style="display:flex; align-items:center; justify-content:space-between; padding: 4px 12px; background: #121521; border-bottom: 1px solid #2A3047; flex-shrink:0;">
                     <span id="build-log-title" style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:#9CA3AF;">Build Log</span>
-                    <button onclick="document.getElementById('build-log-panel').style.display='none';" style="background:none; border:none; color:#9CA3AF; cursor:pointer; font-size:14px; line-height:1; padding:2px 4px;">&times;</button>
+                    <button id="build-log-close" type="button" style="background:none; border:none; color:#9CA3AF; cursor:pointer; font-size:14px; line-height:1; padding:2px 4px;">&times;</button>
                 </div>
                 <pre id="build-log-output" style="margin:0; padding:10px 14px; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.6; overflow-y:auto; flex:1; color:#E5E7EB; white-space:pre-wrap; word-break:break-all;"></pre>
             </div>
@@ -711,12 +684,20 @@ jupyter: python3
         openTabs: [],
         activeTab: null,
         editorContent: {},
+        contentRevision: 0,
+        cameraRevision: 0,
         isCompiling: false,
+        showBuildDetails: false,
         codeEditor: null,
+        isLoadingEditorContent: false,
         viewMode: 'interactive', // 'interactive' or 'pdf'
         mainFilename: 'main',
         activePaper: null,       // root .qmd selected in Papers panel (null = backend default)
-        citationStyle: (localStorage.getItem('4dpapers_citation_style') || 'author-date')
+        citationStyle: (localStorage.getItem('4dpapers_citation_style') || 'author-date'),
+        buildCache: {
+            interactive: null,
+            pdf: null,
+        },
     };
 
     // Citation-style setting (Settings panel) — persists across sessions.
@@ -730,17 +711,506 @@ jupyter: python3
         });
     }
 
+    function bumpContentRevision() {
+        state.contentRevision += 1;
+    }
+
+    function bumpCameraRevision() {
+        state.cameraRevision += 1;
+        state.buildCache.pdf = null;
+    }
+
+    function currentTargetStem() {
+        const active = state.activePaper || `${state.mainFilename}.qmd`;
+        return String(active).replace(/\.qmd$/i, '') || 'main';
+    }
+
+    function buildFingerprint() {
+        return {
+            revision: state.contentRevision,
+            cameraRevision: state.cameraRevision,
+            target: state.activePaper || null,
+            csl: state.citationStyle || 'author-date',
+        };
+    }
+
+    function fingerprintsMatch(a, b) {
+        return !!a && !!b
+            && a.revision === b.revision
+            && a.cameraRevision === b.cameraRevision
+            && a.target === b.target
+            && a.csl === b.csl;
+    }
+
+    function outputFilenameForMode(mode) {
+        const stem = currentTargetStem();
+        return mode === 'pdf' ? `${stem}-paperview.html` : `${stem}.html`;
+    }
+
+    function setPreviewIframe(filename) {
+        const iframe = document.querySelector('#preview-iframe');
+        if (!iframe) return;
+        iframe.srcdoc = '';
+        iframe.removeAttribute('srcdoc');
+        iframe.src = '/output/' + filename + '?t=' + Date.now();
+    }
+
+    async function outputFileExists(filename) {
+        try {
+            const res = await fetch('/output/' + filename + '?probe=' + Date.now(), {
+                method: 'HEAD',
+                cache: 'no-store',
+            });
+            return res.ok;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    async function loadCachedPreview(mode) {
+        const cached = state.buildCache[mode];
+        const fingerprint = buildFingerprint();
+
+        if (cached && fingerprintsMatch(cached.fingerprint, fingerprint)) {
+            setPreviewIframe(cached.filename);
+            setStatusBarState(
+                mode === 'pdf' ? 'Paper preview ready' : 'Interactive preview ready',
+                '#22c55e',
+                'ph-fill ph-check-circle'
+            );
+            return true;
+        }
+
+        if (state.contentRevision !== 0) return false;
+
+        const filename = outputFilenameForMode(mode);
+        if (!(await outputFileExists(filename))) return false;
+
+        state.mainFilename = currentTargetStem();
+        state.buildCache[mode] = { filename, fingerprint };
+        setPreviewIframe(filename);
+        setStatusBarState(
+            mode === 'pdf' ? 'Loaded existing paper preview' : 'Loaded existing interactive preview',
+            '#22c55e',
+            'ph-fill ph-check-circle'
+        );
+        return true;
+    }
+
     // Initialize app
     async function initApp() {
         initCodeEditor();
         await loadFileTree();
         setupEventListeners();
         initCitationStyle();
-        // Open main.qmd if it exists, fall back to analysis_report.qmd
-        const files = await fetch('/api/files').then(r => r.json()).catch(() => ({}));
-        const mainFile = (files.files || []).find(f => f.path === 'main.qmd')
-            || (files.files || []).find(f => f.path === 'analysis_report.qmd');
-        if (mainFile) await openFile(mainFile.path);
+        refreshBuildLogToggle();
+        // App starts with no open files. User clicks to open.
+    }
+
+    function setStatusBarState(label, color, iconClass = 'ph-fill ph-circle-notch', spinning = false) {
+        const statusBar = document.querySelector('.status-bar .status-left');
+        if (!statusBar) return;
+        const spinClass = spinning ? ' animate-spin' : '';
+        const iconHtml = iconClass
+            ? `<i class="${iconClass}${spinClass}" style="color: ${color};"></i>`
+            : '';
+        statusBar.innerHTML = `<span>Status: <span style="color: ${color};">${label}</span></span>${iconHtml}`;
+    }
+
+    function refreshBuildLogToggle() {
+        const toggle = document.getElementById('build-log-toggle');
+        if (!toggle) return;
+        toggle.style.display = 'inline-flex';
+        toggle.textContent = state.showBuildDetails ? 'Hide Details' : 'Details';
+        toggle.style.color = state.showBuildDetails ? '#E5E7EB' : '#9CA3AF';
+        toggle.style.borderColor = state.showBuildDetails ? 'rgba(19,138,124,0.9)' : 'rgba(42,48,71,0.8)';
+        toggle.style.background = state.showBuildDetails ? 'rgba(19,138,124,0.15)' : 'transparent';
+    }
+
+    function setBuildLogPanelVisible(visible) {
+        state.showBuildDetails = !!visible;
+        const panel = document.getElementById('build-log-panel');
+        if (panel) panel.style.display = visible ? 'flex' : 'none';
+        refreshBuildLogToggle();
+    }
+
+    function buildModeLabel(context = {}) {
+        if (context.action === 'export' && context.format === 'pdf') return 'PDF Export';
+        if (context.action === 'export' && context.format === 'html-export') return 'HTML Export';
+        return context.viewMode === 'pdf' ? 'Paper Preview' : 'Interactive Preview';
+    }
+
+    function buildStartMessage(context = {}) {
+        const label = buildModeLabel(context);
+        if (label === 'PDF Export') {
+            return 'Preparing PDF export.\n\nRendering print-safe figures, assembling paper view HTML, then converting to PDF.';
+        }
+        if (label === 'HTML Export') {
+            return 'Preparing standalone HTML export.\n\nPackaging the paper and embedding interactive figures for download.';
+        }
+        if (label === 'Paper Preview') {
+            return 'Preparing paper preview.\n\nRendering saved-camera figures and assembling the static paper view.';
+        }
+        return 'Preparing interactive preview.\n\nRendering live figures and assembling the browser preview.';
+    }
+
+    function formatFigureLabel(figId) {
+        return String(figId || '').replace(/[-_]+/g, ' ').trim();
+    }
+
+    function countFigureSteps(lines, figId) {
+        const re = new RegExp(`^\\[${figId.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')} t=\\d+\\]`);
+        return lines.filter(line => re.test(line)).length;
+    }
+
+    function deriveBuildStatus(rawLogText, context = {}) {
+        const logText = (rawLogText || '').replace(/\u001b\[[0-9;]*m/g, '');
+        const lines = logText.split(/\r?\n/);
+        const figureTotals = {};
+
+        lines.forEach(line => {
+            const match = line.match(/^([\w-]+): embedding (\d+) timesteps/);
+            if (match) figureTotals[match[1]] = parseInt(match[2], 10);
+        });
+
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            let match = line.match(/^Output created: _output\/(.+)$/);
+            if (match) {
+                const outputName = match[1];
+                if (outputName.endsWith('-paperview.html')) {
+                    return {
+                        title: 'Build Log — Paper Preview Ready',
+                        statusLabel: 'Paper preview ready',
+                        progressLabel: 'Paper preview ready',
+                        color: '#22c55e',
+                    };
+                }
+                if (outputName.endsWith('-standalone.html')) {
+                    return {
+                        title: 'Build Log — HTML Export Ready',
+                        statusLabel: 'Standalone HTML ready',
+                        progressLabel: 'Standalone HTML ready',
+                        color: '#22c55e',
+                    };
+                }
+                return {
+                    title: 'Build Log — Interactive Preview Ready',
+                    statusLabel: 'Interactive preview ready',
+                    progressLabel: 'Interactive preview ready',
+                    color: '#22c55e',
+                };
+            }
+
+            match = line.match(/^pandoc(?: --output)?\s+(.+)$/);
+            if (match) {
+                const target = match[1];
+                const isPaperView = /paperview\.html$/.test(target);
+                const isStandalone = /standalone\.html$/.test(target);
+                if (isPaperView) {
+                    return {
+                        title: 'Build Log — Assembling Paper Preview',
+                        statusLabel: 'Assembling paper preview',
+                        progressLabel: 'Assembling paper preview',
+                        color: '#3b82f6',
+                        spinning: true,
+                    };
+                }
+                if (isStandalone) {
+                    return {
+                        title: 'Build Log — Packaging Standalone HTML',
+                        statusLabel: 'Packaging standalone HTML',
+                        progressLabel: 'Packaging standalone HTML',
+                        color: '#3b82f6',
+                        spinning: true,
+                    };
+                }
+            }
+
+            if (/^Injecting \d+ 4D figures into /.test(line)) {
+                return {
+                    title: 'Build Log — Packaging Standalone HTML',
+                    statusLabel: 'Embedding interactive figures',
+                    progressLabel: 'Embedding interactive figures',
+                    color: '#3b82f6',
+                    spinning: true,
+                };
+            }
+
+            match = line.match(/^Generating optimized timeseries for ([\w-]+)…?$/);
+            if (match) {
+                const fig = formatFigureLabel(match[1]);
+                return {
+                    title: `Build Log — Building Timeseries: ${fig}`,
+                    statusLabel: `Building timeseries: ${fig}`,
+                    progressLabel: `Building ${fig}`,
+                    color: '#3b82f6',
+                    spinning: true,
+                };
+            }
+
+            match = line.match(/^Generated composite timeseries: .+\/([\w-]+)\.html/);
+            if (match) {
+                const fig = formatFigureLabel(match[1]);
+                return {
+                    title: `Build Log — Timeseries Ready: ${fig}`,
+                    statusLabel: `Timeseries ready: ${fig}`,
+                    progressLabel: `Timeseries ready: ${fig}`,
+                    color: '#3b82f6',
+                    spinning: true,
+                };
+            }
+
+            match = line.match(/^\[([\w-]+) t=(\d+)\]/);
+            if (match) {
+                const figId = match[1];
+                const fig = formatFigureLabel(figId);
+                const current = countFigureSteps(lines.slice(0, i + 1), figId);
+                const total = figureTotals[figId];
+                const progress = total ? ` (${Math.min(current, total)}/${total})` : '';
+                return {
+                    title: `Build Log — Building Figure: ${fig}${progress}`,
+                    statusLabel: `Building figure: ${fig}${progress}`,
+                    progressLabel: `Building ${fig}${progress}`,
+                    color: '#3b82f6',
+                    spinning: true,
+                };
+            }
+
+            match = line.match(/^Generating panel ([\w-]+)\.(html|png)\s+…?$/);
+            if (match) {
+                const fig = formatFigureLabel(match[1]);
+                const kind = match[2] === 'png' ? 'Rendering' : 'Building';
+                return {
+                    title: `Build Log — ${kind} Panel: ${fig}`,
+                    statusLabel: `${kind.toLowerCase()} panel: ${fig}`,
+                    progressLabel: `${kind} ${fig}`,
+                    color: '#3b82f6',
+                    spinning: true,
+                };
+            }
+
+            match = line.match(/^Generating ([\w-]+)\.(html|png)\s+…?$/);
+            if (match) {
+                const fig = formatFigureLabel(match[1]);
+                const isPng = match[2] === 'png';
+                return {
+                    title: isPng
+                        ? `Build Log — Rendering Print Figure: ${fig}`
+                        : `Build Log — Building Figure: ${fig}`,
+                    statusLabel: isPng
+                        ? `Rendering print figure: ${fig}`
+                        : `Building figure: ${fig}`,
+                    progressLabel: `${isPng ? 'Rendering' : 'Building'} ${fig}`,
+                    color: '#3b82f6',
+                    spinning: true,
+                };
+            }
+
+            match = line.match(/^([\w-]+)\.(html|png) is up to date — skipping\.$/);
+            if (match) {
+                const fig = formatFigureLabel(match[1]);
+                const isPng = match[2] === 'png';
+                return {
+                    title: isPng
+                        ? `Build Log — Reusing Print Figure: ${fig}`
+                        : `Build Log — Reusing Figure: ${fig}`,
+                    statusLabel: isPng
+                        ? `Reusing print figure: ${fig}`
+                        : `Reusing figure: ${fig}`,
+                    progressLabel: `Reusing ${fig}`,
+                    color: '#3b82f6',
+                    spinning: true,
+                };
+            }
+
+            match = line.match(/^([\w-]+): embedding (\d+) timesteps/);
+            if (match) {
+                const fig = formatFigureLabel(match[1]);
+                return {
+                    title: `Build Log — Building Figure: ${fig}`,
+                    statusLabel: `Building figure: ${fig}`,
+                    progressLabel: `Building ${fig}`,
+                    color: '#3b82f6',
+                    spinning: true,
+                };
+            }
+
+            match = line.match(/^Camera for ([\w-]+): /);
+            if (match) {
+                const fig = formatFigureLabel(match[1]);
+                return {
+                    title: `Build Log — Applying Saved Camera: ${fig}`,
+                    statusLabel: `Applying saved camera: ${fig}`,
+                    progressLabel: `Applying camera: ${fig}`,
+                    color: '#3b82f6',
+                    spinning: true,
+                };
+            }
+
+            if (/^Scanning \d+ QMD file\(s\)/.test(line)) {
+                return {
+                    title: 'Build Log — Scanning Manuscript',
+                    statusLabel: 'Scanning manuscript figures',
+                    progressLabel: 'Scanning manuscript',
+                    color: '#3b82f6',
+                    spinning: true,
+                };
+            }
+        }
+
+        const label = buildModeLabel(context);
+        return {
+            title: `Build Log — ${label}`,
+            statusLabel: label,
+            progressLabel: label,
+            color: '#3b82f6',
+            spinning: true,
+        };
+    }
+
+    function formatBuildLogDisplay(rawLogText, context = {}) {
+        const logText = (rawLogText || '').replace(/\u001b\[[0-9;]*m/g, '');
+        const lines = logText.split(/\r?\n/);
+        const summary = [];
+        const warnings = [];
+        const figureTotals = {};
+        const figureProgress = {};
+        const seen = new Set();
+
+        function push(line) {
+            if (!line) return;
+            if (seen.has(line)) return;
+            seen.add(line);
+            summary.push(line);
+        }
+
+        lines.forEach((line) => {
+            let match = line.match(/^([\w-]+): embedding (\d+) timesteps/);
+            if (match) {
+                figureTotals[match[1]] = parseInt(match[2], 10);
+                return;
+            }
+
+            match = line.match(/^\[([\w-]+) t=(\d+)\]/);
+            if (match) {
+                const figId = match[1];
+                const current = (figureProgress[figId] || 0) + 1;
+                const total = figureTotals[figId] || null;
+                figureProgress[figId] = current;
+                if (summary.length > 0 && summary[summary.length - 1].startsWith('Progress: ') &&
+                    summary[summary.length - 1].includes(formatFigureLabel(figId))) {
+                    summary.pop();
+                }
+                push(`Progress: ${formatFigureLabel(figId)}${total ? ` (${Math.min(current, total)}/${total})` : ''}`);
+                return;
+            }
+
+            if (/nest_asyncio/.test(line) || /UserWarning: asyncio is already patched/.test(line)) {
+                warnings.push('Async runtime warning reported during figure generation.');
+                return;
+            }
+
+            if (/^\s+(standalone:|embed-resources:|section-divs:|html-math-method:|wrap:|default-image-extension:|toc:|toc-depth:|number-sections:|variables:|document-css:|link-citations:|date-format:|lang:|jupyter:|theme:|light:|dark:|toc-location:|smooth-scroll:|fontsize:|mainfont:|title:|css:)/.test(line)) {
+                return;
+            }
+            if (/^\s*$/.test(line) || /^metadata$/.test(line)) return;
+
+            let match2 = line.match(/^Scanning \d+ QMD file\(s\)/);
+            if (match2) return push('Scanning manuscript figures');
+
+            match2 = line.match(/^Timeseries '([\w-]+)' has same mesh/);
+            if (match2) return push(`Optimizing timeseries: ${formatFigureLabel(match2[1])}`);
+
+            match2 = line.match(/^Generating optimized timeseries for ([\w-]+)…?$/);
+            if (match2) return push(`Building timeseries: ${formatFigureLabel(match2[1])}`);
+
+            match2 = line.match(/^Generated composite timeseries: .+\/([\w-]+)\.html/);
+            if (match2) return push(`Timeseries ready: ${formatFigureLabel(match2[1])}`);
+
+            if (/^Wrote manifest: /.test(line)) return;
+            if (/^\s+[\w-]+:\s+\d+\s+KB$/.test(line)) return;
+            if (/^\s*Total:\s+\d+\s+KB$/.test(line)) return;
+
+            match2 = line.match(/^Generating panel ([\w-]+)\.(html|png)\s+…?$/);
+            if (match2) {
+                return push(`${match2[2] === 'png' ? 'Rendering print panel' : 'Building panel'}: ${formatFigureLabel(match2[1])}`);
+            }
+
+            match2 = line.match(/^Generating ([\w-]+)\.(html|png)\s+…?$/);
+            if (match2) {
+                return push(`${match2[2] === 'png' ? 'Rendering print figure' : 'Building figure'}: ${formatFigureLabel(match2[1])}`);
+            }
+
+            match2 = line.match(/^Generated: .+\/([\w-]+)\.html$/);
+            if (match2) return push(`Figure ready: ${formatFigureLabel(match2[1])}`);
+
+            match2 = line.match(/^Generated \(PNG\): .+\/([\w-]+)\.png$/);
+            if (match2) return push(`Print figure ready: ${formatFigureLabel(match2[1])}`);
+
+            match2 = line.match(/^Generated panel \(HTML\): .+\/([\w-]+)\.html$/);
+            if (match2) return push(`Panel ready: ${formatFigureLabel(match2[1])}`);
+
+            match2 = line.match(/^Generated panel \(PNG\): .+\/([\w-]+)\.png$/);
+            if (match2) return push(`Print panel ready: ${formatFigureLabel(match2[1])}`);
+
+            match2 = line.match(/^Generated \(multi-image\): .+\/([\w-]+)\.html$/);
+            if (match2) return push(`Figure ready: ${formatFigureLabel(match2[1])}`);
+
+            match2 = line.match(/^Generated \(multi-image PNG\): .+\/([\w-]+)\.png$/);
+            if (match2) return push(`Print figure ready: ${formatFigureLabel(match2[1])}`);
+
+            match2 = line.match(/^([\w-]+)\.(html|png) is up to date — skipping\.$/);
+            if (match2) {
+                return push(`${match2[2] === 'png' ? 'Reusing print figure' : 'Reusing figure'}: ${formatFigureLabel(match2[1])}`);
+            }
+
+            match2 = line.match(/^Camera for ([\w-]+): /);
+            if (match2) return push(`Applying saved camera: ${formatFigureLabel(match2[1])}`);
+
+            match2 = line.match(/^pandoc(?: --output)?\s+(.+)$/);
+            if (match2) {
+                const target = match2[1];
+                if (/paperview\.html$/.test(target)) return push('Assembling paper preview');
+                if (/standalone\.html$/.test(target)) return push('Packaging standalone HTML');
+                return push('Assembling interactive preview');
+            }
+
+            if (/^Injecting \d+ 4D figures into /.test(line)) return push('Embedding interactive figures into exported HTML');
+            if (/^Successfully injected figures into /.test(line)) return push('Interactive figures embedded successfully');
+            if (/^Rendered HTML signing disabled/.test(line)) return;
+
+            match2 = line.match(/^Output created: _output\/(.+)$/);
+            if (match2) {
+                const outputName = match2[1];
+                if (outputName.endsWith('-paperview.html')) return push('Paper preview ready');
+                if (outputName.endsWith('-standalone.html')) return push('Standalone HTML ready');
+                return push('Interactive preview ready');
+            }
+        });
+
+        const status = deriveBuildStatus(logText, context);
+        const output = [];
+        output.push(status.statusLabel);
+        output.push('');
+        output.push('Recent progress');
+
+        const recent = summary.slice(-8);
+        recent.forEach((line) => output.push(`- ${line}`));
+
+        if (warnings.length > 0) {
+            output.push('');
+            output.push('Warnings');
+            Array.from(new Set(warnings)).forEach((line) => output.push(`- ${line}`));
+        }
+
+        if (recent.length === 0) {
+            output.push(`- ${buildStartMessage(context).replace(/\n+/g, ' ')}`);
+        }
+
+        return output.join('\n');
     }
 
     // Build progress bar
@@ -789,7 +1259,7 @@ jupyter: python3
                 _estimate = getEstimate();
                 _start = Date.now();
                 document.getElementById('build-progress-area').style.display = 'flex';
-                document.getElementById('build-progress-label').textContent = 'Building...';
+                document.getElementById('build-progress-label').textContent = 'Building';
                 _setPct(0);
                 if (_raf) cancelAnimationFrame(_raf);
                 _raf = requestAnimationFrame(tick);
@@ -808,6 +1278,10 @@ jupyter: python3
                     if (bar) bar.style.background = '#3B82F6';
                     _setPct(0);
                 }, 2000);
+            },
+            setLabel(text) {
+                const label = document.getElementById('build-progress-label');
+                if (label && text) label.textContent = text;
             }
         };
     })();
@@ -983,6 +1457,8 @@ jupyter: python3
             state.editorContent[state.activeTab] = value;
             const tab = state.openTabs.find(t => t.path === state.activeTab);
             if (tab) tab.content = value;
+            if (state.isLoadingEditorContent) return;
+            bumpContentRevision();
         });
     }
 
@@ -1153,7 +1629,9 @@ jupyter: python3
         state.activeTab = filePath;
         const tab = state.openTabs.find(t => t.path === filePath);
         if (tab && state.codeEditor) {
+            state.isLoadingEditorContent = true;
             state.codeEditor.setValue(tab.content);
+            state.isLoadingEditorContent = false;
         }
     }
 
@@ -1213,11 +1691,14 @@ jupyter: python3
             const logPanel = document.getElementById('build-log-panel');
             const logOutput = document.getElementById('build-log-output');
             const logTitle = document.getElementById('build-log-title');
+            const compileContext = { action: 'compile', viewMode: state.viewMode };
+            const compileFingerprint = buildFingerprint();
             
             logTitle.style.color = '#3b82f6'; // Blue for loading
-            logTitle.textContent = 'Build Log — Compiling...';
-            logOutput.textContent = 'Starting Quarto compilation in the background...\n\nPlease wait.';
-            logPanel.style.display = 'flex';
+            logTitle.textContent = `Build Log — ${buildModeLabel(compileContext)}`;
+            logOutput.textContent = buildStartMessage(compileContext);
+            setBuildLogPanelVisible(false);
+            setStatusBarState('Compiling', '#3b82f6', 'ph-fill ph-spinner-gap', true);
 
             // Start polling for real-time logs every 1 second
             let logInterval = setInterval(async () => {
@@ -1226,14 +1707,12 @@ jupyter: python3
                     if (statusRes.ok) {
                         const statusData = await statusRes.json();
                         if (statusData.log) {
-                            logOutput.textContent = statusData.log;
-                            
-                            // Smart parse the log to show current progress in the title
-                            const match = statusData.log.match(/\[([^\]]+) t=(\d+)\]/g);
-                            if (match && match.length > 0) {
-                                const lastMatch = match[match.length - 1];
-                                logTitle.textContent = `Build Log — Compiling... (Processing ${lastMatch})`;
-                            }
+                            const cleanLog = statusData.log.replace(/\u001b\[[0-9;]*m/g, '');
+                            const status = deriveBuildStatus(cleanLog, compileContext);
+                            logOutput.textContent = formatBuildLogDisplay(cleanLog, compileContext);
+                            logTitle.textContent = status.title;
+                            logTitle.style.color = status.color;
+                            buildProgress.setLabel(status.progressLabel);
                         }
                     }
                 } catch (e) {
@@ -1260,26 +1739,34 @@ jupyter: python3
             }
 
             // Show build log
-            const logText = result.log || result.error || '';
+            const logText = (result.log || result.error || '').replace(/\u001b\[[0-9;]*m/g, '');
             if (logText) {
-                logOutput.textContent = logText;
-                logPanel.style.display = 'flex';
+                logOutput.textContent = formatBuildLogDisplay(logText, compileContext);
             }
 
             if (response.ok && result.status === 'success') {
                 buildProgress.finish(true);
                 state.mainFilename = result.filename ? result.filename.replace(/(-paperview)?\.html$/, '') : 'main';
+                state.buildCache[state.viewMode] = {
+                    filename: result.filename,
+                    fingerprint: compileFingerprint,
+                };
+                if (state.viewMode === 'pdf') {
+                    // Paperview rebuilds static assets; force a fresh interactive compile next time.
+                    state.buildCache.interactive = null;
+                }
                 logTitle.style.color = '#22c55e';
-                logTitle.textContent = 'Build Log — Success';
-                setTimeout(() => { logPanel.style.display = 'none'; }, 3000);
-                const iframe = document.querySelector('#preview-iframe');
-                iframe.srcdoc = '';
-                iframe.removeAttribute('srcdoc');
-                const filename = result.filename;
-                iframe.src = '/output/' + filename + '?t=' + Date.now();
+                logTitle.textContent = state.viewMode === 'pdf'
+                    ? 'Build Log — Paper Preview Ready'
+                    : 'Build Log — Interactive Preview Ready';
+                setBuildLogPanelVisible(false);
+                setPreviewIframe(result.filename);
 
-                const statusBar = document.querySelector('.status-bar .status-left');
-                statusBar.innerHTML = '<span>Status: <span style="color: #22c55e;">Compiled</span></span><i class="ph-fill ph-check-circle" style="color: #22c55e;"></i>';
+                setStatusBarState(
+                    state.viewMode === 'pdf' ? 'Paper preview ready' : 'Interactive preview ready',
+                    '#22c55e',
+                    'ph-fill ph-check-circle'
+                );
             } else if (result.error && result.error.includes('quarto')) {
                 // Fallback: show editor content in preview when quarto not available
                 let mainContent = state.codeEditor ? state.codeEditor.getValue() : '';
@@ -1310,28 +1797,26 @@ jupyter: python3
 </body>
 </html>`;
 
-                const iframe = document.querySelector('#preview-iframe');
-                iframe.srcdoc = html;
+	                const iframe = document.querySelector('#preview-iframe');
+	                iframe.srcdoc = html;
 
-                const statusBar = document.querySelector('.status-bar .status-left');
-                statusBar.innerHTML = '<span>Status: <span style="color: #f59e0b;">Preview (Quarto not found)</span></span>';
+	                setStatusBarState('Preview only (Quarto not found)', '#f59e0b', 'ph-fill ph-warning-circle');
             } else {
                 buildProgress.finish(false);
                 logTitle.style.color = '#ef4444';
-                logTitle.textContent = 'Build Log — Error';
+                logTitle.textContent = 'Build Log — Build Failed';
                 if (!logText) {
                     logOutput.textContent = result.error || 'Compilation failed';
-                    logPanel.style.display = 'flex';
                 }
-                const statusBar = document.querySelector('.status-bar .status-left');
-                statusBar.innerHTML = '<span>Status: <span style="color: #ef4444;">Error</span></span><i class="ph-fill ph-x-circle" style="color: #ef4444;"></i>';
+                setBuildLogPanelVisible(true);
+                setStatusBarState('Build failed', '#ef4444', 'ph-fill ph-x-circle');
             }
 
         } catch (error) {
             buildProgress.finish(false);
             console.error('Compilation error:', error);
-            const statusBar = document.querySelector('.status-bar .status-left');
-            statusBar.innerHTML = '<span>Status: <span style="color: #ef4444;">Error</span></span><i class="ph-fill ph-x-circle" style="color: #ef4444;"></i>';
+            setBuildLogPanelVisible(true);
+            setStatusBarState('Build failed', '#ef4444', 'ph-fill ph-x-circle');
         } finally {
             state.isCompiling = false;
             btn.disabled = false;
@@ -1354,6 +1839,34 @@ jupyter: python3
             const orig = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<i class="ph-fill ph-spinner text-white animate-spin"></i><span>Exporting…</span>';
+            buildProgress.start();
+            const exportContext = { action: 'export', format: fmt === 'pdf' ? 'pdf' : 'html-export' };
+            const logPanel = document.getElementById('build-log-panel');
+            const logOutput = document.getElementById('build-log-output');
+            const logTitle = document.getElementById('build-log-title');
+            logTitle.style.color = '#3b82f6';
+            logTitle.textContent = `Build Log — ${buildModeLabel(exportContext)}`;
+            logOutput.textContent = buildStartMessage(exportContext);
+            setBuildLogPanelVisible(false);
+            setStatusBarState('Exporting', '#3b82f6', 'ph-fill ph-spinner-gap', true);
+
+            let logInterval = setInterval(async () => {
+                try {
+                    const statusRes = await fetch('/api/compile/status');
+                    if (!statusRes.ok) return;
+                    const statusData = await statusRes.json();
+                    if (!statusData.log) return;
+                    const cleanLog = statusData.log.replace(/\u001b\[[0-9;]*m/g, '');
+                    const status = deriveBuildStatus(cleanLog, exportContext);
+                    logOutput.textContent = formatBuildLogDisplay(cleanLog, exportContext);
+                    logTitle.textContent = status.title;
+                    logTitle.style.color = status.color;
+                    buildProgress.setLabel(status.progressLabel);
+                } catch (e) {
+                    // Ignore polling errors during export
+                }
+            }, 1000);
+
             try {
                 // Compile saves in-flight editor changes, then renders the chosen format.
                 const response = await fetch(fmt === 'pdf' ? '/api/export' : '/api/compile', {
@@ -1370,6 +1883,12 @@ jupyter: python3
                 if (fmt === 'pdf') {
                     if (!response.ok) {
                         const err = await response.json().catch(() => ({error: 'Export failed with status ' + response.status}));
+                        buildProgress.finish(false);
+                        logTitle.style.color = '#ef4444';
+                        logTitle.textContent = 'Build Log — PDF Export Failed';
+                        logOutput.textContent = formatBuildLogDisplay(err.log || err.error || 'PDF export failed', exportContext);
+                        setBuildLogPanelVisible(true);
+                        setStatusBarState('PDF export failed', '#ef4444', 'ph-fill ph-x-circle');
                         alert('Export failed:\n\n' + (err.error || 'Unknown error'));
                         return;
                     }
@@ -1380,9 +1899,20 @@ jupyter: python3
                     a.download = filename + '.pdf';
                     document.body.appendChild(a); a.click(); a.remove();
                     URL.revokeObjectURL(a.href);
+                    buildProgress.finish(true);
+                    logTitle.style.color = '#22c55e';
+                    logTitle.textContent = 'Build Log — PDF Export Ready';
+                    setBuildLogPanelVisible(false);
+                    setStatusBarState('PDF export ready', '#22c55e', 'ph-fill ph-check-circle');
                 } else {
                     const result = await response.json();
                     if (!(response.ok && result.status === 'success')) {
+                        buildProgress.finish(false);
+                        logTitle.style.color = '#ef4444';
+                        logTitle.textContent = 'Build Log — HTML Export Failed';
+                        logOutput.textContent = formatBuildLogDisplay((result.log || result.error || 'HTML export failed').replace(/\u001b\[[0-9;]*m/g, ''), exportContext);
+                        setBuildLogPanelVisible(true);
+                        setStatusBarState('HTML export failed', '#ef4444', 'ph-fill ph-x-circle');
                         alert('Export failed:\n\n' + (result.error || 'Unknown error'));
                         return;
                     }
@@ -1394,10 +1924,23 @@ jupyter: python3
                     a.download = result.filename;
                     document.body.appendChild(a); a.click(); a.remove();
                     URL.revokeObjectURL(a.href);
+                    buildProgress.finish(true);
+                    logTitle.style.color = '#22c55e';
+                    logTitle.textContent = 'Build Log — HTML Export Ready';
+                    logOutput.textContent = formatBuildLogDisplay((result.log || '').replace(/\u001b\[[0-9;]*m/g, ''), exportContext);
+                    setBuildLogPanelVisible(false);
+                    setStatusBarState('Standalone HTML ready', '#22c55e', 'ph-fill ph-check-circle');
                 }
             } catch (error) {
+                buildProgress.finish(false);
+                logTitle.style.color = '#ef4444';
+                logTitle.textContent = fmt === 'pdf' ? 'Build Log — PDF Export Failed' : 'Build Log — HTML Export Failed';
+                logOutput.textContent = formatBuildLogDisplay(error.message || 'Export failed', exportContext);
+                setBuildLogPanelVisible(true);
+                setStatusBarState(fmt === 'pdf' ? 'PDF export failed' : 'HTML export failed', '#ef4444', 'ph-fill ph-x-circle');
                 alert('Export failed: ' + error.message);
             } finally {
+                clearInterval(logInterval);
                 btn.disabled = false;
                 btn.innerHTML = orig;
             }
@@ -1410,6 +1953,20 @@ jupyter: python3
 
     // Setup event listeners
     function setupEventListeners() {
+        window.addEventListener('message', (event) => {
+            if (!event?.data) return;
+            if (event.data.type === '4dpaper-camera') {
+                bumpCameraRevision();
+            }
+        });
+
+        document.getElementById('build-log-toggle')?.addEventListener('click', () => {
+            setBuildLogPanelVisible(!state.showBuildDetails);
+        });
+        document.getElementById('build-log-close')?.addEventListener('click', () => {
+            setBuildLogPanelVisible(false);
+        });
+
         // Split pane resizing
         const handles = document.querySelectorAll('.split-handle');
         handles.forEach(handle => {
@@ -1617,26 +2174,29 @@ jupyter: python3
             }
         };
 
-        const switchView = (mode) => {
+        const switchView = async (mode) => {
             if (state.viewMode === mode) return;
             state.viewMode = mode;
             updateViewUI();
             
             const previewPane = document.querySelector('.preview-pane');
-            const iframe = document.querySelector('#preview-iframe');
             
             if (mode === 'interactive') {
                 previewPane.classList.remove('pdf-mode');
-                iframe.src = '/output/' + (state.mainFilename || 'main') + '.html?t=' + Date.now();
+                if (!(await loadCachedPreview('interactive'))) {
+                    // Interactive assets can be invalidated by a paperview build, so recompile when needed.
+                    document.querySelector('[data-purpose="compile-button"]')?.click();
+                }
             } else {
                 previewPane.classList.add('pdf-mode');
-                // When switching to PDF, automatically trigger a compile to ensure Paper View is current
-                document.querySelector('[data-purpose="compile-button"]')?.click();
+                if (!(await loadCachedPreview('pdf'))) {
+                    document.querySelector('[data-purpose="compile-button"]')?.click();
+                }
             }
         };
 
-        btnInteractive?.addEventListener('click', () => switchView('interactive'));
-        btnPdf?.addEventListener('click', () => switchView('pdf'));
+        btnInteractive?.addEventListener('click', () => { void switchView('interactive'); });
+        btnPdf?.addEventListener('click', () => { void switchView('pdf'); });
     }
 
 

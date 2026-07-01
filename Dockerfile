@@ -1,5 +1,5 @@
 # 4Dpapers - Containerized Scientific Paper Authoring
-FROM --platform=linux/arm64 python:3.11-slim
+FROM python:3.11-slim
 
 # Install system dependencies (Quarto, git, etc.)
 RUN apt-get update && apt-get install -y \

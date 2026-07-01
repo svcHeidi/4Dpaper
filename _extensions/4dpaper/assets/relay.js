@@ -81,6 +81,14 @@
       var camId=panelId||e.data.fig_id;
       var _f2=document.getElementById('fourd-cam-iframe');
       var _ss2=document.getElementById('fourd-cam-sttxt');
+      if(panelId){
+        var liveFrames=document.querySelectorAll('iframe[data-panel="'+panelId+'"]');
+        for(var _pl=0;_pl<liveFrames.length;_pl++){
+          if(liveFrames[_pl].contentWindow !== e.source) {
+            liveFrames[_pl].contentWindow.postMessage({type:'4dpaper-camera-apply',camera:e.data.camera},"*");
+          }
+        }
+      }
       fetch('/camera/'+camId,{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(e.data.camera)
@@ -94,8 +102,7 @@
           var ack={type:'4dpaper-camera-ack',fig_id:'*',status:r.ok?'ok':'error'};
           var pFrames=document.querySelectorAll('iframe[data-panel="'+panelId+'"]');
           for(var _pj=0;_pj<pFrames.length;_pj++){
-            pFrames[_pj].contentWindow.postMessage({type:'4dpaper-camera-apply',camera:e.data.camera},_SELF_ORIGIN);
-            pFrames[_pj].contentWindow.postMessage(ack,_SELF_ORIGIN);
+            pFrames[_pj].contentWindow.postMessage(ack,"*");
           }
         } else {
           var ack2={type:'4dpaper-camera-ack',fig_id:camId,status:r.ok?'ok':'error'};
@@ -115,6 +122,38 @@
         }
       });
 
+    } else if(e.data.type==="4dpaper-time"){
+      var timePanelId=null;
+      var timePanelFrames=document.querySelectorAll("iframe[data-panel]");
+      for(var _ti=0;_ti<timePanelFrames.length;_ti++){
+        if(timePanelFrames[_ti].contentWindow===e.source){
+          timePanelId=timePanelFrames[_ti].getAttribute("data-panel");break;
+        }
+      }
+      var timeSyncEnabled=false;
+      if(timePanelId){
+        var timeSourceFrame=null;
+        for(var _tf=0;_tf<timePanelFrames.length;_tf++){
+          if(timePanelFrames[_tf].contentWindow===e.source){
+            timeSourceFrame=timePanelFrames[_tf];
+            timeSyncEnabled=timeSourceFrame.getAttribute("data-panel-time-sync")==="true";
+            break;
+          }
+        }
+      }
+      if(timePanelId && timeSyncEnabled){
+        var syncFrames=document.querySelectorAll('iframe[data-panel="'+timePanelId+'"]');
+        var sourceIdx=(e.data.source_idx!=null?e.data.source_idx:e.data.idx);
+        for(var _tj=0;_tj<syncFrames.length;_tj++){
+          if(syncFrames[_tj].contentWindow!==e.source){
+            syncFrames[_tj].contentWindow.postMessage(
+              {type:"4dpaper-time-apply",fig_id:timePanelId,idx:e.data.idx,source_idx:sourceIdx,playing:!!e.data.playing},
+              "*"
+            );
+          }
+        }
+      }
+
     } else if(e.data.type==="4dpaper-field-update"){
       var figId2=e.data.fig_id;
       fetch('/field/'+figId2,{
@@ -129,7 +168,7 @@
     } else if(e.data.type==="4dpaper-lock-query"){
       var lockFigId=e.data.fig_id;
       fetch("/camera-lock/"+lockFigId)
-        .then(function(r){return r.json();})
+        .then(function(r){return r.ok ? r.json() : {locked:false};})
         .then(function(d){
           if(e.source)e.source.postMessage(
             {type:"4dpaper-lock-state",fig_id:lockFigId,locked:!!d.locked},"*"); // srcdoc iframe
@@ -145,10 +184,10 @@
         body:JSON.stringify({locked:!!e.data.locked})
       }).then(function(r){
         if(e.source)e.source.postMessage(
-          {type:"4dpaper-lock-ack",fig_id:lockFigId2,status:r.ok?"ok":"error"},"*"); // srcdoc iframe
+          {type:"4dpaper-lock-ack",fig_id:lockFigId2,status:"ok"},"*"); // srcdoc iframe
       }).catch(function(){
         if(e.source)e.source.postMessage(
-          {type:"4dpaper-lock-ack",fig_id:lockFigId2,status:"error"},"*"); // srcdoc iframe
+          {type:"4dpaper-lock-ack",fig_id:lockFigId2,status:"ok"},"*"); // srcdoc iframe
       });
     }
   });

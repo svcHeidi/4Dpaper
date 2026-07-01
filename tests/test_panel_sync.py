@@ -177,8 +177,8 @@ class TestTimeseriesTimeSyncRelay:
     def test_sync_re_relay_handles_time_message(self):
         """The sync composite re-relay script must relay '4dpaper-time' messages."""
         import inspect
-        mod = _load_4dpaper()
-        source = inspect.getsource(mod.generate_panel_html)
+        import lib.render
+        source = inspect.getsource(lib.render._panel_transport_html)
         assert "4dpaper-time" in source, (
             "generate_panel_html sync re-relay must handle '4dpaper-time' "
             "so timeseries subfigures stay in step"
@@ -187,8 +187,8 @@ class TestTimeseriesTimeSyncRelay:
     def test_sync_re_relay_sends_time_apply(self):
         """When '4dpaper-time' arrives the relay must fan out '4dpaper-time-apply'."""
         import inspect
-        mod = _load_4dpaper()
-        source = inspect.getsource(mod.generate_panel_html)
+        import lib.render
+        source = inspect.getsource(lib.render._panel_transport_html)
         assert "4dpaper-time-apply" in source, (
             "The re-relay must broadcast '4dpaper-time-apply' to sibling iframes"
         )
@@ -196,9 +196,41 @@ class TestTimeseriesTimeSyncRelay:
     def test_sync_re_relay_skips_sender_for_time(self):
         """The time relay must skip the source iframe to avoid feedback loops."""
         import inspect
-        mod = _load_4dpaper()
-        source = inspect.getsource(mod.generate_panel_html)
-        assert "timeSrc" in source, (
-            "Time relay should track the sending iframe (timeSrc) to skip it"
+        import lib.render
+        source = inspect.getsource(lib.render._panel_transport_html)
+        assert "source_idx" in source, (
+            "Time relay should track the sending iframe (source_idx) to skip it"
         )
 
+
+class TestStandaloneRelay:
+    def test_shortcodes_relay_handles_time_message(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert 'e.data.type==="4dpaper-time"' in content
+
+    def test_shortcodes_relay_limits_time_broadcast_to_opted_in_iframes(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert 'data-panel-time-sync' in content
+        assert 'timeSyncEnabled' in content
+
+    def test_shortcodes_relay_broadcasts_time_apply(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert 'type:"4dpaper-time-apply"' in content
+
+    def test_shortcodes_relay_skips_time_sender(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert 'contentWindow!==e.source' in content
+
+    def test_shortcodes_relay_applies_camera_before_fetch_ack(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        camera_idx = content.index('} else if(e.data.type==="4dpaper-camera"){')
+        apply_idx = content.index("liveFrames[_pl].contentWindow.postMessage({type:'4dpaper-camera-apply',camera:e.data.camera},'*');", camera_idx)
+        fetch_idx = content.index("fetch('/camera/'+camId,{", camera_idx)
+        assert apply_idx < fetch_idx
+
+
+class TestSyncPanelTimeControls:
+    def test_sync_panel_iframes_do_not_opt_into_child_time_broadcast(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        sync_branch = content.split('if camera_mode == "sync" then', 1)[1].split('-- Independent mode', 1)[0]
+        assert 'data-panel-time-sync="true"' not in sync_branch

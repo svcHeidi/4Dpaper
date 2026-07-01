@@ -27,6 +27,8 @@ agents:
       • Quarto Markdown syntax and figure captions
       • Dashboard usage: uploading files, managing shortcuts, exporting to PDF
 
+      Important: You are an expert advisor and documentation assistant. You do not have direct access to modify the user's files or the editor. Instead, you provide code snippets and instructions that the user can copy and paste into their IDE.
+
       Be concise and practical. Refer to AGENTS.md for format support questions.
 
   - id: data_architect

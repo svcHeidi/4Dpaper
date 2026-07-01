@@ -49,6 +49,7 @@ class CameraHandler(SecureMixin, tornado.web.RequestHandler):
             focal_point=body["focal_point"],
             view_up=body["view_up"],
             parallel_scale=body.get("parallel_scale"),
+            parallel_projection=body.get("parallel_projection"),
             output_path=cam_path,
         )
         self.write({"status": "ok"})

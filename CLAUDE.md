@@ -188,6 +188,44 @@ The pre-render hook applies RDP polyline simplification (ε = 0.1% of normalised
 
 ---
 
+### 3.6 Static Images — Quarto Native Markdown
+
+For diagrams, photos, reference images, and other static content, use Quarto's native Markdown image syntax (no custom shortcode required):
+
+```markdown
+![Figure caption](path/to/image.png)
+```
+
+**With width & centering:**
+```markdown
+![Cardiac electrophysiology pathway diagram.](data/ep-diagram.png){width=70% fig-align="center"}
+```
+
+**Multiple images in a row:**
+```markdown
+![Left plot](data/plot1.png){width=48%}
+![Right plot](data/plot2.png){width=48%}
+```
+
+**Cross-references (numbered captions):**
+```markdown
+![Experimental setup photograph.](data/rig.jpg){#fig-rig}
+
+See @fig-rig for the physical apparatus.
+```
+
+| Feature | Support | Notes |
+|---------|---------|-------|
+| HTML export | ✅ YES | Embedded directly, no server needed |
+| PDF export | ✅ YES | Rendered as static image via WeasyPrint |
+| Supported formats | PNG, JPG, GIF, SVG | Place files in `data/` directory |
+| Captions | ✅ YES | Auto-numbered in PDF via `{#fig-id}` |
+| Cross-references | ✅ YES | Use `@fig-id` syntax for automatic numbering |
+
+**Tip:** Static images require no pre-processing—Quarto handles embedding automatically. Place all images in the `data/` directory alongside 3D case files and data sources.
+
+---
+
 ## 4. Source Path Syntax
 
 All `src` attributes support two forms:

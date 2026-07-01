@@ -10,6 +10,7 @@ PDF output:  embeds state/figures/<id>.png as a standard Markdown image
 --]]
 
 local _relay_injected = false
+local _panel_toolbar_style_injected = false
 -- App mode: set by dashboard when building preview HTML.
 -- Figures are served as static files (/state/figures/<id>.html) instead of
 -- being inlined as srcdoc — pandoc processes ~50KB instead of ~15MB, ~10x faster.
@@ -96,6 +97,14 @@ local _RELAY_SCRIPT = [=[
       var camId=panelId||e.data.fig_id;
       var _f2=document.getElementById('fourd-cam-iframe');
       var _ss2=document.getElementById('fourd-cam-sttxt');
+      if(panelId){
+        var liveFrames=document.querySelectorAll('iframe[data-panel="'+panelId+'"]');
+        for(var _pl=0;_pl<liveFrames.length;_pl++){
+          if(liveFrames[_pl].contentWindow !== e.source) {
+            liveFrames[_pl].contentWindow.postMessage({type:'4dpaper-camera-apply',camera:e.data.camera},'*');
+          }
+        }
+      }
       fetch('/camera/'+camId,{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(e.data.camera)
@@ -105,9 +114,6 @@ local _RELAY_SCRIPT = [=[
         var ack={type:'4dpaper-camera-ack',fig_id:'*',status:'ok'};
         var pFrames=document.querySelectorAll('iframe[data-panel="'+panelId+'"]');
         for(var _pj=0;_pj<pFrames.length;_pj++){
-          if(pFrames[_pj].contentWindow !== e.source) {
-            pFrames[_pj].contentWindow.postMessage({type:'4dpaper-camera-apply',camera:e.data.camera},'*');
-          }
           pFrames[_pj].contentWindow.postMessage(ack,'*');
         }
       } else {
@@ -116,6 +122,37 @@ local _RELAY_SCRIPT = [=[
         if(e.source&&e.source!==(_f2&&_f2.contentWindow))e.source.postMessage(ack2,'*');
       }
 
+    } else if(e.data.type==="4dpaper-time"){
+      var timePanelId=null;
+      var timePanelFrames=document.querySelectorAll("iframe[data-panel]");
+      for(var _ti=0;_ti<timePanelFrames.length;_ti++){
+        if(timePanelFrames[_ti].contentWindow===e.source){
+          timePanelId=timePanelFrames[_ti].getAttribute("data-panel");break;
+        }
+      }
+      var timeSyncEnabled = false;
+      if(timePanelId){
+        var timeSourceFrame = null;
+        for(var _tf=0;_tf<timePanelFrames.length;_tf++){
+          if(timePanelFrames[_tf].contentWindow===e.source){
+            timeSourceFrame=timePanelFrames[_tf];
+            timeSyncEnabled=timeSourceFrame.getAttribute("data-panel-time-sync")==="true";
+            break;
+          }
+        }
+      }
+      if(timePanelId && timeSyncEnabled){
+        var syncFrames=document.querySelectorAll('iframe[data-panel="'+timePanelId+'"]');
+        var sourceIdx=(e.data.source_idx!=null?e.data.source_idx:e.data.idx);
+        for(var _tj=0;_tj<syncFrames.length;_tj++){
+          if(syncFrames[_tj].contentWindow!==e.source){
+            syncFrames[_tj].contentWindow.postMessage(
+              {type:"4dpaper-time-apply",fig_id:timePanelId,idx:e.data.idx,source_idx:sourceIdx,playing:!!e.data.playing},
+              "*"
+            );
+          }
+        }
+      }
     } else if(e.data.type==="4dpaper-field-update"){
       var figId2=e.data.fig_id;
       fetch('/field/'+figId2,{
@@ -154,6 +191,126 @@ local _RELAY_SCRIPT = [=[
 })();
 </script>
 ]=]
+
+local function _count_time_frames_from_html(path)
+  local fh = io.open(path, "r")
+  if not fh then return 0 end
+  local html = fh:read("*all")
+  fh:close()
+  local labels = html:match("TIME_LABELS%s*=%s*(%b[])")
+  if not labels then return 0 end
+  local n = 0
+  for _ in labels:gmatch('"[^"]*"') do
+    n = n + 1
+  end
+  return n
+end
+
+local function _infer_panel_frame_count(subfig_ids)
+  local nmax = 0
+  for _, sub_id in ipairs(subfig_ids) do
+    local n = _count_time_frames_from_html("state/figures/" .. sub_id .. ".html")
+    if n > nmax then nmax = n end
+  end
+  return nmax
+end
+
+local function _manifest_time_indices(manifest_str)
+  local indices = {}
+  local raw = manifest_str:match('"time_indices"%s*:%s*(%b[])')
+  if not raw then return indices end
+  for num in raw:gmatch('%-?%d+') do
+    table.insert(indices, tonumber(num))
+  end
+  return indices
+end
+
+local function _panel_toolbar_html(id, frame_count, time_indices, show_transport)
+  if show_transport == nil then
+    show_transport = true
+  end
+  local toolbar_style = ""
+  if not _panel_toolbar_style_injected then
+    _panel_toolbar_style_injected = true
+    toolbar_style = [[
+<style>
+.plb-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  min-height:26px;
+  padding:0 8px;
+  background:rgba(18,18,26,0.82);
+  border-bottom:1px solid rgba(255,255,255,0.09);
+  font-family:system-ui,sans-serif;
+  font-size:11px;
+}
+.plb-transport{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:220px;
+  flex:1;
+}
+.plb-play,
+.plb-lock{
+  background:none;
+  border:none;
+  color:#ccc;
+  cursor:pointer;
+  line-height:1;
+}
+.plb-play{
+  flex-shrink:0;
+  padding:0 1px;
+  font-size:11px;
+}
+.plb-lock{
+  flex-shrink:0;
+  padding:0 2px;
+  font-size:12px;
+}
+</style>
+]]
+  end
+  local actual = time_indices or {}
+  local transport_count = #actual > 0 and #actual or frame_count
+  local transport = ""
+  local actual_json = "[]"
+  if show_transport and transport_count > 1 then
+    actual_json = "[" .. table.concat(actual, ",") .. "]"
+    transport =
+      '<div class="plb-transport">' ..
+      '<button id="plb-play-' .. id .. '" class="plb-play" title="Play / pause synchronized animation">&#x25B6;</button>' ..
+      '</div>'
+  else
+    actual_json = "[]"
+  end
+  return toolbar_style ..
+    '<div id="plb-' .. id .. '" class="plb-toolbar">' ..
+    transport ..
+    '<button id="plb-btn-' .. id .. '" class="plb-lock" title="Lock / unlock panel cameras">&#x1F513;</button>' ..
+    '<script>(function(){' ..
+    'var PID="' .. id .. '",N=' .. transport_count .. ',ACTUAL=' .. actual_json .. ',_pl=false,_idx=0,_tm=0;' ..
+    'function _fs(){return document.querySelectorAll("iframe[data-panel=\\""+PID+"\\"]");}' ..
+    'function _bc(v){var f=_fs();for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-lock-all",locked:v},"*");}' ..
+    'function _bh(){var f=_fs();for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-hide-lock-btn"},"*");}' ..
+    'function _actual(i){return ACTUAL.length?ACTUAL[i]:i;}' ..
+    'function _fromActual(i){if(!ACTUAL.length)return i;var best=0,bestDiff=Math.abs(ACTUAL[0]-i);for(var j=1;j<ACTUAL.length;j++){var d=Math.abs(ACTUAL[j]-i);if(d<bestDiff){best=j;bestDiff=d;}}return best;}' ..
+    'function _send(i){var actual=_actual(i);var f=_fs();for(var j=0;j<f.length;j++)f[j].contentWindow.postMessage({type:"4dpaper-time-apply",fig_id:PID,idx:i,source_idx:actual,playing:false},"*");}' ..
+    'function _ui(i){if(N<2)return;_idx=Math.max(0,Math.min(parseInt(i||0,10)||0,N-1));}' ..
+    'function _seek(i){_ui(i);_send(_idx);}' ..
+    'function _play(v){if(N<2)return;_pl=!!v;var b=document.getElementById("plb-play-"+PID);if(b)b.innerHTML=_pl?"&#x23F8;":"&#x25B6;";if(_tm){clearInterval(_tm);_tm=0;}if(_pl){_seek(_idx);_tm=setInterval(function(){_seek((_idx+1)%N);},180);}}' ..
+    'var pb=document.getElementById("plb-play-"+PID);if(pb)pb.addEventListener("click",function(){_play(!_pl);});' ..
+    'window.addEventListener("message",function(e){if(!e.data||e.data.type!=="4dpaper-time")return;var v=e.data.source_idx!=null?e.data.source_idx:e.data.idx;_ui(_fromActual(parseInt(v||0,10)||0));});' ..
+    'var _locked=false;' ..
+    'function _spl(v){_locked=v;var b=document.getElementById("plb-btn-"+PID);if(b)b.innerHTML=v?"&#x1F512;":"&#x1F513;";_bc(v);}' ..
+    'fetch("/camera-lock/"+PID).then(function(r){return r.json();}).then(function(d){_spl(!!d.locked);}).catch(function(){});' ..
+    'var _iv=setInterval(_bh,500); setTimeout(function(){clearInterval(_iv);},8000);' ..
+    'var btn=document.getElementById("plb-btn-"+PID);if(btn)btn.addEventListener("click",function(){var nv=!_locked;_spl(nv);fetch("/camera-lock/"+PID,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({locked:nv})}).catch(function(){});});' ..
+    '})();</script></div>'
+end
 
 local function fourd_image(args, kwargs)
   local id      = pandoc.utils.stringify(kwargs["id"] or pandoc.Str(""))
@@ -213,12 +370,9 @@ local function fourd_image(args, kwargs)
       iframe = '<iframe src="/state/figures/' .. id .. '.html" width="100%" height="600px" ' ..
                'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
     else
-      -- Export mode: inline as srcdoc for a fully self-contained HTML file.
-      local f = io.open(fig_path, "r")
-      local content = f:read("*all")
-      f:close()
-      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-      iframe = '<iframe srcdoc="' .. escaped .. '" width="100%" height="600px" ' ..
+      -- Export mode: output a placeholder for the Python post-processor to inject the massive Base64 strings.
+      -- This bypasses Pandoc's extremely slow embed-resources step.
+      iframe = '<iframe data-fourd-inject="state/figures/' .. id .. '.html" width="100%" height="600px" ' ..
                'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
     end
 
@@ -455,6 +609,7 @@ local function fourd_panel(args, kwargs)
       local ncols = tonumber(ncols_s) or 1
       local nrows = tonumber(nrows_s) or 1
       local sync_cells = {}
+      local sync_ids = {}
       local n = 1
       while true do
         local sub_id_val = kwargs["id" .. n]
@@ -470,9 +625,8 @@ local function fourd_panel(args, kwargs)
         else
           local fh = io.open(fig_path, "r")
           if fh then
-            local content = fh:read("*all"); fh:close()
-            local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-            cell_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
+            fh:close()
+            cell_iframe = '<iframe data-fourd-inject="state/figures/' .. sub_id .. '.html" ' ..
                           'data-panel="' .. id .. '" ' ..
                           'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
           else
@@ -482,6 +636,7 @@ local function fourd_panel(args, kwargs)
           end
         end
         table.insert(sync_cells, cell_iframe)
+        table.insert(sync_ids, sub_id)
         n = n + 1
       end
       if #sync_cells == 0 then
@@ -493,38 +648,7 @@ local function fourd_panel(args, kwargs)
       local sync_grid = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
                         'grid-template-rows:repeat(' .. nrows .. ',1fr);gap:4px;' ..
                         'width:100%;height:' .. height .. ';background:#111;'
-      local lock_toolbar = '<div id="plb-' .. id .. '" style="' ..
-        'display:flex;align-items:center;gap:8px;background:#181614;' ..
-        'border-bottom:1px solid #3d3834;padding:3px 8px;' ..
-        'font-family:system-ui,sans-serif;font-size:11px;">' ..
-        '<button id="plb-btn-' .. id .. '" style="background:none;border:none;' ..
-        'cursor:pointer;font-size:14px;padding:0;line-height:1;">&#x1F513;</button>' ..
-        '<script>(function(){' ..
-        'var PID="' .. id .. '";var _pl=false;' ..
-        'function _bc(v){var f=document.querySelectorAll(' ..
-        '"iframe[data-panel=\\""+PID+"\\"]");' ..
-        'for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-lock-all",locked:v},"*");}' ..
-        'function _bh(){var f=document.querySelectorAll(' ..
-        '"iframe[data-panel=\\""+PID+"\\"]");' ..
-        'for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-hide-lock-btn"},"*");}' ..
-        'function _spl(v){_pl=v;' ..
-        'var b=document.getElementById("plb-btn-"+PID);' ..
-        'if(b)b.innerHTML=v?"&#x1F512;":"&#x1F513;";' ..
-        '_bc(v);}' ..
-        'fetch("/camera-lock/"+PID)' ..
-        '.then(function(r){return r.json();})' ..
-        '.then(function(d){_spl(!!d.locked);})' ..
-        '.catch(function(){});' ..
-        'setTimeout(_bh,300);' ..
-        'var btn=document.getElementById("plb-btn-"+PID);' ..
-        'if(btn)btn.addEventListener("click",function(){' ..
-        'var nv=!_pl;_spl(nv);' ..
-        'fetch("/camera-lock/"+PID,{method:"POST",' ..
-        'headers:{"Content-Type":"application/json"},' ..
-        'body:JSON.stringify({locked:nv})})' ..
-        '.catch(function(){});' ..
-        '});' ..
-        '})();</script></div>'
+      local lock_toolbar = _panel_toolbar_html(id, _infer_panel_frame_count(sync_ids))
       return pandoc.RawBlock("html",
         '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
         lock_toolbar .. '\n' ..
@@ -558,11 +682,7 @@ local function fourd_panel(args, kwargs)
           cell_iframe = '<iframe src="/state/figures/' .. sub_id .. '.html" ' ..
                         'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
         else
-          local f = io.open(fig_path, "r")
-          local content = f:read("*all")
-          f:close()
-          local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-          cell_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
+          cell_iframe = '<iframe data-fourd-inject="state/figures/' .. sub_id .. '.html" ' ..
                         'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
         end
         table.insert(cells, cell_iframe)
@@ -753,12 +873,8 @@ local function fourd_pvsm(args, kwargs)
              'padding:4px 10px;font-size:12px;cursor:pointer;">&#128247; Camera View</button>' ..
              '</div>'
     else
-      -- Export mode: inline as srcdoc for self-contained HTML
-      local f = io.open(html_path, "r")
-      local content = f:read("*all")
-      f:close()
-      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-      body = '<iframe srcdoc="' .. escaped .. '" width="100%" height="600px" ' ..
+      -- Export mode: output a placeholder for Python injection
+      body = '<iframe data-fourd-inject="state/figures/' .. id .. '.html" width="100%" height="600px" ' ..
              'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
     end
 
@@ -874,6 +990,7 @@ local function fourd_timeseries(args, kwargs)
       end
     end
     local ncols = math.max(1, #subfig_ids)
+    local time_indices = _manifest_time_indices(manifest_str)
 
     if #subfig_ids == 0 then
       return pandoc.RawBlock("html",
@@ -893,14 +1010,11 @@ local function fourd_timeseries(args, kwargs)
         local cell_iframe
         if _app_mode then
           cell_iframe = '<iframe src="/state/figures/' .. sub_id .. '.html" ' ..
-                        'data-panel="' .. id .. '" ' ..
+                        'data-panel="' .. id .. '" data-panel-time-sync="true" ' ..
                         'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
         else
-          local fh = io.open(fig_path, "r")
-          local content = fh:read("*all"); fh:close()
-          local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-          cell_iframe = '<iframe srcdoc="' .. escaped .. '" ' ..
-                        'data-panel="' .. id .. '" ' ..
+          cell_iframe = '<iframe data-fourd-inject="state/figures/' .. sub_id .. '.html" ' ..
+                        'data-panel="' .. id .. '" data-panel-time-sync="true" ' ..
                         'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
         end
         table.insert(ts_cells, cell_iframe)
@@ -918,47 +1032,16 @@ local function fourd_timeseries(args, kwargs)
       relay_script = _RELAY_SCRIPT
     end
 
-    -- Lock toolbar (same as sync panel)
-    local lock_toolbar = '<div id="plb-' .. id .. '" style="' ..
-      'display:flex;align-items:center;gap:8px;background:#181614;' ..
-      'border-bottom:1px solid #3d3834;padding:3px 8px;' ..
-      'font-family:system-ui,sans-serif;font-size:11px;">' ..
-      '<button id="plb-btn-' .. id .. '" style="background:none;border:none;' ..
-      'cursor:pointer;font-size:14px;padding:0;line-height:1;">&#x1F513;</button>' ..
-      '<script>(function(){' ..
-      'var PID="' .. id .. '";var _pl=false;' ..
-      'function _bc(v){var f=document.querySelectorAll(' ..
-      '"iframe[data-panel=\\""+PID+"\\"]");' ..
-      'for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-lock-all",locked:v},"*");}' ..
-      'function _bh(){var f=document.querySelectorAll(' ..
-      '"iframe[data-panel=\\""+PID+"\\"]");' ..
-      'for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-hide-lock-btn"},"*");}' ..
-      'function _spl(v){_pl=v;' ..
-      'var b=document.getElementById("plb-btn-"+PID);' ..
-      'if(b)b.innerHTML=v?"&#x1F512;":"&#x1F513;";' ..
-      '_bc(v);}' ..
-      'fetch("/camera-lock/"+PID)' ..
-      '.then(function(r){return r.json();})' ..
-      '.then(function(d){_spl(!!d.locked);})' ..
-      '.catch(function(){});' ..
-      'setTimeout(_bh,300);' ..
-      'var btn=document.getElementById("plb-btn-"+PID);' ..
-      'if(btn)btn.addEventListener("click",function(){' ..
-      'var nv=!_pl;_spl(nv);' ..
-      'fetch("/camera-lock/"+PID,{method:"POST",' ..
-      'headers:{"Content-Type":"application/json"},' ..
-      'body:JSON.stringify({locked:nv})})' ..
-      '.catch(function(){});' ..
-      '});' ..
-      '})();</script></div>'
-
-    -- Grid (same as sync panel)
+    -- Use the same shared toolbar + relay path as sync panels so lock state,
+    -- timeline transport, and camera fan-out behave identically in preview
+    -- and exported standalone HTML.
     local grid_style = (
       'display:grid;' ..
       'grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
       'grid-template-rows:1fr;' ..
       'gap:4px;width:100%;height:' .. height .. ';background:#111;'
     )
+    local lock_toolbar = _panel_toolbar_html(id, _infer_panel_frame_count(subfig_ids), time_indices, false)
 
     return pandoc.RawBlock("html",
       '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
@@ -1081,11 +1164,7 @@ local function fourd_graph(args, kwargs)
       body = '<iframe src="/state/figures/' .. id .. '.html" width="100%" height="600px" ' ..
              'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
     else
-      local f = io.open(html_path, "r")
-      local content = f:read("*all")
-      f:close()
-      local escaped = content:gsub("&", "&amp;"):gsub('"', "&quot;")
-      body = '<iframe srcdoc="' .. escaped .. '" width="100%" height="600px" ' ..
+      body = '<iframe data-fourd-inject="state/figures/' .. id .. '.html" width="100%" height="600px" ' ..
              'frameborder="0" style="border:none;border-radius:4px;display:block;"></iframe>'
     end
 

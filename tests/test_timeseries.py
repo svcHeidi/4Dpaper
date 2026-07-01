@@ -145,6 +145,37 @@ class TestFourdTimeseriesLua:
         assert '.manifest.json"' in content
         assert 'data-panel="' in content
 
+    def test_fourd_timeseries_iframes_opt_into_child_time_broadcast(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        ts_branch = content.split('local function fourd_timeseries(args, kwargs)', 1)[1]
+        assert 'data-panel-time-sync="true"' in ts_branch
+
     def test_fourd_timeseries_pdf_uses_90_percent_width(self):
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
         assert 'width = "90%"' in content
+
+    def test_fourd_timeseries_manifest_carries_time_indices(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert '"time_indices"' in content
+        assert "_manifest_time_indices" in content
+
+    def test_fourd_timeseries_toolbar_maps_actual_indices(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert "ACTUAL=" in content
+        assert "_fromActual" in content
+
+    def test_fourd_timeseries_uses_panel_lock_toolbar(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert "local lock_toolbar = _panel_toolbar_html(id, _infer_panel_frame_count(subfig_ids), time_indices, false)" in content
+        assert "lock_toolbar .. '\\n' .." in content
+
+    def test_fourd_timeseries_does_not_use_custom_direct_camera_sync(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert 'var TS_ID="' not in content
+        assert "__fourd_ts_sync" not in content
+
+    def test_panel_toolbar_helper_supports_lock_only_mode(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert "local function _panel_toolbar_html(id, frame_count, time_indices, show_transport)" in content
+        assert "if show_transport == nil then" in content
+        assert "if show_transport and transport_count > 1 then" in content

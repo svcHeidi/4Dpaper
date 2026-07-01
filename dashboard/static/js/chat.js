@@ -128,13 +128,13 @@ document.addEventListener('DOMContentLoaded', () => {
         msgDiv.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'} w-full mb-4`;
 
         const bubble = document.createElement('div');
-        bubble.className = `max-w-[85%] rounded-lg p-3 ${
+        bubble.className = `chat-markdown max-w-[85%] rounded-lg p-3 break-words ${
             role === 'user'
                 ? 'bg-app-accent text-white rounded-br-none'
                 : 'bg-app-tabBg text-app-textLight rounded-bl-none border border-app-border'
         }`;
 
-        bubble.innerHTML = content.replace(/\n/g, '<br>');
+        bubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(content) : content.replace(/\n/g, '<br>');
         msgDiv.appendChild(bubble);
         chatMessages.appendChild(msgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -186,7 +186,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
-            aiBubble.innerHTML = data.reply.replace(/\n/g, '<br>');
+            const parsedHTML = typeof marked !== 'undefined' ? marked.parse(data.reply) : data.reply.replace(/\n/g, '<br>');
+            aiBubble.innerHTML = parsedHTML;
             chatHistory.push({ role: 'assistant', content: data.reply });
 
         } catch (err) {

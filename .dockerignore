@@ -1,0 +1,67 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+
+# ── Quarto build outputs ──────────────────────────────────────────────────────
+_output/
+_freeze/
+*_files/
+.quarto/
+
+# ── Runtime state ─────────────────────────────────────────────────────────────
+state/
+.cache/
+
+# ── Secrets & credentials ─────────────────────────────────────────────────────
+.env
+*.pem
+*.key
+*.crt
+
+# ── User project files (not part of the app image) ───────────────────────────
+# The workspace is mounted at runtime via -v / docker-compose volumes.
+data/
+media/
+sections/
+*.qmd
+*.bib
+_shortcuts.yml
+_quarto.yml
+
+# ── Dev & docs ────────────────────────────────────────────────────────────────
+tests/
+requirements-e2e.txt
+scratch/
+.superpowers/
+.claude/
+.luarc.json
+*.md
+*.pdf
+*.html
+example_heart*
+
+# ── macOS / IDE ───────────────────────────────────────────────────────────────
+.DS_Store
+.vscode/
+.cursor/
+*.swp
+
+# ── One-off refactor/utility scripts (not part of the app) ───────────────────
+original_4dpaper.py
+master_refactor.py
+split_4dpaper_refactor.py
+extract_*.py
+move_golden_js.py
+new_header.py
+build_4dpaper.py
+create_new_entrypoint.py
+tmp_*.py

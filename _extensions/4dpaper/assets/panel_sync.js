@@ -19,14 +19,22 @@
     if (!isTrustedOrigin(e)) return;
 
     // Camera Synchronization
-    if (SYNC_MODE && e.data.type === "4dpaper-camera") {
-      const msg = Object.assign({}, e.data, { fig_id: PANEL_ID });
-      top.postMessage(msg, "*"); // relay to parent — parent is the paper preview (known origin, but top may be cross-origin in some setups)
+    if (e.data.type === "4dpaper-camera") {
       const iframes = document.querySelectorAll("iframe");
-      for (let i = 0; i < iframes.length; i++) {
-        iframes[i].contentWindow.postMessage({ type: "4dpaper-camera-apply", camera: e.data.camera }, "*"); // srcdoc iframes
+      const isFirst = iframes.length > 0 && e.source === iframes[0].contentWindow;
+      
+      if (SYNC_MODE || isFirst) {
+        const msg = Object.assign({}, e.data, { fig_id: PANEL_ID });
+        top.postMessage(msg, "*"); // relay to parent
+        for (let i = 0; i < iframes.length; i++) {
+          if (iframes[i].contentWindow !== e.source) {
+            iframes[i].contentWindow.postMessage({ type: "4dpaper-camera-apply", camera: e.data.camera }, "*"); // srcdoc iframes
+          }
+        }
+      } else {
+        top.postMessage(e.data, "*"); // relay up to parent
       }
-    } else if (!SYNC_MODE && (e.data.type === "4dpaper-camera" || e.data.type === "4dpaper-field-update")) {
+    } else if (!SYNC_MODE && e.data.type === "4dpaper-field-update") {
       top.postMessage(e.data, "*"); // relay up to parent
     }
 
