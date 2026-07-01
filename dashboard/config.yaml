@@ -1,3 +1,0 @@
-# Paths to the two repos. Adjust if your layout differs.
-cardiacfoam_root: "/Users/simaocastro/cardiacFoamEP"
-quarto_paper_path: "/Users/simaocastro/4Dpapers/analysis_report.qmd"

@@ -647,7 +647,7 @@ class TestGenerateVideoFigure:
     def test_creates_mp4_frame_and_html(self, tmp_path):
         mod = _load_4dpaper()
         case_path = Path(
-            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+            "/data/tutorials/NiedererEtAl2012/Niederer.foam"
         )
         if not case_path.exists():
             pytest.skip("Niederer case not available")
@@ -682,7 +682,7 @@ class TestGenerateVideoFigure:
     def test_mp4_is_valid_h264(self, tmp_path):
         mod = _load_4dpaper()
         case_path = Path(
-            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+            "/data/tutorials/NiedererEtAl2012/Niederer.foam"
         )
         if not case_path.exists():
             pytest.skip("Niederer case not available")
@@ -721,7 +721,7 @@ class TestGenerateHtmlFigure:
         """Smoke test: verify generate_html_figure creates a non-empty .html file."""
         mod = _load_4dpaper()
         case_path = Path(
-            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+            "/data/tutorials/NiedererEtAl2012/Niederer.foam"
         )
         if not case_path.exists():
             pytest.skip("Niederer case not available")
@@ -745,7 +745,7 @@ class TestVideoCameraViewModal:
     def test_preview_html_has_camera_sync(self, tmp_path):
         mod = _load_4dpaper()
         case_path = Path(
-            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+            "/data/tutorials/NiedererEtAl2012/Niederer.foam"
         )
         if not case_path.exists():
             pytest.skip("Niederer case not available")
@@ -777,7 +777,7 @@ class TestCameraSyncIntegration:
 
         mod = _load_4dpaper()
         case_path = Path(
-            "/Users/simaocastro/cardiacFoamEP/tutorials/NiedererEtAl2012/Niederer.foam"
+            "/data/tutorials/NiedererEtAl2012/Niederer.foam"
         )
         if not case_path.exists():
             pytest.skip("Niederer case not available")

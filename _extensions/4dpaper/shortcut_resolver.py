@@ -7,7 +7,7 @@ in _shortcuts.yml, then reference them in .qmd shortcodes using @shortcut syntax
 Example config (in _shortcuts.yml):
     shortcuts:
       sim_main:
-        path: "/Users/simaocastro/cardiacFoamEP/NiedererEtAl2012"
+        path: "/data/tutorials/NiedererEtAl2012"
         description: "Primary simulation case"
 
 Example usage (in .qmd):

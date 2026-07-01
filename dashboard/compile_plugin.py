@@ -25,6 +25,10 @@ from dashboard.file_plugin import _should_include, _is_write_allowed
 # PROJECT_ROOT can be set via environment variable (for Docker) or defaults to parent directory
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 
+# Read version from the repo-root VERSION file (single source of truth)
+_VERSION_FILE = Path(__file__).parent.parent / "VERSION"
+_APP_VERSION = _VERSION_FILE.read_text().strip() if _VERSION_FILE.exists() else "unknown"
+
 # Semaphore: only one Quarto render may run at a time to prevent resource exhaustion.
 _render_lock = asyncio.Semaphore(1)
 
@@ -392,6 +396,7 @@ class HealthCheckHandler(tornado.web.RequestHandler):
 
         self.write({
             "status": "ok",
+            "version": _APP_VERSION,
             "backend_ready": True,
             "main_qmd": {
                 "exists": main_qmd.exists(),

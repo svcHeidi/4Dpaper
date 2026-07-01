@@ -1,6 +1,13 @@
 # 4Dpapers - Containerized Scientific Paper Authoring
 FROM python:3.11-slim
 
+# Version baked in at build time (passed by CI from the VERSION file)
+ARG APP_VERSION=dev
+LABEL org.opencontainers.image.title="4Dpapers" \
+      org.opencontainers.image.description="Browser-based IDE for interactive scientific papers" \
+      org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.source="https://github.com/svcHeidi/4Dpaper"
+
 # Install system dependencies (Quarto, git, etc.)
 RUN apt-get update && apt-get install -y \
     curl \
@@ -35,6 +42,7 @@ COPY dashboard /app/dashboard
 COPY _extensions /app/_extensions
 COPY scripts /app/scripts
 COPY serve.py /app/serve.py
+COPY VERSION /app/VERSION
 COPY _quarto-apphtml.yml /app/_quarto-apphtml.yml
 COPY _quarto-paperview.yml /app/_quarto-paperview.yml
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh

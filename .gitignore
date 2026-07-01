@@ -43,6 +43,12 @@ example_heart-standalone*.html
 # Root-level PDFs (compiled exports belong in _output/, not the repo root)
 /*.pdf
 
+# Local demo/presentation artifacts
+/Presentation_*.pptx
+/Screen Recording *.mov
+~$*.pptx
+/build_presentation.py
+
 # Pre-refactor backups and one-off scripts (scratch work)
 original_4dpaper.py
 build_4dpaper.py
