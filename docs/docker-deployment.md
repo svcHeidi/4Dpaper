@@ -6,20 +6,20 @@
 
 ## 🚀 Quick Start
 
-### Option 1: Use docker-compose (Recommended)
+### Option 1: Use Docker Compose (Recommended)
 
 ```bash
-# Start the container with a volume
-docker-compose up -d
+# Start the container with the default ./workspace folder
+docker compose up -d
 
 # Open dashboard at http://localhost:5006
-# Your project files are in the 'project' volume
+# Your project files are in ./workspace
 
 # Stop the container
-docker-compose down
+docker compose down
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ### Option 2: Use Docker directly
@@ -49,15 +49,15 @@ docker rm 4dpapers-editor
 ### Strategy 1: New Project (Recommended for quick testing)
 
 ```bash
-# Let Docker create a managed volume (data persists)
-docker-compose up -d
+# Uses ./workspace by default
+docker compose up -d
 
 # Dashboard initializes with template project structure
-# Files saved to Docker-managed volume
+# Files are saved under ./workspace
 ```
 
-**Pros:** Simple, isolated, no host filesystem clutter
-**Cons:** Volume data lives on host (not in your code repo)
+**Pros:** Simple, isolated from the application source tree
+**Cons:** The local `workspace/` folder is ignored by git
 
 ---
 
@@ -66,22 +66,7 @@ docker-compose up -d
 Mount your actual project folder:
 
 ```bash
-# Edit docker-compose.yml
-volumes:
-  project:/workspace
-```
-
-Change to:
-
-```bash
-volumes:
-  - /path/to/my/4dpapers/project:/workspace
-```
-
-Then:
-
-```bash
-docker-compose up -d
+FOURD_WORKSPACE=/path/to/my/4dpapers/project docker compose up -d
 ```
 
 **Pros:** Changes persist in your repo, can commit to git
@@ -91,7 +76,7 @@ docker-compose up -d
 
 ### Strategy 3: Bind Mount + Compose Override
 
-Use `docker-compose.override.yml` for local development:
+Use `docker-compose.override.yml` for local development if you prefer a persistent local override:
 
 ```yaml
 # docker-compose.override.yml (git-ignored)
@@ -106,7 +91,7 @@ services:
 Then:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 **Pros:** Override in override.yml (doesn't commit to git)
@@ -135,11 +120,11 @@ docker run -d \
 ### Use Case 2: Start a Fresh Project
 
 ```bash
-# Use docker-compose with managed volume
-docker-compose up -d
+# Use docker compose with the default ./workspace folder
+docker compose up -d
 
 # Container initializes with template structure:
-# - analysis_report.qmd
+# - main.qmd
 # - sections/01_introduction.qmd
 # - references.bib
 # - Directories: data/, state/, media/, _output/
@@ -198,6 +183,7 @@ docker run --rm \
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `PORT` | 5006 | Dashboard port |
+| `FOURD_WORKSPACE` | `./workspace` | Host paper folder mounted by Docker Compose |
 | `PYTHONUNBUFFERED` | 1 | Real-time logging |
 | `SKIP_INIT` | false | Skip template initialization (for existing projects) |
 
@@ -218,9 +204,9 @@ docker run -d \
 ### What Happens on Startup
 
 1. **Check workspace** — Is `/workspace` empty?
-2. **Detect project type** — Is `analysis_report.qmd` present?
+2. **Detect project type** — Is `main.qmd`, `analysis_report.qmd`, `_quarto.yml`, or any root `.qmd` present?
 3. **Initialize (if new)** — Create template structure:
-   - `analysis_report.qmd` (root document)
+   - `main.qmd` (root document)
    - `sections/01_introduction.qmd`
    - `references.bib`
    - Directories: `data/`, `state/figures/`, `_output/`
@@ -232,13 +218,13 @@ docker run -d \
 
 ```bash
 # View initialization + startup logs
-docker-compose logs
+docker compose logs
 
 # Follow logs in real-time
-docker-compose logs -f
+docker compose logs -f
 
 # View logs for specific time range
-docker-compose logs --since 1m
+docker compose logs --since 1m
 ```
 
 ---
@@ -353,13 +339,13 @@ Dockerfile:
 ### Network Isolation
 
 - Only port 5006 exposed
-- Dashboard UI is unauthenticated (assume trusted network)
-- For internet-facing deployments, add reverse proxy (nginx) + authentication
+- Dashboard/API authentication is enabled when `FOURD_API_KEY` is set
+- For internet-facing deployments, set `FOURD_API_KEY`, set `FOURD_ALLOWED_ORIGIN`, and use a reverse proxy with TLS
 
 ### Data Persistence
 
-- Volume data persists after container stops
-- Use `docker volume rm` to delete data
+- The default Compose workspace is the ignored host folder `./workspace`
+- Use `FOURD_WORKSPACE=/path/to/project docker compose up` to edit an existing paper
 - Back up important projects before container cleanup
 
 ---
@@ -430,7 +416,7 @@ kubectl apply -f 4dpapers-deployment.yaml
 ├── docker-entrypoint.sh       # Initialization script
 
 /workspace/                    # Project folder (volume mount)
-├── analysis_report.qmd        # Main document
+├── main.qmd                   # Main document
 ├── sections/                  # Document sections
 ├── data/                      # User inputs (simulations, etc.)
 ├── state/                     # Runtime-generated files
@@ -449,7 +435,7 @@ kubectl apply -f 4dpapers-deployment.yaml
 
 - ✅ Dockerfile created (Python 3.11, Panel, Quarto, dependencies)
 - ✅ docker-entrypoint.sh created (initializes projects, starts server)
-- ✅ docker-compose.yml created (easy volume mounting)
+- ✅ docker-compose.yml created (`FOURD_WORKSPACE` controls the mounted paper folder)
 - ✅ Port 5006 exposed
 - ✅ Health check configured
 - ✅ Volume mount strategy documented
@@ -462,12 +448,12 @@ kubectl apply -f 4dpapers-deployment.yaml
 ## 🎓 Next Steps
 
 1. **Build:** `docker build -t 4dpapers:latest .`
-2. **Test locally:** `docker-compose up`
-3. **Mount a project:** Edit `docker-compose.yml` volumes
+2. **Test locally:** `docker compose up`
+3. **Mount a project:** `FOURD_WORKSPACE=/path/to/project docker compose up`
 4. **Push to registry:** `docker push myregistry/4dpapers:latest`
 5. **Deploy anywhere:** Any platform that runs Docker
 
 ---
 
 **Documentation:** See README.md for detailed usage
-**Support:** Check container logs with `docker-compose logs -f`
+**Support:** Check container logs with `docker compose logs -f`

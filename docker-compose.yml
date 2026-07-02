@@ -1,5 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Usage (local build):      docker compose up
+# Usage (new workspace):    docker compose up
+# Usage (existing paper):   FOURD_WORKSPACE=/path/to/paper docker compose up
 # Usage (prebuilt image):   IMAGE=ghcr.io/yourname/4dpapers:latest docker compose up
 # ─────────────────────────────────────────────────────────────────────────────
 services:
@@ -14,7 +15,7 @@ services:
     ports:
       - "5006:5006"  # Dashboard UI
     volumes:
-      - .:/workspace  # Mounts current directory as the project
+      - ${FOURD_WORKSPACE:-./workspace}:/workspace  # Host paper workspace
       # Mount your data directory so shortcuts can resolve to it inside the container.
       # Example: - /path/to/your/data:/data
       # Optional: mount signing keys read-only and set FOURD_SIGNING_* env vars.
@@ -46,4 +47,3 @@ services:
     #         - driver: nvidia
     #           count: 1
     #           capabilities: [gpu]
-

@@ -28,7 +28,8 @@ state/
 *.crt
 
 # ── User project files (not part of the app image) ───────────────────────────
-# The workspace is mounted at runtime via -v / docker-compose volumes.
+# The workspace is mounted at runtime via Docker Compose or -v.
+workspace/
 data/
 media/
 sections/

@@ -30,7 +30,22 @@ Open:
 http://localhost:5006
 ```
 
-The current directory is mounted as the paper workspace. If it does not contain a paper yet, 4Dpapers creates a starter Quarto project.
+By default, Compose mounts `./workspace` as the paper workspace. If that folder does not contain a paper yet, 4Dpapers creates a starter Quarto project.
+
+To edit an existing paper:
+
+```bash
+FOURD_WORKSPACE=/path/to/your/project docker compose up
+```
+
+To run the included example paper:
+
+```bash
+FOURD_WORKSPACE=./examples/heart docker compose up
+```
+
+The example workspace includes `main.qmd` for the full demo and
+`lightweight.qmd` for a smaller Niederer/Purkinje/Plotly demo.
 
 ## Use The Prebuilt Image
 
@@ -93,6 +108,7 @@ Common variables:
 | Variable | Purpose |
 |---|---|
 | `PORT` | Dashboard port, default `5006` |
+| `FOURD_WORKSPACE` | Host paper folder mounted at `/workspace` by Docker Compose |
 | `FOURD_API_KEY` | Optional API key for dashboard/API access |
 | `FOURD_ALLOWED_ORIGIN` | Allowed browser origin for CORS |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Enable AI providers |
@@ -102,7 +118,7 @@ For any network-accessible deployment, set a strong `FOURD_API_KEY` and set `FOU
 
 ## More Documentation
 
-- [Docker deployment guide](DOCKER_DEPLOYMENT.md)
+- [Docker deployment guide](docs/docker-deployment.md)
 - [Environment variable template](.env.example)
 - [GitHub Actions image publishing workflow](.github/workflows/docker-publish.yml)
 - [Agent and format reference](AGENTS.md)

@@ -37,6 +37,9 @@ _shortcuts.yml
 # Runtime cache
 .cache/
 
+# Default local paper workspace used by docker compose
+workspace/
+
 # Generated outputs (large, not for version control)
 *.standalone-*.html
 example_heart-standalone*.html
@@ -45,6 +48,7 @@ example_heart-standalone*.html
 
 # Local demo/presentation artifacts
 /Presentation_*.pptx
+/*.pptx
 /Screen Recording *.mov
 ~$*.pptx
 /build_presentation.py
