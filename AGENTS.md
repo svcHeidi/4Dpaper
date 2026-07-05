@@ -17,6 +17,14 @@ The generic file browser and `/api/file` endpoint intentionally hide these files
 
 4Dpapers accepts **27+ file formats** across scientific computing domains. Comprehensive format documentation is in **CLAUDE.md § 6**.
 
+### Verification Status (v1)
+
+- **Verified with local automated fixtures:** `.vtu`, `.vtp`, `.vtk`, `.pvd`, `.vtk.series` (synthetic/local mix), `.xdmf` + companion `.h5`, `.stl`, `.obj`, `.ply`, `.msh`, `.med`, `.hdf5`, Plotly `.json`
+- **Externally or manually validated, but missing redistributable local fixtures:** `.foam`, `.openfoam`
+- **Implemented, but not yet fixture-backed enough for a full v1 workflow claim:** `.exo`, `.e`, `.ex2`, `.case`, `.cgns`, real Abaqus `.inp`
+
+Treat the first group as the strongest v1 evidence. Treat the second and third groups as narrower claims until local fixtures or repeatable manual checks are added.
+
 ### Quick Lookup by File Extension
 
 **CFD/OpenFOAM:**
@@ -53,8 +61,8 @@ The generic file browser and `/api/file` endpoint intentionally hide these files
 
 | Domain | Best Format | Supports Time-Series | Supports Fields | Notes |
 |--------|-------------|----------------------|-----------------|-------|
-| **CFD** | `.foam` or `.pvd` | YES | YES | OpenFOAM preferred; EnSight/CGNS also common |
-| **FEA** | `.exo` or `.cgns` | YES | YES | Exodus II standard; CGNS multi-purpose |
+| **CFD** | `.foam` or `.pvd` | YES | YES | OpenFOAM has external/manual validation; EnSight/CGNS fixture coverage is still pending |
+| **FEA** | `.exo` or `.cgns` | YES | YES | Reader support is implemented, but real local fixture coverage is still pending |
 | **Geometry Only** | `.stl`, `.obj`, `.ply` | NO | LIMITED | No animation; static CAD models |
 | **Generic VTK** | `.vtu` or `.vtp` | MULTI | YES | Most flexible; widely supported |
 | **Time Animation** | `.pvd` or `.vtk.series` | YES | YES | Explicit timestep indexing |
@@ -192,7 +200,7 @@ If a format fails to load, check:
 
 For agents implementing format support or uploading data via API:
 
-**POST /upload/finish** (format=figure)
+**POST /upload/finish** (format=figure, OpenFOAM-only dashboard flow)
 - Input: `.foam` case folder (symlinked into `data/`)
 - Output: Ready-to-use `{{< 4d-image >}}` shortcode
 - Example: `{"status": "ok", "shortcode": "{{< 4d-image id=\"fig-1\" src=\"data/case\" field=\"U\" >}}"}`

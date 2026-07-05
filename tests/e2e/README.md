@@ -24,3 +24,14 @@ pytest ../../tests/e2e/test_dashboard_split.py -v
 If `dashboard/` is at the repository root and you run `pytest` from that root, you can omit `FOURDPAPERS_DASHBOARD_ROOT`.
 
 `panel` is launched with the interpreter at `<4Dpapers>/.venv/bin/python` (three levels above `tests/e2e/`). Point that venv at a Python that has `panel` installed.
+
+## Deployment Smoke
+
+For the supported single-host Docker deployment path, run:
+
+```bash
+tests/e2e/smoke_deployment.sh
+```
+
+This script builds the image, boots the app with API-key auth and privilege
+drop enabled, compiles HTML, exports PDF, and checks protected routes.

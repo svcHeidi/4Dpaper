@@ -3,20 +3,14 @@
  * No Bokeh visibility; open/close via display:none / flex.
  */
 (function () {
-  function getAceEditor() {
-    try {
-      if (typeof ace === "undefined") return null;
-      var el = document.querySelector(".ace_editor");
-      if (!el) return null;
-      return ace.edit(el);
-    } catch (e) {
-      return null;
-    }
+  function getCodeEditor() {
+    // Works with CodeMirror (used in the current dashboard)
+    return typeof state !== "undefined" && state.codeEditor ? state.codeEditor : null;
   }
 
   function insertShortcode(shortcode) {
-    var ed = getAceEditor();
-    if (!ed) throw new Error("Ace editor not found (cannot insert)");
+    var ed = getCodeEditor();
+    if (!ed) throw new Error("Editor not found (cannot insert)");
     var v = ed.getValue() || "";
     if (v && !v.endsWith("\n")) v += "\n";
     ed.setValue(v + shortcode + "\n", -1);
@@ -139,7 +133,7 @@
       '<div style="position:relative;z-index:1;width:min(400px,92vw);background:#0f172a;border:1px solid #263244;' +
       'border-radius:8px;padding:10px 12px;box-shadow:0 16px 48px rgba(0,0,0,0.55);pointer-events:auto;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
-      '<span style="color:#ddd;font-size:13px;font-weight:700;">Insert Figure</span>' +
+      '<span style="color:#ddd;font-size:13px;font-weight:700;">Insert OpenFOAM Figure</span>' +
       '<button type="button" id="insert-figure-close-x" title="Close" ' +
       'style="font-size:11px;padding:4px 10px;border-radius:4px;border:1px solid #475569;background:#1e293b;color:#e2e8f0;cursor:pointer;">' +
       "Close</button></div>" +
@@ -148,11 +142,11 @@
       '<input type="file" id="insert-folder-input" webkitdirectory multiple ' +
       'style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true"/>' +
       '<div style="color:#e2e8f0;font-size:12px;line-height:1.4;">' +
-      'Drop an OpenFOAM <strong>case folder</strong> here, or ' +
+      'Drop an OpenFOAM <strong>case folder</strong> here to insert a <code>4d-image</code> shortcode, or ' +
       '<button type="button" id="insert-folder-btn" ' +
       'style="background:none;border:none;color:#93c5fd;text-decoration:underline;cursor:pointer;padding:0;font:inherit;">' +
       "choose folder…</button> " +
-      '<span style="color:#64748b;font-size:11px;">(system folder picker)</span></div>' +
+      '<span style="color:#64748b;font-size:11px;">(other figure formats still require manual shortcodes)</span></div>' +
       '<div id="insert-drop-status" style="margin-top:6px;color:#8ab4ff;font-size:10px;font-family:monospace;min-height:14px;"></div>' +
       "</div></div>";
 

@@ -29,15 +29,20 @@ def run_quarto_render(
     import subprocess
     import threading
 
-    # Remove the previous render's supporting-files dir (<stem>_files) before
-    # re-rendering. On macOS Docker bind mounts (virtiofs/gRPC-FUSE), Quarto's
-    # ensureDirSync/statSync on a *stale* _files dir can intermittently fail with
-    # "Resource deadlock avoided (os error 35)". Starting each render from a clean
-    # slate avoids re-stat'ing a stale dir. These dirs are regenerated every render.
+    # Remove render-local Quarto scratch state before re-rendering. On macOS
+    # Docker bind mounts, stale Quarto state has produced two distinct failures:
+    #
+    # - stale <stem>_files dirs can trigger ensureDirSync/statSync deadlocks
+    # - .quarto/project-cache/deno-kv-file can become unreadable/wrong-owner
+    #   after mixed root/non-root renders, surfacing as "readonly database"
+    #
+    # These directories are regenerated on demand, so starting from a clean
+    # slate is safer than trying to reuse cross-user cache state.
     _stem = qmd_path.stem
     for _d in (
         qmd_path.parent / f"{_stem}_files",
         qmd_path.parent / "_output" / f"{_stem}_files",
+        qmd_path.parent / ".quarto" / "project-cache",
     ):
         try:
             if _d.exists():

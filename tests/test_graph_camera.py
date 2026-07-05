@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,16 @@ def _load_4dpaper():
     spec = importlib.util.spec_from_file_location(
         "fourDpaper",
         Path(__file__).parent.parent / "_extensions" / "4dpaper" / "4dpaper.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _load_parser():
+    spec = importlib.util.spec_from_file_location(
+        "fourDpaper_parser",
+        Path(__file__).parent.parent / "_extensions" / "4dpaper" / "lib" / "parser.py",
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -76,3 +87,25 @@ def test_graph_cache_includes_camera_dependency():
     ).read_text()
     assert "is_cache_valid(out_html, src, camera_path=camera_path" in content
     assert "is_cache_valid(out_png, src, camera_path=camera_path" in content
+
+
+def test_plotly_json_fixture_is_parseable_and_accepted_by_shortcode_parser():
+    fixture = Path(__file__).parent.parent / "examples" / "heart" / "media" / "example_graph.json"
+    data = json.loads(fixture.read_text(encoding="utf-8"))
+    assert isinstance(data.get("data"), list)
+    assert isinstance(data.get("layout"), dict)
+
+    parser = _load_parser()
+    qmd = (
+        '{{< 4d-graph id="pressure-curve" '
+        'src="examples/heart/media/example_graph.json" '
+        'caption="Pressure curve" >}}'
+    )
+    parsed = parser.parse_graph_shortcodes(qmd)
+    assert parsed == [
+        {
+            "id": "pressure-curve",
+            "src": "examples/heart/media/example_graph.json",
+            "caption": "Pressure curve",
+        }
+    ]

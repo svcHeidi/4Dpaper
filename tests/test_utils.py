@@ -155,6 +155,27 @@ class TestRunQuartoRenderHtmlExport:
         assert captured["cmd"][output_idx + 1] == "paper-standalone.html"
         assert "FOURD_APP_MODE" not in captured["env"]
 
+    def test_html_export_clears_stale_quarto_project_cache(self, tmp_path):
+        from unittest.mock import patch, MagicMock
+        from dashboard.utils import run_quarto_render
+
+        qmd = tmp_path / "paper.qmd"
+        qmd.write_text("# Test\n")
+        stale_cache = tmp_path / ".quarto" / "project-cache" / "deno-kv-file"
+        stale_cache.parent.mkdir(parents=True)
+        stale_cache.write_text("stale-cache", encoding="utf-8")
+
+        def fake_popen(cmd, **kwargs):
+            assert not stale_cache.parent.exists()
+            proc = MagicMock()
+            proc.stdout.__iter__ = lambda s: iter([])
+            proc.wait.return_value = None
+            proc.returncode = 0
+            return proc
+
+        with patch("subprocess.Popen", fake_popen):
+            run_quarto_render(qmd, [], output_format="html-export")
+
 
 class TestMaybeSignRenderedHtml:
     def test_appends_log_when_signing_occurs(self, tmp_path):

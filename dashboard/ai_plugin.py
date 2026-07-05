@@ -47,8 +47,7 @@ _PROVIDER_DEFAULTS: dict[str, list[str]] = {
     "gemini": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3.5-flash", "gemini-pro-latest"],
 }
 
-# Hardcoded fallback persona list — used when agents.yaml is absent or
-# FOURD_EXPOSE_AGENTS is not set, so the frontend always has something.
+# Hardcoded fallback persona list used when agents.yaml is absent.
 _FALLBACK_AGENTS = [
     {
         "id": "default",
@@ -170,10 +169,8 @@ class ProvidersHandler(SecureMixin, tornado.web.RequestHandler):
 class AgentsHandler(SecureMixin, tornado.web.RequestHandler):
     """Return the list of agent personas.
 
-    Controlled by FOURD_EXPOSE_AGENTS=1.  When the flag is not set the
-    endpoint returns the full list anyway (the flag only gates whether it
-    is advertised / reachable from the outside — the frontend always needs
-    the data to build its dropdown).
+    Controlled by FOURD_EXPOSE_AGENTS=1. When the flag is not set, persona
+    metadata stays hidden and this endpoint returns 404.
     """
 
     def set_default_headers(self) -> None:
@@ -185,6 +182,10 @@ class AgentsHandler(SecureMixin, tornado.web.RequestHandler):
 
     def get(self) -> None:
         if not self.check_auth():
+            return
+        if not _EXPOSE_AGENTS:
+            self.set_status(404)
+            self.write({"error": "Agent metadata is disabled"})
             return
 
         agents = _load_agents()

@@ -12,6 +12,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import time
 import traceback
 from pathlib import Path
@@ -136,6 +137,50 @@ def _validate_paperview_html_output(html_path: Path) -> None:
 def _rewrite_paperview_asset_urls_for_pdf(html_text: str) -> str:
     """Convert app-root `/state/...` asset URLs to project-relative paths for WeasyPrint."""
     return html_text.replace('"/state/figures/', '"../state/figures/')
+
+
+def _health_payload() -> tuple[int, dict]:
+    """Return `(status_code, payload)` for backend readiness checks."""
+    main_qmd = _find_main_qmd()
+    output_dir = _PROJECT_ROOT / "_output"
+    state_dir = _PROJECT_ROOT / "state"
+    quarto_available = shutil.which("quarto") is not None
+
+    output_exists = output_dir.exists()
+    output_writable = output_exists and os.access(output_dir, os.W_OK)
+    state_exists = state_dir.exists()
+    state_writable = state_exists and os.access(state_dir, os.W_OK)
+    main_exists = main_qmd.exists()
+
+    backend_ready = all((
+        quarto_available,
+        main_exists,
+        output_exists,
+        output_writable,
+        state_exists,
+        state_writable,
+    ))
+
+    payload = {
+        "status": "ok" if backend_ready else "degraded",
+        "version": _APP_VERSION,
+        "backend_ready": backend_ready,
+        "quarto": {
+            "available": quarto_available,
+        },
+        "main_qmd": {
+            "exists": main_exists,
+        },
+        "output_dir": {
+            "exists": output_exists,
+            "writable": output_writable,
+        },
+        "state_dir": {
+            "exists": state_exists,
+            "writable": state_writable,
+        },
+    }
+    return (200 if backend_ready else 503), payload
 
 
 class CompileHandler(SecureMixin, tornado.web.RequestHandler):
@@ -390,26 +435,9 @@ class HealthCheckHandler(tornado.web.RequestHandler):
         self.set_header("Content-Type", "application/json")
 
     def get(self) -> None:
-        main_qmd = _find_main_qmd()
-        output_dir = _PROJECT_ROOT / "_output"
-        state_dir = _PROJECT_ROOT / "state"
-
-        self.write({
-            "status": "ok",
-            "version": _APP_VERSION,
-            "backend_ready": True,
-            "main_qmd": {
-                "exists": main_qmd.exists(),
-            },
-            "output_dir": {
-                "exists": output_dir.exists(),
-                "writable": output_dir.exists() and os.access(output_dir, os.W_OK),
-            },
-            "state_dir": {
-                "exists": state_dir.exists(),
-                "writable": state_dir.exists() and os.access(state_dir, os.W_OK),
-            },
-        })
+        status_code, payload = _health_payload()
+        self.set_status(status_code)
+        self.write(payload)
 
 
 class CompileStatusHandler(SecureMixin, tornado.web.RequestHandler):

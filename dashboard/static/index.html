@@ -417,6 +417,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/show-hint.min.css">
     <!-- Local scripts -->
     <script src="/assets/js/shortcuts-graph.js"></script>
+    <script src="dashboard/static/js/auth.js"></script>
     <script src="dashboard/static/js/insert-figure-overlay.js"></script>
     <script src="dashboard/static/js/insert-file-overlay.js"></script>
     <script src="dashboard/static/js/chat.js"></script>
@@ -534,6 +535,16 @@
             <div class="flex-1 overflow-auto custom-scrollbar p-3 hidden" id="settingsContent" data-view="settings">
                 <div class="text-xs text-app-textLight font-semibold uppercase tracking-wider px-1 py-1 mb-3">Settings</div>
                 <div class="space-y-2">
+                    <label class="block text-xs text-app-text font-medium" for="deploymentApiKey">Deployment API key</label>
+                    <input id="deploymentApiKey" type="password" class="w-full bg-app-tabBg border border-app-border rounded px-2 py-1.5 text-xs text-app-textLight outline-none" placeholder="Only needed when the server requires auth" />
+                    <div class="flex items-center gap-2">
+                        <button id="deploymentApiKeySave" type="button" class="bg-app-accent hover:bg-blue-600 text-white px-2.5 py-1 rounded text-[11px] font-medium transition-colors">Save key</button>
+                        <button id="deploymentApiKeyClear" type="button" class="bg-transparent hover:bg-app-bg border border-app-border text-app-textLight px-2.5 py-1 rounded text-[11px] font-medium transition-colors">Clear</button>
+                        <span id="deploymentApiKeyStatus" class="text-[11px] text-app-text opacity-80">Not configured</span>
+                    </div>
+                    <p class="text-[11px] text-app-text opacity-70 leading-snug">Used for single-tenant deployments that set <code>FOURD_API_KEY</code>. The key is stored in this browser and mirrored into a same-origin cookie so preview iframes and downloads keep working.</p>
+                </div>
+                <div class="space-y-2 pt-3 mt-3 border-t border-app-border">
                     <label class="block text-xs text-app-text font-medium" for="citationStyle">Bibliography / citation style</label>
                     <select id="citationStyle" class="w-full bg-app-tabBg border border-app-border rounded px-2 py-1.5 text-xs text-app-textLight outline-none cursor-pointer">
                         <option value="author-date">Author–date — (Smith et al., 2020)</option>

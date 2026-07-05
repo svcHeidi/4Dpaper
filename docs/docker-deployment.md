@@ -42,6 +42,29 @@ docker stop 4dpapers-editor
 docker rm 4dpapers-editor
 ```
 
+### Option 3: Single-Host HTTPS Deployment
+
+This is the supported first remote deployment shape for 4Dpapers.
+
+```bash
+cp .env.production.example .env.production
+$EDITOR .env.production
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+This starts:
+
+- `4dpapers` on `127.0.0.1:5006`
+- `caddy` on `80/443`
+
+Requirements:
+
+- DNS for `APP_DOMAIN` must point to the host
+- ports `80` and `443` must be reachable from the internet
+- `FOURD_ALLOWED_ORIGIN` must match `https://APP_DOMAIN`
+- `FOURD_API_KEY` must be set to a strong random secret
+- the workspace path should be dedicated to 4Dpapers because the production profile enables ownership adjustment before dropping to the unprivileged app user
+
 ---
 
 ## 📂 Volume Mounting Strategies
@@ -186,6 +209,8 @@ docker run --rm \
 | `FOURD_WORKSPACE` | `./workspace` | Host paper folder mounted by Docker Compose |
 | `PYTHONUNBUFFERED` | 1 | Real-time logging |
 | `SKIP_INIT` | false | Skip template initialization (for existing projects) |
+| `FOURD_APP_PUBLISH` | `5006:5006` | Host bind for the app container port |
+| `FOURD_ENV_FILE` | `.env` | Runtime env file loaded into the app container |
 
 ### Example: Custom Port
 
@@ -333,14 +358,16 @@ Dockerfile:
 ### Volume Permissions
 
 - Container runs as `root` (simplifies volume access)
-- For production, consider non-root user
+- The production env example enables `FOURD_DROP_PRIVILEGES=1` and `FOURD_CHOWN_WORKSPACE=1` so the app drops to the bundled non-root user after startup
 - Host machine must trust container (full read/write to volume)
 
 ### Network Isolation
 
-- Only port 5006 exposed
+- Local Compose exposes port 5006 directly
+- Production Compose publishes the app on loopback and exposes only Caddy on 80/443
 - Dashboard/API authentication is enabled when `FOURD_API_KEY` is set
 - For internet-facing deployments, set `FOURD_API_KEY`, set `FOURD_ALLOWED_ORIGIN`, and use a reverse proxy with TLS
+- The current browser auth flow is single-tenant: the deployment key is stored in the browser and mirrored into a same-origin cookie for preview/download access
 
 ### Data Persistence
 
@@ -351,6 +378,15 @@ Dockerfile:
 ---
 
 ## 🚀 Advanced: Production Deployment
+
+The validated first deployment target is a single-tenant Docker deployment on one host using:
+
+- `docker-compose.yml`
+- `docker-compose.prod.yml`
+- `deploy/Caddyfile`
+- `.env.production.example`
+
+The Kubernetes example below is illustrative and still needs platform-specific validation for ingress, TLS, secret injection, and persistent storage.
 
 ### Kubernetes Deployment
 
@@ -441,7 +477,7 @@ kubectl apply -f 4dpapers-deployment.yaml
 - ✅ Volume mount strategy documented
 - ✅ Startup logs show project initialization
 
-**Ready to deploy to:** Docker Hub, Kubernetes, Docker Swarm, VPS, Cloud Run, etc.
+**Validated today for:** Docker image publishing and single-host Docker deployments.
 
 ---
 

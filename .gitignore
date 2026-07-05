@@ -19,6 +19,9 @@ _shortcuts.yml
 
 # Secrets — never commit these
 .env
+.env.*
+!.env.example
+!.env.production.example
 *.pem
 *.key
 *.crt
@@ -68,3 +71,6 @@ tmp_*.py
 
 # Internal agent/AI notes (not user-facing)
 AGENT_FIGURES_CAPABILITIES.md
+
+# Internal audit notes — exploit-level detail on now-fixed issues, not for the public repo
+docs/v1-audit/

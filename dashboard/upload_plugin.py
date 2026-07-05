@@ -35,6 +35,15 @@ _ALLOWED_UPLOAD_EXTENSIONS = frozenset({
     ".bib", ".qmd", ".md", ".csv", ".txt",  # generic file-mode uploads
 })
 
+_OPENFOAM_ONLY_FIGURE_ERROR = (
+    "Figure upload currently supports OpenFOAM case folders only. "
+    "No .foam file was found in the dropped folder."
+)
+_RAW_H5_UPLOAD_ERROR = (
+    "Generic .h5 uploads are not supported. Use .hdf5 for generic HDF5 data, "
+    "or upload .h5 only as a companion file alongside an .xdmf or .xmf dataset."
+)
+
 
 def generate_shortcode(
     *,
@@ -62,12 +71,20 @@ def create_case_symlink(
     case_root = foam_path.parent
     case_name = case_root.name
     dest_case = dest_data_dir / case_name
+    upload_root_resolved = _UPLOAD_ROOT.resolve()
+    case_root_resolved = case_root.resolve()
 
     if dest_case.exists() or dest_case.is_symlink():
         if dest_case.is_symlink():
             dest_case.unlink()
         else:
             shutil.rmtree(dest_case)
+
+    # Cases staged under upload_tmp cannot be symlinked directly because the
+    # staging directory is deleted after /upload/finish completes.
+    if upload_root_resolved == case_root_resolved or upload_root_resolved in case_root_resolved.parents:
+        log_lines.append("  Staged upload detected; copying case data into data/")
+        return copy_case_data(foam_path, dest_data_dir, log_lines)
 
     try:
         dest_case.parent.mkdir(parents=True, exist_ok=True)
@@ -268,7 +285,7 @@ class UploadFinishHandler(SecureMixin, tornado.web.RequestHandler):
                 foam_files = sorted(staging_dir.rglob("*.foam"))
                 if not foam_files:
                     self.set_status(400)
-                    self.write({"status": "error", "detail": "No .foam file found in dropped folder"})
+                    self.write({"status": "error", "detail": _OPENFOAM_ONLY_FIGURE_ERROR})
                     return
 
                 foam_path = foam_files[0]
@@ -307,6 +324,12 @@ class UploadFinishHandler(SecureMixin, tornado.web.RequestHandler):
                 if not file_list:
                     self.set_status(400)
                     self.write({"status": "error", "detail": "No files found"})
+                    return
+
+                lower_suffixes = {f.suffix.lower() for f in file_list}
+                if ".h5" in lower_suffixes and not ({".xdmf", ".xmf"} & lower_suffixes):
+                    self.set_status(400)
+                    self.write({"status": "error", "detail": _RAW_H5_UPLOAD_ERROR})
                     return
 
                 copied_paths = []

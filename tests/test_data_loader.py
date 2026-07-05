@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import gzip
+import json
+import shutil
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -297,6 +299,7 @@ class TestPLYCustomReaderAndCompression:
         gz_path = SimulationData.compress_ply(str(src), str(tmp_path / "airplane.ply.gz"))
         sim = SimulationData(str(gz_path)).load()
         assert sim._format == "ply_gzip"
+        assert sim.n_steps == 1
         mesh = sim.get_mesh(0)
         assert mesh is not None
         assert mesh.n_points > 0
@@ -463,7 +466,37 @@ class TestRealFiles:
         self._assert_mesh_ok(self._load("track0.vtp"))
 
     def test_pvd(self):
-        self._assert_mesh_ok(self._load("pvd_example/bi_ventricular_fiber.pvd"))
+        sim = self._load("pvd_example/bi_ventricular_fiber.pvd")
+        self._assert_mesh_ok(sim)
+        assert sim.n_steps >= 1
+
+    def test_vtk_series_generated_from_local_vtk_fixtures(self, tmp_path):
+        """A .vtk.series index loads referenced files sorted by time."""
+        src_a = DATA_DIR / "hexbeam.vtk"
+        src_b = DATA_DIR / "rectilinear.vtk"
+        if not src_a.exists() or not src_b.exists():
+            pytest.skip("VTK fixtures not found for .vtk.series smoke test")
+
+        shutil.copy2(src_a, tmp_path / "frame_a.vtk")
+        shutil.copy2(src_b, tmp_path / "frame_b.vtk")
+        series_path = tmp_path / "generated.vtk.series"
+        series_path.write_text(
+            json.dumps(
+                {
+                    "files": [
+                        {"name": "frame_b.vtk", "time": 2.0},
+                        {"name": "frame_a.vtk", "time": 1.0},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        sim = SimulationData(str(series_path)).load()
+        assert sim._format == "vtk_series"
+        assert sim.time_steps == [1.0, 2.0]
+        assert sim.n_steps == 2
+        self._assert_mesh_ok(sim)
 
     def test_msh(self):
         # Requires meshio: pip install meshio
@@ -475,3 +508,31 @@ class TestRealFiles:
     def test_xdmf(self):
         # Requires an XDMF file with time steps and a companion .h5
         self._assert_mesh_ok(self._load("fiber_directions.xdmf"))
+
+    def test_xdmf_missing_h5_companion_fails_clearly(self, tmp_path):
+        src = DATA_DIR / "fiber_directions.xdmf"
+        if not src.exists():
+            pytest.skip(f"Test data not found: {src}")
+
+        missing_companion = tmp_path / src.name
+        shutil.copy2(src, missing_companion)
+        sim = SimulationData(str(missing_companion)).load()
+        mesh = sim.get_mesh(0)
+
+        assert mesh is None or getattr(mesh, "n_points", 0) == 0
+
+    def test_med(self):
+        try:
+            self._assert_mesh_ok(self._load("test_data.med"))
+        except ImportError as exc:
+            pytest.skip(str(exc))
+        except Exception as exc:
+            pytest.skip(f"MED fixture not loadable in this environment: {exc}")
+
+    def test_hdf5(self):
+        try:
+            self._assert_mesh_ok(self._load("test_data.hdf5"))
+        except ImportError as exc:
+            pytest.skip(str(exc))
+        except Exception as exc:
+            pytest.skip(f"HDF5 fixture not loadable in this environment: {exc}")

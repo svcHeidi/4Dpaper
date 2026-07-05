@@ -13,7 +13,7 @@ Write Quarto Markdown, embed VTK/OpenFOAM/FEA data as live WebGL figures, and ex
 - HTML and PDF export
 - Optional AI sidebar and signed HTML output
 
-Supported formats include `.foam`, `.vtu`, `.vtp`, `.pvd`, `.vtk`, `.exo`, `.xdmf`, `.cgns`, `.stl`, `.obj`, `.ply`, `.case`, `.msh`, `.med`, `.inp`, and Plotly `.json`.
+Supported source formats for manually authored shortcodes include `.foam`, `.vtu`, `.vtp`, `.pvd`, `.vtk`, `.exo`, `.xdmf`, `.cgns`, `.stl`, `.obj`, `.ply`, `.case`, `.msh`, `.med`, `.inp`, and Plotly `.json`.
 
 ## Quick Start
 
@@ -38,14 +38,18 @@ To edit an existing paper:
 FOURD_WORKSPACE=/path/to/your/project docker compose up
 ```
 
-To run the included example paper:
+For the best editing workflow, open the same host folder in your IDE while Docker runs the app. The IDE edits `/path/to/your/project`; 4Dpapers sees it as `/workspace` inside the container.
+
+To inspect the included example manuscript source tree:
 
 ```bash
 FOURD_WORKSPACE=./examples/heart docker compose up
 ```
 
-The example workspace includes `main.qmd` for the full demo and
-`lightweight.qmd` for a smaller Niederer/Purkinje/Plotly demo.
+The example workspace includes `main.qmd` for the full demo manuscript and
+`lightweight.qmd` for a smaller Niederer/Purkinje/Plotly manuscript.
+It references external or non-shipped datasets under `data/`, so it is not a
+clean-checkout runnable example by itself.
 
 ## Use The Prebuilt Image
 
@@ -63,6 +67,25 @@ docker run -d \
   --env-file .env \
   ghcr.io/svcheidi/4dpaper:latest
 ```
+
+## Single-Host Production Deployment
+
+The supported first remote deployment shape is a single-tenant Docker host with
+Caddy terminating HTTPS in front of the 4Dpapers app container.
+
+```bash
+cp .env.production.example .env.production
+$EDITOR .env.production
+docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+That bundle:
+
+- binds the app itself to `127.0.0.1:5006`
+- serves the public site through Caddy on ports `80/443`
+- keeps `FOURD_API_KEY` enabled for browser/API access
+- drops the app process to an unprivileged user after startup
+- uses the same env file for Compose substitution and container runtime env
 
 ## Embed A Figure
 
@@ -84,6 +107,29 @@ Compile from the dashboard, or call:
 ```bash
 curl -X POST http://localhost:5006/api/compile
 ```
+
+The dashboard's built-in figure upload modal is currently scoped to OpenFOAM
+case folders. Other supported source formats can still be used by placing the
+data under `data/` and writing the shortcode manually.
+
+## Use With An IDE
+
+Recommended workflow:
+
+```text
+IDE agent: edits paper/source files on the host
+Docker: runs the 4Dpapers runtime and Quarto render
+Browser: previews and interacts with figures
+```
+
+Run runtime commands inside the container:
+
+```bash
+docker compose exec 4dpapers quarto render main.qmd --to html
+docker compose logs -f 4dpapers
+```
+
+See [Using 4Dpapers with an IDE](docs/ide-workflow.md).
 
 ## Project Layout
 
@@ -111,15 +157,18 @@ Common variables:
 | `FOURD_WORKSPACE` | Host paper folder mounted at `/workspace` by Docker Compose |
 | `FOURD_API_KEY` | Optional API key for dashboard/API access |
 | `FOURD_ALLOWED_ORIGIN` | Allowed browser origin for CORS |
+| `FOURD_EXPOSE_AGENTS` | Set to `1` to expose optional in-app assistant personas |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Enable AI providers |
 | `OLLAMA_URL` | Local Ollama chat endpoint |
 
-For any network-accessible deployment, set a strong `FOURD_API_KEY` and set `FOURD_ALLOWED_ORIGIN` to the exact dashboard origin. Leaving `FOURD_API_KEY` empty is for local single-user use only.
+For any network-accessible deployment, set a strong `FOURD_API_KEY` and set `FOURD_ALLOWED_ORIGIN` to the exact dashboard origin. The current first-deployment auth model is single-tenant: the browser stores the deployment key locally and mirrors it into a same-origin cookie so preview iframes and downloads work. Serve it over HTTPS and do not treat this as multi-user auth.
 
 ## More Documentation
 
 - [Docker deployment guide](docs/docker-deployment.md)
+- [Using 4Dpapers with an IDE](docs/ide-workflow.md)
 - [Environment variable template](.env.example)
+- [Production environment template](.env.production.example)
 - [GitHub Actions image publishing workflow](.github/workflows/docker-publish.yml)
 - [Agent and format reference](AGENTS.md)
 

@@ -45,10 +45,30 @@ _WRITE_ALLOWED_EXTENSIONS = frozenset({
     "",     # extensionless files (e.g. Makefile, .foam marker files)
 })
 
+_HIDDEN_FILE_NAMES = {
+    "AGENTS.md",
+    "CLAUDE.md",
+    "agents.yaml",
+    "_shortcuts.yml",
+}
+
+_HIDDEN_SECRET_SUFFIXES = (
+    ".pem",
+    ".key",
+    ".crt",
+    ".cert",
+    ".p12",
+    ".pfx",
+)
+
 
 def _should_include(path: Path) -> bool:
     """Return True if *path* should appear in the user-facing file tree."""
     if any(skip in path.parts for skip in _HIDDEN_DIRS):
+        return False
+    if path.name in _HIDDEN_FILE_NAMES:
+        return False
+    if path.name.lower().endswith(_HIDDEN_SECRET_SUFFIXES):
         return False
     if path.name.startswith("."):
         return False
@@ -221,7 +241,15 @@ class FileHandler(SecureMixin, tornado.web.RequestHandler):
 
 
 # Export helpers for use in compile_plugin
-__all__ = ["_should_include", "_is_write_allowed", "FilesHandler", "FileHandler", "ROUTES"]
+__all__ = [
+    "_HIDDEN_FILE_NAMES",
+    "_HIDDEN_SECRET_SUFFIXES",
+    "_should_include",
+    "_is_write_allowed",
+    "FilesHandler",
+    "FileHandler",
+    "ROUTES",
+]
 
 ROUTES = [
     (r"/api/files", FilesHandler),

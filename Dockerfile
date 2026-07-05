@@ -12,6 +12,7 @@ LABEL org.opencontainers.image.title="4Dpapers" \
 RUN apt-get update && apt-get install -y \
     curl \
     git \
+    gosu \
     ca-certificates \
     libgl1-mesa-dev \
     libegl1-mesa-dev \
@@ -32,6 +33,11 @@ RUN ARCH=$(dpkg --print-architecture) && \
 
 # Create app directory (contains the 4Dpapers application code)
 WORKDIR /app
+
+# Create a dedicated unprivileged runtime user. The entrypoint may still start
+# as root so it can initialize/chown a bind-mounted workspace before dropping.
+RUN groupadd --system --gid 10001 fourd && \
+    useradd --system --uid 10001 --gid 10001 --create-home --home-dir /home/fourd --shell /usr/sbin/nologin fourd
 
 # Install Python dependencies first (cached unless requirements.txt changes)
 COPY requirements.txt /app/requirements.txt

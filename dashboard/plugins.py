@@ -11,6 +11,7 @@ from pathlib import Path
 
 import tornado.web
 
+from dashboard.auth import AuthenticatedStaticFileHandler, DenyStateFileHandler
 from dashboard.camera_plugin import ROUTES as camera_routes
 from dashboard.color_plugin import ROUTES as color_routes
 from dashboard.compile_plugin import ROUTES as compile_routes
@@ -25,19 +26,24 @@ from dashboard.verify_plugin import ROUTES as verify_routes
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 
 _state_route = (
+    r"/state/figures/(.*)",
+    AuthenticatedStaticFileHandler,
+    {"path": str(_PROJECT_ROOT / "state" / "figures")},
+)
+
+_state_deny_route = (
     r"/state/(.*)",
-    tornado.web.StaticFileHandler,
-    {"path": str(_PROJECT_ROOT / "state")},
+    DenyStateFileHandler,
 )
 
 _output_route = (
     r"/output/(.*)",
-    tornado.web.StaticFileHandler,
+    AuthenticatedStaticFileHandler,
     {"path": str(_PROJECT_ROOT / "_output")},
 )
 
 ROUTES = (
     camera_routes + color_routes + compile_routes + field_routes
     + file_routes + shortcuts_routes + upload_routes + ai_routes + verify_routes
-    + [_state_route, _output_route]
+    + [_state_route, _state_deny_route, _output_route]
 )

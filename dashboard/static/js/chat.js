@@ -5,7 +5,7 @@
  *   1. GET /api/providers  → populate provider <select>, mark unavailable ones
  *   2. GET /api/agents     → populate persona <select>
  *
- * No API keys are ever sent from the client — they live in server env vars.
+ * Deployment API-key auth, when enabled, is handled centrally by auth.js.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let chatHistory = [];
     let isWaitingForResponse = false;
 
-    // Persisted config (no API key — that's server-side now)
+    // Persisted config for provider/model selection.
     let aiConfig = JSON.parse(localStorage.getItem('4dpaper_ai_config')) || {
         provider: 'ollama',
         model:    'llama3',

@@ -2,6 +2,7 @@
 # Usage (new workspace):    docker compose up
 # Usage (existing paper):   FOURD_WORKSPACE=/path/to/paper docker compose up
 # Usage (prebuilt image):   IMAGE=ghcr.io/yourname/4dpapers:latest docker compose up
+# Usage (prod env file):    docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml up -d
 # ─────────────────────────────────────────────────────────────────────────────
 services:
   4dpapers:
@@ -13,7 +14,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "5006:5006"  # Dashboard UI
+      - "${FOURD_APP_PUBLISH:-5006:5006}"  # Dashboard UI
     volumes:
       - ${FOURD_WORKSPACE:-./workspace}:/workspace  # Host paper workspace
       # Mount your data directory so shortcuts can resolve to it inside the container.
@@ -31,7 +32,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
-      - .env
+      - ${FOURD_ENV_FILE:-.env}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5006/api/health"]
       interval: 30s

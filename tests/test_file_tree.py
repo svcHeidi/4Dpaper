@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from dashboard.file_plugin import _should_include, _HIDDEN_DIRS
+from dashboard.file_plugin import _HIDDEN_DIRS, _HIDDEN_FILE_NAMES, _should_include
 
 
 class TestShouldInclude:
@@ -64,6 +64,25 @@ class TestShouldInclude:
         figs = state / "figures"
         figs.mkdir()
         assert _should_include(figs) is True
+
+    @pytest.mark.parametrize("name", sorted(_HIDDEN_FILE_NAMES))
+    def test_excludes_sensitive_root_files(self, tmp_path, name):
+        f = tmp_path / name
+        f.write_text("secret")
+        assert _should_include(f) is False
+
+    @pytest.mark.parametrize("name", [
+        "private.pem",
+        "private.key",
+        "certificate.crt",
+        "certificate.cert",
+        "bundle.p12",
+        "bundle.pfx",
+    ])
+    def test_excludes_secret_file_suffixes(self, tmp_path, name):
+        f = tmp_path / name
+        f.write_text("secret")
+        assert _should_include(f) is False
 
 
 class TestHiddenDirs:

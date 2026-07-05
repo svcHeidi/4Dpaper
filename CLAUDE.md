@@ -268,6 +268,14 @@ configuration instead of making the source files browsable.
 
 All formats handled by `scripts/data_loader.py` (`SimulationData` class). 4Dpapers supports **27+ file formats** across scientific computing, CFD, FEA, geometry, and visualization domains.
 
+### 6.0 Verification Status For v1 Claims
+
+- **Verified with local automated fixtures:** `.vtu`, `.vtp`, `.vtk`, `.pvd`, `.vtk.series` (synthetic/local mix), `.xdmf` + companion `.h5`, `.stl`, `.obj`, `.ply`, `.msh`, `.med`, `.hdf5`, Plotly `.json`
+- **Externally or manually validated, but missing redistributable local fixtures:** `.foam`, `.openfoam`
+- **Implemented, but not yet fixture-backed enough for a full v1 workflow claim:** `.exo`, `.e`, `.ex2`, `.case`, `.cgns`, real Abaqus `.inp`
+
+Use this status split when writing docs, release notes, or user-facing support claims. Do not present the last two groups as fully verified v1 workflows.
+
 ### 6.1 OpenFOAM & CFD Formats
 
 | Format | Extensions | Time-Series | Scalar Fields | Notes |
@@ -338,11 +346,11 @@ The upload handler also accepts for staging/documentation:
 
 | Format | Library | Decimation | Live Field Switch | Play Button | PDF Export | Known Limitations |
 |--------|---------|------------|-------------------|-------------|------------|-------------------|
-| OpenFOAM | PyVista | YES | YES | YES | YES | None |
-| VTK/VTU/PVD | PyVista | YES | YES | YES | YES | None |
-| Exodus II | PyVista | YES | YES | YES | YES | None |
-| CGNS | PyVista | YES | YES | YES | YES | None |
-| EnSight | PyVista | YES | YES | YES | YES | None |
+| OpenFOAM | PyVista | YES | YES | YES | YES | External/manual validation exists; redistributable local fixture still pending |
+| VTK/VTU/PVD | PyVista | YES | YES | YES | YES | Verified locally with automated fixtures |
+| Exodus II | PyVista | YES | YES | YES | YES | Reader path implemented; real local fixture coverage still pending |
+| CGNS | PyVista | YES | YES | YES | YES | Reader path implemented; real local fixture coverage still pending |
+| EnSight | PyVista | YES | YES | YES | YES | Reader path implemented; real local fixture coverage still pending |
 | XDMF | PyVista | YES | YES | YES | YES | Requires .h5 file |
 | STL/OBJ/PLY | PyVista | YES | LIMITED | NO | YES | No scalar animation |
 | Gmsh/MED | meshio | YES | LIMITED | MAYBE | YES | Requires optional dep |
@@ -480,7 +488,7 @@ Shortcut names must match `[a-z0-9_]+`. The `/check` endpoint is used by the das
 | `POST` | `/upload/file` | multipart: `upload_id`, `rel_path`, `file` | `{status: "ok"}` |
 | `POST` | `/upload/finish` | `{upload_id, mode: "figure"\|"file"}` | `{status, shortcode, src, fig_id, log}` |
 
-`mode="figure"`: expects a `.foam` case folder, creates a symlink under `data/`, returns a ready `{{< 4d-image >}}` shortcode. `mode="file"`: copies arbitrary files to `data/`, returns an `{{< include >}}` shortcode.
+`mode="figure"`: OpenFOAM-only dashboard flow. Expects a `.foam` case folder, creates a symlink under `data/`, returns a ready `{{< 4d-image >}}` shortcode. `mode="file"`: copies arbitrary files to `data/`, returns an `{{< include >}}` shortcode.
 
 ### 9.8 Static files
 

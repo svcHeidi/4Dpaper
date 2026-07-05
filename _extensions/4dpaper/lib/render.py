@@ -29,6 +29,11 @@ _COLORBAR_POSITIONS = [
 
 _SIMULATION_CACHE = {}
 
+_MAX_TIMELINE_FRAMES_LIGHT = 20
+_MAX_TIMELINE_FRAMES_MEDIUM = 12
+_MAX_TIMELINE_FRAMES_HEAVY = 8
+_MAX_TIMELINE_FRAMES_EXTREME = 5
+
 def _resolve_time_index(time_spec: str, n_steps: int) -> int:
     if time_spec == "first":
         return 0
@@ -80,6 +85,46 @@ def _timeline_step_indices(sim, fields: list[str], stride: int) -> list[int]:
         if all(_mesh_has_field(mesh, f) for f in primary_fields):
             filtered.append(idx)
     return filtered or step_indices
+
+def _apply_timeline_frame_budget(
+    step_indices: list[int],
+    *,
+    point_budget: int,
+) -> tuple[list[int], int | None]:
+    """Cap embedded timeline frames for large interactive payloads.
+
+    `point_budget` is a coarse proxy for the amount of per-frame scalar payload
+    we would inline into the generated HTML. The thresholds are intentionally
+    conservative for cold Docker renders, where very large timeline payloads can
+    fail before Quarto reaches the final document render.
+    """
+    if len(step_indices) <= 1:
+        return step_indices, None
+
+    if point_budget >= 120_000:
+        max_frames = _MAX_TIMELINE_FRAMES_EXTREME
+    elif point_budget >= 80_000:
+        max_frames = _MAX_TIMELINE_FRAMES_HEAVY
+    elif point_budget >= 40_000:
+        max_frames = _MAX_TIMELINE_FRAMES_MEDIUM
+    else:
+        max_frames = _MAX_TIMELINE_FRAMES_LIGHT
+
+    if len(step_indices) <= max_frames:
+        return step_indices, None
+
+    if max_frames <= 1:
+        return [step_indices[0]], max_frames
+
+    picks = []
+    last = len(step_indices) - 1
+    for i in range(max_frames):
+        pos = round(i * last / (max_frames - 1))
+        picks.append(step_indices[pos])
+
+    # Preserve order while removing any duplicate positions introduced by rounding.
+    capped = list(dict.fromkeys(picks))
+    return capped, max_frames
 
 def _sample_on_reference(reference, mesh):
     if reference is None:
@@ -284,7 +329,26 @@ def generate_multi_image_html(
 
     if sim1.n_steps > 1 and src1_fields:
         step_indices = _timeline_step_indices(sim1, src1_fields, stride)
+        primary_points = max(
+            getattr(init_surfaces[0], "n_points", 0) if init_surfaces and init_surfaces[0] is not None else 0,
+            getattr(init_surfaces[0], "n_cells", 0) if init_surfaces and init_surfaces[0] is not None else 0,
+        )
+        overlay_points = 0
+        for surf in init_surfaces[1:]:
+            if surf is None:
+                continue
+            overlay_points += max(getattr(surf, "n_points", 0), getattr(surf, "n_cells", 0))
+        step_indices, capped_to = _apply_timeline_frame_budget(
+            step_indices,
+            point_budget=primary_points + overlay_points,
+        )
         frame_idx = _frame_index_for_step(step_indices, idx)
+        if capped_to is not None:
+            print(
+                f"{fig_id}: capped timeline to {len(step_indices)} frame(s)"
+                f" for cold-render stability (requested stride={stride}).",
+                file=sys.stderr,
+            )
         print(
             f"{fig_id}: embedding {len(step_indices)} timesteps (stride={stride})"
             f" × {len(src1_fields)} primary field(s)"
@@ -662,7 +726,18 @@ def generate_html_figure(
 
     if sim.n_steps > 1 and fields_to_embed:
         step_indices = _timeline_step_indices(sim, fields_to_embed, stride)
+        point_budget = max(getattr(surface, "n_points", 0), getattr(surface, "n_cells", 0))
+        step_indices, capped_to = _apply_timeline_frame_budget(
+            step_indices,
+            point_budget=point_budget,
+        )
         frame_idx = _frame_index_for_step(step_indices, idx)
+        if capped_to is not None:
+            print(
+                f"{fig_id or 'fig'}: capped timeline to {len(step_indices)} frame(s)"
+                f" for cold-render stability (requested stride={stride}).",
+                file=sys.stderr,
+            )
         print(
             f"{fig_id or 'fig'}: embedding {len(step_indices)} timesteps "
             f"(stride={stride}) × {len(fields_to_embed)} field(s) for timeline …",

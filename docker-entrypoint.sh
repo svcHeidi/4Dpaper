@@ -8,6 +8,11 @@ set -e
 PROJECT_ROOT="/workspace"
 PORT="${PORT:-5006}"
 SKIP_INIT="${SKIP_INIT:-false}"
+FOURD_DROP_PRIVILEGES="${FOURD_DROP_PRIVILEGES:-0}"
+FOURD_CHOWN_WORKSPACE="${FOURD_CHOWN_WORKSPACE:-0}"
+RUNTIME_USER="${FOURD_RUNTIME_USER:-fourd}"
+RUNTIME_GROUP="${FOURD_RUNTIME_GROUP:-fourd}"
+RUNTIME_HOME="${FOURD_RUNTIME_HOME:-/home/fourd}"
 
 # Colors for output
 BLUE='\033[0;34m'
@@ -212,7 +217,28 @@ export PROJECT_ROOT="$PROJECT_ROOT"
 export DISPLAY=""
 export PYVISTA_OFF_SCREEN=true
 export VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN=1
+export HOME="${HOME:-$RUNTIME_HOME}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 # Change to app directory and run serve.py with the workspace path
 cd /app
-python serve.py --port "$PORT"
+
+mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME"
+
+if [ "$FOURD_CHOWN_WORKSPACE" = "1" ]; then
+    echo -e "${YELLOW}Applying workspace ownership to ${RUNTIME_USER}:${RUNTIME_GROUP}...${NC}"
+    chown -R "${RUNTIME_USER}:${RUNTIME_GROUP}" "$PROJECT_ROOT"
+    echo -e "${GREEN}✓ Workspace ownership updated${NC}"
+fi
+
+if [ "$(id -u)" = "0" ]; then
+    chown -R "${RUNTIME_USER}:${RUNTIME_GROUP}" "$HOME"
+fi
+
+if [ "$FOURD_DROP_PRIVILEGES" = "1" ]; then
+    echo -e "${YELLOW}Dropping privileges to ${RUNTIME_USER}:${RUNTIME_GROUP}...${NC}"
+    exec gosu "${RUNTIME_USER}:${RUNTIME_GROUP}" python serve.py --port "$PORT"
+fi
+
+exec python serve.py --port "$PORT"
