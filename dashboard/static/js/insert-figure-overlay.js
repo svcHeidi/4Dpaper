@@ -18,6 +18,20 @@
     ed.focus();
   }
 
+  function showPreview(figId) {
+    var wrap = document.getElementById("insert-preview-wrap");
+    var img = document.getElementById("insert-preview-img");
+    if (!wrap || !img || !figId) return;
+    // Cache-bust: a reused fig_id keeps the same PNG URL across re-uploads.
+    img.src = "/state/figures/" + encodeURIComponent(figId) + ".png?t=" + Date.now();
+    wrap.style.display = "block";
+  }
+
+  function hidePreview() {
+    var wrap = document.getElementById("insert-preview-wrap");
+    if (wrap) wrap.style.display = "none";
+  }
+
   async function uploadFiles(files) {
     if (!files || !files.length) throw new Error("No files found in drop");
 
@@ -30,6 +44,7 @@
       if (statusEl) statusEl.textContent = msg;
     }
 
+    hidePreview();
     setStatus("Uploading " + total + " files...");
 
     for (var i = 0; i < files.length; i++) {
@@ -64,7 +79,8 @@
     }
 
     insertShortcode(data.shortcode);
-    setStatus("Inserted ✓");
+    showPreview(data.fig_id);
+    setStatus("Inserted ✓ — rendered preview below");
     return data;
   }
 
@@ -148,6 +164,10 @@
       "choose folder…</button> " +
       '<span style="color:#64748b;font-size:11px;">(other figure formats still require manual shortcodes)</span></div>' +
       '<div id="insert-drop-status" style="margin-top:6px;color:#8ab4ff;font-size:10px;font-family:monospace;min-height:14px;"></div>' +
+      '<div id="insert-preview-wrap" style="display:none;margin-top:8px;">' +
+      '<img id="insert-preview-img" alt="Rendered figure preview" ' +
+      'style="width:100%;border-radius:6px;border:1px solid #263244;background:#fff;display:block;"/>' +
+      "</div>" +
       "</div></div>";
 
     document.body.appendChild(ov);
@@ -184,6 +204,9 @@
 
   window.showInsertFigureModal = function () {
     buildOnce();
+    hidePreview();
+    var statusEl = document.getElementById("insert-drop-status");
+    if (statusEl) statusEl.textContent = "";
     var ov = document.getElementById("insert-figure-overlay");
     if (ov) ov.style.display = "flex";
   };

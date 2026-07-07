@@ -1,19 +1,35 @@
 """Stage uploaded files and return default shortcodes."""
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
 import shutil
+import subprocess
+import sys
 import urllib.parse
 from pathlib import Path
 
 import tornado.web
 
 from dashboard.auth import SecureMixin
+from dashboard.render_lock import _render_lock
 
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)))
 _UPLOAD_ROOT = _PROJECT_ROOT / "state" / "upload_tmp"
+
+# Standalone render script invoked as a subprocess on figure upload.
+_PREVIEW_SCRIPT = Path(__file__).parent.parent / "scripts" / "render_case_preview.py"
+
+# Budget for one preview render (HTML + PNG) of an uploaded case. A real
+# 158-timestep cardiac case measured ~90s on an M-series laptop, so 120s was
+# too tight.
+_PREVIEW_TIMEOUT_S = 300
+
+# Budget for acquiring the shared render lock: an in-flight Quarto compile can
+# hold it for up to 1800s, and the upload request must not hang behind it.
+_LOCK_ACQUIRE_TIMEOUT_S = 15
 
 # upload_id must be a safe alphanumeric token (prevents staging-dir injection).
 _SAFE_UPLOAD_ID = re.compile(r"^[A-Za-z0-9_-]{4,128}$")
@@ -52,14 +68,64 @@ def generate_shortcode(
     fig_id: str,
     time: str,
     caption: str,
+    fields: list[str] | None = None,
 ) -> str:
     """Build a default `4d-image` shortcode."""
     parts = [f'src="{src}"', f'field="{field}"', f'id="{fig_id}"']
+    if fields and len(fields) > 1:
+        # Persist the live field switcher across full Quarto recompiles.
+        parts.append('fields="' + ",".join(fields) + '"')
     if time and time != "mid":
         parts.append(f'time="{time}"')
     if caption.strip():
         parts.append(f'caption="{caption.strip()}"')
     return "{{< 4d-image " + " ".join(parts) + " >}}"
+
+
+def _slugify_fig_id(case_name: str) -> str:
+    """Derive a figure id matching the shortcode id charset `[A-Za-z0-9_-]+`."""
+    slug = re.sub(r"[^a-z0-9_-]+", "-", case_name.lower()).strip("-")
+    return f"fig-{slug}" if slug else "fig-case"
+
+
+def _preview_python() -> str:
+    """Interpreter for the preview subprocess.
+
+    Prefers the project venv (mirroring the re-exec in 4dpaper.py) so preview
+    and Quarto compile render with the same library versions.
+    """
+    venv_python = _PROJECT_ROOT / ".venv" / "bin" / "python"
+    return str(venv_python) if venv_python.exists() else sys.executable
+
+
+def _run_preview_subprocess(
+    case_path: Path, fig_id: str, decimate: str
+) -> subprocess.CompletedProcess:
+    """Render the HTML + PNG preview for one case in a subprocess."""
+    return subprocess.run(
+        [
+            _preview_python(), str(_PREVIEW_SCRIPT),
+            "--case", str(case_path),
+            "--fig-id", fig_id,
+            "--decimate", decimate,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=_PREVIEW_TIMEOUT_S,
+    )
+
+
+def _parse_preview_stdout(stdout: str) -> dict | None:
+    """Parse the JSON status line (last non-empty stdout line) or `None`."""
+    for line in reversed((stdout or "").splitlines()):
+        if not line.strip():
+            continue
+        try:
+            result = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        return result if isinstance(result, dict) else None
+    return None
 
 
 def create_case_symlink(
@@ -114,6 +180,30 @@ def copy_case_data(foam_path: Path, dest_data_dir: Path, log_lines: list[str]) -
             shutil.rmtree(dst)
         shutil.copytree(serial_mesh, dst)
         log_lines.append("  Copied constant/polyMesh/")
+
+    # The VTK OpenFOAM reader expects system/controlDict to be present.
+    system_dir = case_root / "system"
+    if system_dir.exists():
+        dst = dest_case / "system"
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(system_dir, dst)
+        log_lines.append("  Copied system/")
+
+    # Serial (reconstructed) cases keep results in numeric time dirs at the
+    # case root — without them the case loads with zero time steps.
+    for item in case_root.iterdir():
+        if not item.is_dir():
+            continue
+        try:
+            float(item.name)
+        except ValueError:
+            continue
+        dst = dest_case / item.name
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(item, dst)
+        log_lines.append(f"  Copied {item.name}/")
 
     for proc_dir in sorted(case_root.glob("processor*")):
         if not proc_dir.is_dir():
@@ -250,7 +340,7 @@ class UploadFinishHandler(SecureMixin, tornado.web.RequestHandler):
     def options(self) -> None:
         self.finish()
 
-    def post(self) -> None:
+    async def post(self) -> None:
         if not self.check_auth():
             return
         try:
@@ -298,13 +388,67 @@ class UploadFinishHandler(SecureMixin, tornado.web.RequestHandler):
                 )
 
                 src = dest_foam.relative_to(_PROJECT_ROOT).as_posix()
+                fig_id = _slugify_fig_id(foam_path.parent.name)
+
+                try:
+                    await asyncio.wait_for(
+                        _render_lock.acquire(), timeout=_LOCK_ACQUIRE_TIMEOUT_S
+                    )
+                except asyncio.TimeoutError:
+                    self.set_status(503)
+                    self.write({
+                        "status": "error",
+                        "detail": "A compile is currently running — try again shortly.",
+                        "log": log_lines[-20:],
+                    })
+                    return
+                try:
+                    loop = asyncio.get_running_loop()
+                    proc = await loop.run_in_executor(
+                        None, _run_preview_subprocess, dest_foam, fig_id, "auto"
+                    )
+                except subprocess.TimeoutExpired:
+                    self.set_status(500)
+                    self.write({
+                        "status": "error",
+                        "detail": "Figure preview render timed out.",
+                        "log": log_lines[-20:],
+                    })
+                    return
+                finally:
+                    _render_lock.release()
+
+                if proc.returncode != 0:
+                    detail = (proc.stderr or "").strip()[-2000:] or "preview render failed"
+                    self.set_status(500)
+                    self.write({
+                        "status": "error",
+                        "detail": f"Figure preview render failed: {detail}",
+                        "log": log_lines[-20:],
+                    })
+                    return
+
+                result = _parse_preview_stdout(proc.stdout)
+                if result is None or result.get("status") != "ok":
+                    self.set_status(500)
+                    self.write({
+                        "status": "error",
+                        "detail": "Figure preview render returned an invalid status.",
+                        "log": log_lines[-20:],
+                    })
+                    return
+
+                field = result.get("field") or ""
+                fields = [f for f in (result.get("fields") or []) if isinstance(f, str)]
+                log_lines.append(f"  Rendered preview figure '{fig_id}' (field: {field or 'none'})")
 
                 shortcode = generate_shortcode(
                     src=src,
-                    field="Vm",
-                    fig_id="fig-vm",
+                    field=field,
+                    fig_id=fig_id,
                     time="mid",
                     caption="",
+                    fields=fields,
                 )
 
                 self.write(
@@ -312,7 +456,7 @@ class UploadFinishHandler(SecureMixin, tornado.web.RequestHandler):
                         "status": "ok",
                         "shortcode": shortcode,
                         "src": src,
-                        "fig_id": "fig-vm",
+                        "fig_id": fig_id,
                         "log": log_lines[-20:],
                     }
                 )
@@ -342,10 +486,9 @@ class UploadFinishHandler(SecureMixin, tornado.web.RequestHandler):
                     if dest_file.exists():
                         dest_file.unlink()
 
-                    try:
-                        dest_file.symlink_to(src_file.resolve())
-                    except (OSError, NotImplementedError):
-                        shutil.copy2(src_file, dest_file)
+                    # Copy, never symlink: src_file lives under the staging dir
+                    # that the finally block deletes, so a symlink would dangle.
+                    shutil.copy2(src_file, dest_file)
 
                     copied_paths.append(str(dest_file.relative_to(_PROJECT_ROOT)))
 

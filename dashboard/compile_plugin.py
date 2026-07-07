@@ -20,6 +20,7 @@ from pathlib import Path
 import tornado.web
 
 from dashboard.auth import SecureMixin
+from dashboard.render_lock import _render_lock
 from dashboard.utils import maybe_sign_rendered_html, run_quarto_render
 from dashboard.file_plugin import _should_include, _is_write_allowed
 
@@ -29,9 +30,6 @@ _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)
 # Read version from the repo-root VERSION file (single source of truth)
 _VERSION_FILE = Path(__file__).parent.parent / "VERSION"
 _APP_VERSION = _VERSION_FILE.read_text().strip() if _VERSION_FILE.exists() else "unknown"
-
-# Semaphore: only one Quarto render may run at a time to prevent resource exhaustion.
-_render_lock = asyncio.Semaphore(1)
 
 # Global store for the live compilation logs so the frontend can poll them
 _active_build_log: list[str] = []

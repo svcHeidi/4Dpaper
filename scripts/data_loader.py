@@ -196,7 +196,10 @@ class SimulationData:
             staged_proc_dir.mkdir()
 
             for child in source_proc_dir.iterdir():
-                os.symlink(child, staged_proc_dir / child.name)
+                # Resolve the source: a relative case_path would otherwise
+                # create symlinks relative to the temp staging dir, which
+                # dangle and make VTK report "Cannot open directory".
+                os.symlink(child.resolve(), staged_proc_dir / child.name)
 
             foam_file = staged_proc_dir / "_temp_reader.foam"
             foam_file.touch()

@@ -536,3 +536,42 @@ class TestRealFiles:
             pytest.skip(str(exc))
         except Exception as exc:
             pytest.skip(f"HDF5 fixture not loadable in this environment: {exc}")
+
+
+class TestDecomposedRelativePathStaging:
+    """Decomposed cases must stage resolvable symlinks even from a relative path."""
+
+    def _build_fake_decomposed_case(self, root: Path) -> Path:
+        case_dir = root / "case"
+        case_dir.mkdir()
+        for proc in ("processor0", "processor1"):
+            mesh_dir = case_dir / proc / "constant" / "polyMesh"
+            mesh_dir.mkdir(parents=True)
+            (mesh_dir / "points").write_text("()")
+            (case_dir / proc / "0").mkdir()
+        foam = case_dir / "case.foam"
+        foam.write_text("")
+        return foam
+
+    def test_relative_case_path_stages_resolvable_symlinks(self, tmp_path, monkeypatch):
+        foam = self._build_fake_decomposed_case(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        rel_foam = foam.relative_to(tmp_path)
+        assert not rel_foam.is_absolute()
+
+        sim = SimulationData(str(rel_foam))
+        # The reader will still fail on a mesh-less fake case; the bug under
+        # test is purely that the staged processor symlinks must not dangle.
+        try:
+            sim.load_openfoam_decomposed()
+        except Exception:
+            pass
+
+        assert sim._proc_stage_roots, "no processor staging dirs were created"
+        dangling = []
+        for stage_root in sim._proc_stage_roots:
+            for link in Path(stage_root).rglob("*"):
+                if link.is_symlink() and not link.resolve().exists():
+                    dangling.append(str(link))
+        assert not dangling, f"dangling staged symlinks: {dangling}"
