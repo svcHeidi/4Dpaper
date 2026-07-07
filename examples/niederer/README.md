@@ -4,9 +4,12 @@ This is the single shipped example workspace for the first public release.
 
 It contains:
 
-- `main.qmd`: one minimal manuscript using one interactive 4D figure
+- `main.qmd`: one compact manuscript covering `4d-image`, `4d-panel`,
+  `4d-timeseries`, and `4d-graph`
 - `data/niederer/niederer.vtk.series`: a compact 8-step surface export of the
   Niederer slab benchmark
+- `data/plots/niederer_signal.json`: a small Plotly JSON graph fixture
+- `PREVIEW.md`: git-visible screenshots and preview instructions
 
 Run it with Docker from the repository root:
 

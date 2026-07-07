@@ -1,0 +1,92 @@
+name: Example Preview Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/example-preview-pages.yml"
+      - "docker-compose.yml"
+      - "Dockerfile"
+      - "docker-entrypoint.sh"
+      - "_extensions/**"
+      - "scripts/**"
+      - "examples/niederer/**"
+  workflow_dispatch:
+
+concurrency:
+  group: example-preview-pages-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+
+      - name: Build app container
+        run: |
+          docker compose build 4dpapers
+
+      - name: Start app with Niederer workspace
+        run: |
+          COMPOSE_PROJECT_NAME=4dpapers-pages \
+          FOURD_WORKSPACE=./examples/niederer \
+          FOURD_APP_PUBLISH=5007:5006 \
+          docker compose up -d 4dpapers
+
+      - name: Render Niederer example
+        run: |
+          COMPOSE_PROJECT_NAME=4dpapers-pages \
+          FOURD_WORKSPACE=./examples/niederer \
+          FOURD_APP_PUBLISH=5007:5006 \
+          docker compose exec -T 4dpapers quarto render main.qmd --to html
+
+      - name: Assemble Pages site
+        run: |
+          rm -rf site
+          mkdir -p site/state
+          cp -R examples/niederer/_output/. site/
+          cp site/main.html site/index.html
+          cp -R examples/niederer/state/figures site/state/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Stop app
+        if: always()
+        run: |
+          COMPOSE_PROJECT_NAME=4dpapers-pages \
+          FOURD_WORKSPACE=./examples/niederer \
+          FOURD_APP_PUBLISH=5007:5006 \
+          docker compose down --volumes --remove-orphans
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

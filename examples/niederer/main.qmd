@@ -1,9 +1,9 @@
 ---
-title: "Niederer Slab Example"
+title: "Niederer Slab Release Example"
 format: html
 ---
 
-## Interactive Niederer Slab
+## Single Live Figure
 
 This shipped example uses a compact surface export of the Niederer et al. slab
 benchmark. It is small enough to keep in git while still exercising the live
@@ -16,4 +16,52 @@ field switcher and timestep playback used by 4Dpapers figures.
     fields="Vm,activationTime,ionicCurrent,Jsi,externalStimulusCurrent"
     time="last"
     caption="Niederer slab surface at the final timestep. Use the field menu to switch scalar arrays and press play to animate the 8-step sequence."
+>}}
+
+## Synced Comparison Panel
+
+The same series can also drive a synced panel. This is the lightest way to
+show a before-and-after view while keeping one shared camera state.
+
+{{< 4d-panel
+    id="niederer-panel"
+    layout="2x1"
+    height="420px"
+    camera="sync"
+    caption="First and last Niederer timesteps shown side by side with a shared camera."
+    src1="data/niederer/niederer.vtk.series"
+    id1="niederer-first"
+    field1="Vm"
+    time1="0"
+    fields1="Vm,activationTime,ionicCurrent,Jsi,externalStimulusCurrent"
+    src2="data/niederer/niederer.vtk.series"
+    id2="niederer-last"
+    field2="Vm"
+    time2="last"
+    fields2="Vm,activationTime,ionicCurrent,Jsi,externalStimulusCurrent"
+>}}
+
+## Timeseries Strip
+
+For publication layouts that need several representative timesteps at once,
+`4d-timeseries` expands the same source into a synchronized progression view.
+
+{{< 4d-timeseries
+    id="niederer-timeseries"
+    src="data/niederer/niederer.vtk.series"
+    field="Vm"
+    times="0,2,4,last"
+    height="320px"
+    caption="Representative Vm snapshots across the 8-step Niederer sequence."
+>}}
+
+## Plotly Graph
+
+The example workspace also includes a small Plotly JSON figure so the release
+demo covers both 4D geometry and graph embedding.
+
+{{< 4d-graph
+    id="niederer-graph"
+    src="data/plots/niederer_signal.json"
+    caption="Synthetic activation-style signal used to smoke-test Plotly JSON embedding."
 >}}

@@ -1,0 +1,65 @@
+{
+  "data": [
+    {
+      "type": "scatter",
+      "mode": "lines+markers",
+      "name": "Vm probe",
+      "x": [0, 1, 2, 3, 4, 5, 6, 7],
+      "y": [-82, -78, -61, -12, 23, 8, -27, -74],
+      "line": {
+        "color": "#0f766e",
+        "width": 3
+      },
+      "marker": {
+        "size": 7
+      }
+    },
+    {
+      "type": "scatter",
+      "mode": "lines",
+      "name": "Stimulus envelope",
+      "x": [0, 1, 2, 3, 4, 5, 6, 7],
+      "y": [0.0, 0.1, 0.35, 0.9, 0.45, 0.18, 0.05, 0.0],
+      "yaxis": "y2",
+      "line": {
+        "color": "#f97316",
+        "width": 2,
+        "dash": "dot"
+      }
+    }
+  ],
+  "layout": {
+    "title": {
+      "text": "Synthetic Niederer Probe Signals"
+    },
+    "xaxis": {
+      "title": {
+        "text": "Frame"
+      }
+    },
+    "yaxis": {
+      "title": {
+        "text": "Vm (mV)"
+      }
+    },
+    "yaxis2": {
+      "title": {
+        "text": "Stimulus"
+      },
+      "overlaying": "y",
+      "side": "right",
+      "range": [0, 1]
+    },
+    "legend": {
+      "orientation": "h",
+      "y": 1.1
+    },
+    "margin": {
+      "l": 60,
+      "r": 60,
+      "t": 60,
+      "b": 50
+    },
+    "template": "plotly_white"
+  }
+}
