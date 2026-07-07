@@ -95,6 +95,7 @@ project:
   pre-render:
     - _extensions/4dpaper/4dpaper.py
   post-render:
+    - _extensions/4dpaper/inject_figures.py
     - _extensions/4dpaper/sign_rendered_html.py
 EOF
 
@@ -192,6 +193,7 @@ project:
   pre-render:
     - _extensions/4dpaper/4dpaper.py
   post-render:
+    - _extensions/4dpaper/inject_figures.py
     - _extensions/4dpaper/sign_rendered_html.py
 EOF
     echo -e "${GREEN}✓ Created _quarto.yml${NC}"

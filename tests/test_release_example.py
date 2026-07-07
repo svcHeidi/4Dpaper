@@ -60,3 +60,11 @@ def test_niederer_release_example_manuscript_covers_core_shortcodes():
     assert "{{< 4d-panel" in manuscript
     assert "{{< 4d-timeseries" in manuscript
     assert "{{< 4d-graph" in manuscript
+
+
+def test_niederer_release_example_export_runs_figure_injection():
+    quarto_config = (
+        Path(__file__).parent.parent / "examples" / "niederer" / "_quarto.yml"
+    ).read_text()
+
+    assert "_extensions/4dpaper/inject_figures.py" in quarto_config
