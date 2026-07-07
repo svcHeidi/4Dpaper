@@ -246,13 +246,10 @@ class TestGeneratePanelHtml:
         with patch("lib.render.generate_html_figure", side_effect=fake_gen_html):
             mod.generate_panel_html(self._make_panel(), tmp_path)
 
-        import base64, re
         html = (tmp_path / "panel-test.html").read_text()
-        # Content is base64-encoded in data URLs — decode to verify sub-figure content
-        b64_chunks = re.findall(r'data:text/html;base64,([A-Za-z0-9+/=]+)', html)
-        decoded = [base64.b64decode(b).decode() for b in b64_chunks]
-        assert any("unique-fig-a" in d for d in decoded)
-        assert any("unique-fig-b" in d for d in decoded)
+        assert 'src="fig-a.html"' in html
+        assert 'src="fig-b.html"' in html
+        assert "data:text/html;base64" not in html
 
     def test_composite_html_is_passed_to_signing_hook(self, tmp_path):
         from unittest.mock import patch

@@ -961,16 +961,16 @@ window.addEventListener("message",function(e){
         f'width:100%;height:{height};background:#111;'
     )
 
-    import base64 as _b64_panel
     cells = []
     frame_count = 0
     for sub in panel["subfigures"]:
         sub_path = figures_dir / f"{sub['id']}.html"
         frame_count = max(frame_count, _html_time_frame_count(sub_path))
-        content = sub_path.read_text()
-        b64 = _b64_panel.b64encode(content.encode()).decode("ascii")
         cells.append(
-            f'<iframe src="data:text/html;base64,{b64}" '
+            # Use sibling file paths inside the composite panel HTML instead of
+            # data: iframes. vtk.js/WebGL panels render reliably this way in
+            # static environments such as GitHub Pages.
+            f'<iframe src="{sub["id"]}.html" '
             f'data-panel="{panel["id"]}" '
             f'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
         )
@@ -996,8 +996,8 @@ window.addEventListener("message",function(e){
     _maybe_sign_output_html(out_path)
     print(f"Generated panel (HTML): {out_path}", file=sys.stderr)
 
-    # Write manifest so Lua can embed subfigures as direct srcdoc iframes
-    # (avoids data:text/html;base64 iframes which break vtk.js WebGL rendering).
+    # Write manifest so Lua can embed subfigures as direct file-backed iframes
+    # in the outer document without relying on data: URLs.
     manifest = {
         "subfigures": [sub["id"] for sub in panel["subfigures"]],
         "layout": panel.get("layout", "1x1"),

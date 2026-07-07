@@ -144,18 +144,17 @@ def _build_timeseries_composite_html(
 ) -> str:
     """Build composite HTML for timeseries with iframe grid layout."""
 
-    # Build frame HTML blocks - embed content directly as srcdoc for compatibility
+    # Use sibling file paths for child viewers when generating inside figures_dir.
+    # Nested vtk.js pages render more reliably this way in static hosts such as
+    # GitHub Pages than when embedded via srcdoc.
     frames_html_parts = []
     for i, fid in enumerate(frame_ids):
         if figures_dir:
             frame_path = figures_dir / f"{fid}.html"
             if frame_path.exists():
-                frame_content = frame_path.read_text(encoding='utf-8')
-                # Escape for srcdoc attribute
-                escaped = frame_content.replace('&', '&amp;').replace('"', '&quot;')
                 frames_html_parts.append(
                     f'    <div class="frame-container">'
-                    f'      <iframe srcdoc="{escaped}" frameborder="0" class="frame-iframe"></iframe>'
+                    f'      <iframe src="{fid}.html" frameborder="0" class="frame-iframe"></iframe>'
                     f'      <div class="frame-label">Frame {i} (t={step_indices[i]})</div>'
                     f'    </div>'
                 )

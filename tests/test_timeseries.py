@@ -15,6 +15,16 @@ def _load_4dpaper():
     return mod
 
 
+def _load_frontend():
+    spec = importlib.util.spec_from_file_location(
+        "fourd_frontend",
+        Path(__file__).parent.parent / "_extensions" / "4dpaper" / "lib" / "frontend.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 class TestParseTimeseriesShortcodes:
     def test_basic_parse(self):
         mod = _load_4dpaper()
@@ -128,6 +138,25 @@ class TestMainTimeseriesIntegration:
         mod = _load_4dpaper()
         source = inspect.getsource(mod.main)
         assert "panels.append(ts)" in source
+
+
+class TestTimeseriesCompositeHtml:
+    def test_uses_file_backed_iframes_when_frame_html_exists(self, tmp_path):
+        frontend = _load_frontend()
+        (tmp_path / "ts-frame-0.html").write_text("<html>frame-0</html>", encoding="utf-8")
+        (tmp_path / "ts-frame-1.html").write_text("<html>frame-1</html>", encoding="utf-8")
+
+        html = frontend._build_timeseries_composite_html(
+            ts_id="ts",
+            frame_ids=["ts-frame-0", "ts-frame-1"],
+            step_indices=[0, 7],
+            available_fields=["Vm"],
+            figures_dir=tmp_path,
+        )
+
+        assert 'src="ts-frame-0.html"' in html
+        assert 'src="ts-frame-1.html"' in html
+        assert "srcdoc=" not in html
 
 
 class TestFourdTimeseriesLua:
