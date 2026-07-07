@@ -40,16 +40,15 @@ FOURD_WORKSPACE=/path/to/your/project docker compose up
 
 For the best editing workflow, open the same host folder in your IDE while Docker runs the app. The IDE edits `/path/to/your/project`; 4Dpapers sees it as `/workspace` inside the container.
 
-To inspect the included example manuscript source tree:
+To run the included example manuscript:
 
 ```bash
-FOURD_WORKSPACE=./examples/heart docker compose up
+FOURD_WORKSPACE=./examples/niederer docker compose up
 ```
 
-The example workspace includes `main.qmd` for the full demo manuscript and
-`lightweight.qmd` for a smaller Niederer/Purkinje/Plotly manuscript.
-It references external or non-shipped datasets under `data/`, so it is not a
-clean-checkout runnable example by itself.
+The shipped example is a standalone Niederer slab workspace with one manuscript
+(`main.qmd`) and one committed dataset at
+`data/niederer/niederer.vtk.series`, so it renders from a clean clone.
 
 ## Use The Prebuilt Image
 

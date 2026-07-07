@@ -1,3 +1,5 @@
-# Optional: dashboard browser E2E (Playwright). Install browsers: playwright install chromium
+# Base runtime/test dependencies plus optional browser E2E extras.
+# Install browsers separately with: playwright install chromium
+-r requirements.txt
 pytest>=7.0
 playwright>=1.40

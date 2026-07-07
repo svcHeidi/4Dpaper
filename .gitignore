@@ -43,6 +43,9 @@ _shortcuts.yml
 # Default local paper workspace used by docker compose
 workspace/
 
+# Local heavyweight heart workspace kept off the release surface
+examples/heart/
+
 # Generated outputs (large, not for version control)
 *.standalone-*.html
 example_heart-standalone*.html

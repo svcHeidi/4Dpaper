@@ -90,7 +90,7 @@ def test_graph_cache_includes_camera_dependency():
 
 
 def test_plotly_json_fixture_is_parseable_and_accepted_by_shortcode_parser():
-    fixture = Path(__file__).parent.parent / "examples" / "heart" / "media" / "example_graph.json"
+    fixture = Path(__file__).parent / "data" / "example_graph.json"
     data = json.loads(fixture.read_text(encoding="utf-8"))
     assert isinstance(data.get("data"), list)
     assert isinstance(data.get("layout"), dict)
@@ -98,14 +98,14 @@ def test_plotly_json_fixture_is_parseable_and_accepted_by_shortcode_parser():
     parser = _load_parser()
     qmd = (
         '{{< 4d-graph id="pressure-curve" '
-        'src="examples/heart/media/example_graph.json" '
+        'src="tests/data/example_graph.json" '
         'caption="Pressure curve" >}}'
     )
     parsed = parser.parse_graph_shortcodes(qmd)
     assert parsed == [
         {
             "id": "pressure-curve",
-            "src": "examples/heart/media/example_graph.json",
+            "src": "tests/data/example_graph.json",
             "caption": "Pressure curve",
         }
     ]

@@ -1,0 +1,19 @@
+---
+title: "Niederer Slab Example"
+format: html
+---
+
+## Interactive Niederer Slab
+
+This shipped example uses a compact surface export of the Niederer et al. slab
+benchmark. It is small enough to keep in git while still exercising the live
+field switcher and timestep playback used by 4Dpapers figures.
+
+{{< 4d-image
+    id="niederer-slab"
+    src="data/niederer/niederer.vtk.series"
+    field="Vm"
+    fields="Vm,activationTime,ionicCurrent,Jsi,externalStimulusCurrent"
+    time="last"
+    caption="Niederer slab surface at the final timestep. Use the field menu to switch scalar arrays and press play to animate the 8-step sequence."
+>}}

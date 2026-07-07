@@ -1,0 +1,20 @@
+# Runtime-generated workspace links
+_extensions
+scripts
+_quarto-apphtml.yml
+_quarto-paperview.yml
+
+# Quarto/runtime outputs
+_output/
+_freeze/
+.quarto/
+state/
+
+# Local machine config
+_shortcuts.yml
+
+# OS noise
+.DS_Store
+
+/.quarto/
+**/*.quarto_ipynb
