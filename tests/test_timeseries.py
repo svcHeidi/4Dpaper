@@ -2,7 +2,13 @@
 from __future__ import annotations
 
 import importlib.util
+import importlib
 from pathlib import Path
+import sys
+import numpy as np
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "_extensions" / "4dpaper"))
 
 
 def _load_4dpaper():
@@ -23,6 +29,10 @@ def _load_frontend():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def _load_render():
+    return importlib.import_module("lib.render")
 
 
 class TestParseTimeseriesShortcodes:
@@ -137,26 +147,26 @@ class TestMainTimeseriesIntegration:
         import inspect
         mod = _load_4dpaper()
         source = inspect.getsource(mod.main)
-        assert "panels.append(ts)" in source
+        assert "panels.append(ts_panel)" in source
 
+    def test_main_timeseries_panel_forces_camera_sync(self):
+        import inspect
+        mod = _load_4dpaper()
+        source = inspect.getsource(mod.main)
+        # A 4d-timeseries is a *mandatory* camera-synced panel: every frame must
+        # share one camera file (camera_<panel_id>.json) so rotating one frame
+        # moves all of them, the saved viewpoint survives a rebuild, and the
+        # static PDF/PNG frames export from the same viewpoint. The ts_panel dict
+        # built here must therefore carry camera_mode="sync".
+        ts_block = source.split("ts_panel = {", 1)[1].split("panels.append(ts_panel)", 1)[0]
+        assert '"camera_mode": "sync"' in ts_block
 
-class TestTimeseriesCompositeHtml:
-    def test_uses_file_backed_iframes_when_frame_html_exists(self, tmp_path):
-        frontend = _load_frontend()
-        (tmp_path / "ts-frame-0.html").write_text("<html>frame-0</html>", encoding="utf-8")
-        (tmp_path / "ts-frame-1.html").write_text("<html>frame-1</html>", encoding="utf-8")
-
-        html = frontend._build_timeseries_composite_html(
-            ts_id="ts",
-            frame_ids=["ts-frame-0", "ts-frame-1"],
-            step_indices=[0, 7],
-            available_fields=["Vm"],
-            figures_dir=tmp_path,
-        )
-
-        assert 'src="ts-frame-0.html"' in html
-        assert 'src="ts-frame-1.html"' in html
-        assert "srcdoc=" not in html
+    def test_render_timeseries_uses_lock_only_parent_toolbar(self):
+        render = _load_render()
+        import inspect
+        source = inspect.getsource(render.generate_panel_html)
+        assert "show_transport=not panel.get(\"timeseries\", False)" in source
+        assert 'show_lock_btn=not is_timeseries and camera_mode != "sync"' in source
 
 
 class TestFourdTimeseriesLua:
@@ -174,10 +184,20 @@ class TestFourdTimeseriesLua:
         assert '.manifest.json"' in content
         assert 'data-panel="' in content
 
-    def test_fourd_timeseries_iframes_opt_into_child_time_broadcast(self):
+    def test_fourd_timeseries_frames_are_static_no_time_sync(self):
+        """Timeseries frames are static per-timestep views: each frame shows its
+        own assigned timestep, so they must NOT peer-broadcast a frame index to
+        each other. Time/frame sync is a 4d-panel feature (the master transport
+        toolbar), not a timeseries one. Camera sync, however, IS mandatory and is
+        wired separately via the data-panel attribute + relay.js fan-out."""
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
-        ts_branch = content.split('local function fourd_timeseries(args, kwargs)', 1)[1]
-        assert 'data-panel-time-sync="true"' in ts_branch
+        # Isolate just the fourd_timeseries function body.
+        ts_fn = content.split('local function fourd_timeseries(args, kwargs)', 1)[1]
+        ts_fn = ts_fn.split('\nlocal function ', 1)[0]
+        # Frames must NOT opt into peer time-broadcast …
+        assert 'data-panel-time-sync' not in ts_fn
+        # … but camera sync must still go through the shared sync-panel helper.
+        assert '_build_sync_iframe_panel' in ts_fn
 
     def test_fourd_timeseries_pdf_uses_90_percent_width(self):
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
@@ -195,8 +215,12 @@ class TestFourdTimeseriesLua:
 
     def test_fourd_timeseries_uses_panel_lock_toolbar(self):
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
-        assert "local lock_toolbar = _panel_toolbar_html(id, _infer_panel_frame_count(subfig_ids), time_indices, false)" in content
-        assert "lock_toolbar .. '\\n' .." in content
+        assert "return _build_sync_iframe_panel(id, caption, height, ncols, 1, subfig_ids, false, time_indices)" in content
+
+    def test_fourd_timeseries_reuses_shared_sync_wrapper(self):
+        content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
+        assert "local function _build_sync_iframe_panel(id, caption, height, ncols, nrows, subfig_ids, show_transport, time_indices)" in content
+        assert "return _build_sync_iframe_panel(id, caption, height, ncols, nrows, sync_ids, true, nil)" in content
 
     def test_fourd_timeseries_does_not_use_custom_direct_camera_sync(self):
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
@@ -208,3 +232,73 @@ class TestFourdTimeseriesLua:
         assert "local function _panel_toolbar_html(id, frame_count, time_indices, show_transport)" in content
         assert "if show_transport == nil then" in content
         assert "if show_transport and transport_count > 1 then" in content
+
+
+class TestTimeseriesMeshSync:
+    def test_timeseries_children_keep_hidden_lock_infrastructure(self):
+        frontend = _load_frontend()
+        import inspect
+        source = inspect.getsource(frontend._controls_strip_snippet)
+        assert 'html_block_lock = (' in source
+        assert 'if show_lock_btn:' not in source.split('html_block_lock = (', 1)[0].rsplit('\n', 6)[-1]
+
+    def test_lock_state_is_reapplied_after_renderer_ready(self):
+        frontend = _load_frontend()
+        assert 'if(_locked)_setLocked(true);' in frontend._GOLDEN_TOPBAR_JS
+
+    def test_camera_sync_watches_camera_state_not_only_mouseup(self):
+        frontend = _load_frontend()
+        assert 'function _watchCam()' in frontend._GOLDEN_TOPBAR_JS
+        assert '_camWatchSig=_camSig(r);_watchCam();' in frontend._GOLDEN_TOPBAR_JS
+        assert '_markCamApplied(cam);' in frontend._GOLDEN_TOPBAR_JS
+
+    def test_orientation_svg_wiring_is_guarded(self):
+        # Receiver frames (show_orientation=False, e.g. timeseries frames 1..N)
+        # have no cs-svg-axes element. Without a null guard, _svg.addEventListener
+        # throws and aborts the whole IIFE — killing camera send/receive setup and
+        # breaking sync. The wiring must be guarded so setup completes regardless.
+        frontend = _load_frontend()
+        assert (
+            '_svg=document.getElementById("cs-svg-axes-__FIGSAFE__");if(_svg){'
+            in frontend._GOLDEN_TOPBAR_JS
+        )
+        # The message listener (camera-apply receiver) must not be gated on _svg.
+        assert '_svg.addEventListener("click"' not in frontend._GOLDEN_TOPBAR_JS.replace(
+            'if(_svg){_svg.addEventListener("click"', ''
+        )
+
+    def test_camera_apply_receiver_registers_for_orientationless_frame(self):
+        # Generate a strip with show_orientation=False and confirm the golden
+        # camera-apply message handler is still present (setup reaches the end).
+        frontend = _load_frontend()
+        strip = frontend._controls_strip_snippet(
+            "recv-frame", show_lock_btn=False, show_orientation=False,
+            fields_to_embed=["Vm", "p"], active_field="Vm",
+        )
+        # No orientation widget markup is emitted (corner div omitted)...
+        assert 'id="cs-svg-axes-recv_frame"' not in strip
+        # ...but the JS still references the (absent) element, so the guard is
+        # what keeps setup alive: the camera-apply receiver must still be emitted.
+        assert 'if(_svg){' in strip
+        assert '4dpaper-camera-apply' in strip
+
+    def test_reference_sampling_remaps_geometry_from_original_point_ids(self):
+        pv = pytest.importorskip("pyvista")
+        render = _load_render()
+
+        faces = np.array([3, 0, 1, 2])
+        reference = pv.PolyData(
+            np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]),
+            faces,
+        )
+        reference.point_data["vtkOriginalPointIds"] = np.array([0, 1, 2])
+
+        moved = pv.PolyData(
+            np.array([[10.0, 0.0, 0.0], [11.0, 0.0, 0.0], [10.0, 1.0, 0.0]]),
+            faces,
+        )
+        moved.point_data["Vm"] = np.array([1.0, 2.0, 3.0])
+
+        sampled = render._sample_on_reference(reference, moved)
+
+        assert np.allclose(sampled.points, moved.points)

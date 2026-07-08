@@ -6,6 +6,7 @@ import json
 import base64 as _b64
 from pathlib import Path
 import concurrent.futures
+import numpy as np
 try:
     import pyvista as pv
 except ImportError:
@@ -127,11 +128,37 @@ def _apply_timeline_frame_budget(
     return capped, max_frames
 
 def _sample_on_reference(reference, mesh):
-    if reference is None:
-        return _prepare_surface(mesh)
-    surface = reference.copy()
-    surface.clear_data()
-    return surface.sample(mesh)
+    surface = _prepare_surface(mesh)
+    if reference is None or surface is None:
+        return surface
+
+    probe = reference.copy()
+    point_ids = None
+    try:
+        raw_ids = reference.point_data.get("vtkOriginalPointIds")
+        if raw_ids is not None:
+            point_ids = np.asarray(raw_ids, dtype=np.int64).ravel()
+            if (
+                point_ids.size != getattr(reference, "n_points", 0)
+                or point_ids.size == 0
+                or point_ids.min() < 0
+                or point_ids.max() >= getattr(surface, "n_points", 0)
+            ):
+                point_ids = None
+    except Exception:
+        point_ids = None
+
+    # When the decimated reference surface still carries original point ids,
+    # remap those reference points onto the current timestep surface before
+    # sampling fields. This preserves the reference topology while letting the
+    # mesh geometry follow the active timestep.
+    if point_ids is not None:
+        probe.points = np.ascontiguousarray(surface.points[point_ids])
+    elif getattr(probe, "n_points", 0) == getattr(surface, "n_points", 0):
+        probe.points = np.ascontiguousarray(surface.points)
+
+    probe.clear_data()
+    return probe.sample(mesh)
 
 def _html_time_frame_count(path: Path) -> int:
     if not path.exists():
@@ -155,12 +182,13 @@ def _panel_transport_html(
     panel_id: str,
     frame_count: int,
     actual_indices: list[int] | None = None,
+    show_transport: bool = True,
 ) -> str:
     actual_indices = [int(v) for v in (actual_indices or [])]
     transport_count = len(actual_indices) if actual_indices else frame_count
     transport = ""
     actual_json = json.dumps(actual_indices)
-    if transport_count > 1:
+    if show_transport and transport_count > 1:
         transport = f"""
 <div style="display:flex;align-items:center;gap:6px;min-width:220px;flex:1;">
   <button id="plb-play-{panel_id}" title="Play / pause synchronized animation" style="width:22px;height:22px;background:#25201c;border:1px solid #4a4138;color:#e8e2dc;border-radius:3px;cursor:pointer;font-size:11px;line-height:1;">&#x25B6;</button>
@@ -633,6 +661,7 @@ def generate_html_figure(
     show_orientation: bool = True,
     decimate: str = "auto",
     stride: int = 1,
+    embed_timeline: bool = True,
     broadcast_group: str = "",
 ) -> None:
     """
@@ -724,7 +753,7 @@ def generate_html_figure(
     time_global_range: dict[str, list[float]] = {}
     time_labels: list[str] = []
 
-    if sim.n_steps > 1 and fields_to_embed:
+    if embed_timeline and sim.n_steps > 1 and fields_to_embed:
         step_indices = _timeline_step_indices(sim, fields_to_embed, stride)
         point_budget = max(getattr(surface, "n_points", 0), getattr(surface, "n_cells", 0))
         step_indices, capped_to = _apply_timeline_frame_budget(
@@ -980,7 +1009,12 @@ window.addEventListener("message",function(e){
             actual_indices = [int(v) for v in panel["time_indices"]]
         else:
             actual_indices = [int(sub.get("time", 0)) for sub in panel["subfigures"]]
-    toolbar = _panel_transport_html(panel["id"], frame_count, actual_indices)
+    toolbar = _panel_transport_html(
+        panel["id"],
+        frame_count,
+        actual_indices,
+        show_transport=not panel.get("timeseries", False),
+    )
 
     composite = (
         f'<!DOCTYPE html><html><body style="margin:0;padding:0;">'

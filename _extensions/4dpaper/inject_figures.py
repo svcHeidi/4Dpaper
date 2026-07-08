@@ -53,12 +53,21 @@ def main() -> int:
                     print(f"  Warning: Figure not found at {fig_path_abs}", file=sys.stderr)
                     return 'data-fourd-inject-failed="true"'
                 
-                with open(fig_path_abs, "r", encoding="utf-8") as ff:
-                    fig_html = ff.read()
+                out_fig_path = output_dir / fig_path_rel
+                out_fig_path.parent.mkdir(parents=True, exist_ok=True)
                 
-                # Fast Python-based escaping
-                escaped_html = html.escape(fig_html, quote=True)
-                return f'srcdoc="{escaped_html}"'
+                # We use shutil.copy2 to preserve file metadata
+                import shutil
+                shutil.copy2(fig_path_abs, out_fig_path)
+                
+                # Calculate relative path from html_path's directory to out_fig_path
+                try:
+                    rel_src = os.path.relpath(out_fig_path, html_path.parent)
+                except ValueError:
+                    # Fallback to absolute relative to root if relpath fails
+                    rel_src = f"/{fig_path_rel}"
+                    
+                return f'src="{rel_src}"'
 
             new_content = INJECT_PATTERN.sub(repl, content)
 

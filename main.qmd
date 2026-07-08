@@ -1,0 +1,26 @@
+---
+title: "4Dpapers Scientific Analysis"
+subtitle: "Powered by Quarto + vtk.js"
+author:
+  - name: "Your Name"
+    affiliation: "Your Institution"
+date: today
+abstract: |
+  This is a 4Dpapers project. Use the dashboard to:
+  - Edit QMD files
+  - Insert interactive 3D figures
+  - Compile to HTML or PDF
+format:
+  html:
+    code-fold: true
+    toc: true
+  pdf:
+    keep-tex: false
+jupyter: python3
+---
+
+# Introduction
+
+Replace this with your content.
+
+{{< include sections/01_introduction.qmd >}}

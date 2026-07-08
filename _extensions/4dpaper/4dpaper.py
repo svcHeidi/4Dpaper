@@ -54,9 +54,9 @@ from lib.parser import parse_graph_shortcodes, parse_panel_shortcodes, parse_sho
 from lib.mesh import _rdp_simplify_xy, _get_overlay_at_time, _prepare_surface, _decimate_quadric, _surface_cell_count, _decimate_surface, _has_polygon_cells, _add_mesh_auto, _apply_decimation, _merge_overlay_mesh
 from lib.utils import is_cache_valid, resolve_src_path, _maybe_sign_output_html
 from lib.render import generate_multi_image_png, generate_png_figure, generate_panel_html, generate_multi_image_html, generate_panel_png, generate_video_figure, generate_html_figure
-from lib.frontend import _controls_strip_snippet, _build_video_html_fragment, _build_timeseries_composite_html, _multi_actor_extension_snippet, _generate_optimized_timeseries_html, _build_multi_image_sources, _timeseries_sync_snippet, _plotly_camera_sync_snippet
+from lib.frontend import _controls_strip_snippet, _build_video_html_fragment, _multi_actor_extension_snippet, _build_multi_image_sources, _timeseries_sync_snippet, _plotly_camera_sync_snippet
 from lib.state import _apply_camera_from_dict, apply_camera_state, load_styles, _load_saved_field_state, resolve_style
-from lib.timeseries import _expand_timeseries_steps, _check_same_mesh_timeseries, _nearest_time_idx
+from lib.timeseries import _expand_timeseries_steps, _nearest_time_idx
 
 
 
@@ -323,37 +323,29 @@ def main() -> None:
         figure_extra_deps.append(_here)
     figure_extra_deps.extend(_here.parent.glob("lib/*.py"))
 
-    # Expand timeseries into optimized or panel-compatible dicts
-    optimized_timeseries = []
+    # Expand timeseries into panel-compatible dicts
     if ts_raw:
         from scripts.data_loader import SimulationData as _SimData  # noqa: PLC0415
     for ts in ts_raw:
         src = resolve_src_path(ts["src"])
         try:
-            sim = _SimData(str(src)).load()
-            n_steps = sim.n_steps
+            n_steps = _SimData(str(src)).load().n_steps
         except Exception as exc:
             print(f"ERROR loading simulation for timeseries '{ts['id']}': {exc}", file=sys.stderr)
             sys.exit(1)
         step_indices = _expand_timeseries_steps(ts, n_steps)
 
-        # Check if mesh is identical across all timesteps
-        if _check_same_mesh_timeseries(src, step_indices):
-            print(f"Timeseries '{ts['id']}' has same mesh — using optimized compression", file=sys.stderr)
-            optimized_timeseries.append({
-                "id": ts["id"],
-                "src": ts["src"],
-                "src_path": src,
-                "step_indices": step_indices,
-                "field": ts["field"],
-                "fields": ts.get("fields", ""),
-                "caption": ts.get("caption", ""),
-            })
-        else:
-            # Fallback: convert to panel
-            print(f"Timeseries '{ts['id']}' has changing mesh — using panel layout", file=sys.stderr)
-            ts["time_indices"] = step_indices
-            ts["subfigures"] = [
+        # Convert to a synced panel layout. A timeseries always shows the same
+        # mesh at different timesteps, so camera sync is mandatory: every frame
+        # binds to the shared camera_<id>.json (matching what relay.js saves) so
+        # rotating one frame moves all of them and the static PDF/PNG frames all
+        # export from the same saved viewpoint.
+        ts_panel = {
+            "id": ts["id"],
+            "timeseries": True,
+            "camera_mode": "sync",
+            "time_indices": step_indices,
+            "subfigures": [
                 {
                     "src":    ts["src"],
                     "id":     f"{ts['id']}-{i}",
@@ -362,59 +354,11 @@ def main() -> None:
                     "fields": "",
                 }
                 for i, idx in enumerate(step_indices)
-            ]
-            ts["layout"] = f"{len(step_indices)}x1"
-            panels.append(ts)
-
-    # Generate optimized timeseries HTML (compressed mesh, same across timesteps)
-    # Falls back to panel approach if optimization fails
-    for ts in optimized_timeseries:
-        ts_id = ts["id"]
-        output_path = figures_dir / f"{ts_id}.html"
-
-        # Check if all frame HTMLs and PNGs exist
-        frame_ids = [f"{ts_id}-frame-{i}" for i in range(len(ts["step_indices"]))]
-        frame_htmls = [figures_dir / f"{fid}.html" for fid in frame_ids]
-        frame_pngs = [figures_dir / f"{fid}.png" for fid in frame_ids]
-        all_frames_exist = all(fp.exists() for fp in frame_htmls) and all(fp.exists() for fp in frame_pngs)
-
-        # Cache check — also verify all frames exist
-        if all_frames_exist and is_cache_valid(output_path, ts["src_path"], extra_deps=figure_extra_deps):
-            print(f"{ts_id}.html is up to date — skipping.", file=sys.stderr)
-            continue
-
-        try:
-            style = resolve_style(styles_config, "", ts["field"])
-            _generate_optimized_timeseries_html(
-                ts_id=ts_id,
-                src=ts["src_path"],
-                step_indices=ts["step_indices"],
-                field=ts["field"],
-                fields_attr=ts["fields"],
-                figures_dir=figures_dir,
-                style=style,
-                caption=ts["caption"],
-            )
-        except Exception as exc:
-            print(f"WARNING: optimized timeseries {ts_id} failed ({exc}), falling back to panel approach", file=sys.stderr)
-            # Fallback: convert to panel and re-add to panels list
-            ts_panel = {
-                "id": ts_id,
-                "time_indices": ts["step_indices"],
-                "subfigures": [
-                    {
-                        "src":    ts["src"],
-                        "id":     f"{ts_id}-{i}",
-                        "field":  ts["field"],
-                        "time":   str(idx),
-                        "fields": "",
-                    }
-                    for i, idx in enumerate(ts["step_indices"])
-                ],
-                "layout": f"{len(ts['step_indices'])}x1",
-                "caption": ts.get("caption", ""),
-            }
-            panels.append(ts_panel)
+            ],
+            "layout": f"{len(step_indices)}x1",
+            "caption": ts.get("caption", ""),
+        }
+        panels.append(ts_panel)
 
     for fig in figures:
         fig_id = fig["id"]
@@ -641,7 +585,10 @@ def main() -> None:
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
 
             # Export PNG for static PDF builds. Plotly auto-selects Kaleido when installed.
-            pio.write_image(fig, out_png, format="png", scale=2)
+            try:
+                pio.write_image(fig, out_png, format="png", scale=2)
+            except Exception as e:
+                print(f"Warning: Could not export static PNG for plotly graph {fig_id}. (Kaleido issue). Error: {e}", file=sys.stderr)
 
             # Export standalone HTML for interactive web
             html_content = pio.to_html(fig, full_html=True, include_plotlyjs="cdn", config={'displayModeBar': False})

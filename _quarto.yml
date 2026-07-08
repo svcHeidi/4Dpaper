@@ -1,0 +1,8 @@
+project:
+  title: "4Dpapers Project"
+  output-dir: _output
+  pre-render:
+    - _extensions/4dpaper/4dpaper.py
+  post-render:
+    - _extensions/4dpaper/inject_figures.py
+    - _extensions/4dpaper/sign_rendered_html.py

@@ -312,6 +312,66 @@ local function _panel_toolbar_html(id, frame_count, time_indices, show_transport
     '})();</script></div>'
 end
 
+local function _shared_relay_script_once()
+  if _relay_injected then
+    return ""
+  end
+  _relay_injected = true
+  return _RELAY_SCRIPT
+end
+
+local function _build_sync_iframe_panel(id, caption, height, ncols, nrows, subfig_ids, show_transport, time_indices)
+  if #subfig_ids == 0 then
+    return nil
+  end
+
+  local cells = {}
+  for _, sub_id in ipairs(subfig_ids) do
+    local fig_path = "state/figures/" .. sub_id .. ".html"
+    local exists = io.open(fig_path, "r")
+    if exists then exists:close() end
+
+    if exists then
+      local cell_iframe
+      if _app_mode then
+        cell_iframe = '<iframe src="/state/figures/' .. sub_id .. '.html" ' ..
+                      'data-panel="' .. id .. '" ' ..
+                      'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
+      else
+        cell_iframe = '<iframe data-fourd-inject="state/figures/' .. sub_id .. '.html" ' ..
+                      'data-panel="' .. id .. '" ' ..
+                      'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
+      end
+      table.insert(cells, cell_iframe)
+    else
+      table.insert(cells,
+        '<div style="background:#222;display:flex;align-items:center;' ..
+        'justify-content:center;color:#888;font-family:sans-serif;font-size:0.85rem;">' ..
+        '⚠ ' .. sub_id .. ' not rendered</div>')
+    end
+  end
+
+  local grid_style = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
+                     'grid-template-rows:repeat(' .. nrows .. ',1fr);gap:4px;' ..
+                     'width:100%;height:' .. height .. ';background:#111;'
+  local toolbar = _panel_toolbar_html(
+    id,
+    _infer_panel_frame_count(subfig_ids),
+    time_indices,
+    show_transport
+  )
+  local relay_script = _shared_relay_script_once()
+
+  return pandoc.RawBlock("html",
+    '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
+    toolbar .. '\n' ..
+    '<div style="' .. grid_style .. '">' .. table.concat(cells) .. '</div>\n' ..
+    (caption ~= "" and
+      '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
+      or "") ..
+    '</figure>\n' .. relay_script)
+end
+
 local function fourd_image(args, kwargs)
   local id      = pandoc.utils.stringify(kwargs["id"] or pandoc.Str(""))
   local caption = pandoc.utils.stringify(kwargs["caption"] or pandoc.Str(""))
@@ -593,22 +653,12 @@ local function fourd_panel(args, kwargs)
       end
     end
 
-    -- Inject relay script once per page
-    local relay_script = ""
-    if not _relay_injected then
-      _relay_injected = true
-      relay_script = _RELAY_SCRIPT
-    end
-
     if camera_mode == "sync" then
-      -- Sync mode: embed each subfigure as a direct srcdoc iframe with data-panel attribute.
-      -- This avoids data:text/html;base64 iframes which break vtk.js WebGL rendering.
-      -- The top-level _RELAY_SCRIPT handles panel-sync camera broadcast.
+      -- Sync mode: share the same iframe wrapper/relay path used by timeseries.
       local ncols_s = layout:match("^(%d+)x") or "1"
       local nrows_s = layout:match("x(%d+)$") or "1"
       local ncols = tonumber(ncols_s) or 1
       local nrows = tonumber(nrows_s) or 1
-      local sync_cells = {}
       local sync_ids = {}
       local n = 1
       while true do
@@ -616,47 +666,16 @@ local function fourd_panel(args, kwargs)
         if not sub_id_val then break end
         local sub_id = pandoc.utils.stringify(sub_id_val)
         if sub_id == "" then break end
-        local fig_path = "state/figures/" .. sub_id .. ".html"
-        local cell_iframe
-        if _app_mode then
-          cell_iframe = '<iframe src="/state/figures/' .. sub_id .. '.html" ' ..
-                        'data-panel="' .. id .. '" ' ..
-                        'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
-        else
-          local fh = io.open(fig_path, "r")
-          if fh then
-            fh:close()
-            cell_iframe = '<iframe data-fourd-inject="state/figures/' .. sub_id .. '.html" ' ..
-                          'data-panel="' .. id .. '" ' ..
-                          'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
-          else
-            cell_iframe = '<div style="background:#222;display:flex;align-items:center;' ..
-                          'justify-content:center;color:#888;font-family:sans-serif;font-size:0.85rem;">' ..
-                          '⚠ ' .. sub_id .. ' not rendered</div>'
-          end
-        end
-        table.insert(sync_cells, cell_iframe)
         table.insert(sync_ids, sub_id)
         n = n + 1
       end
-      if #sync_cells == 0 then
+      if #sync_ids == 0 then
         return pandoc.RawBlock("html",
           '<div style="border:2px dashed #888;padding:1.5rem;text-align:center;">' ..
           '⚠ 4D Panel <code>' .. id .. '</code> not yet rendered — ' ..
           'click <strong>Rebuild HTML</strong> in the dashboard.</div>')
       end
-      local sync_grid = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
-                        'grid-template-rows:repeat(' .. nrows .. ',1fr);gap:4px;' ..
-                        'width:100%;height:' .. height .. ';background:#111;'
-      local lock_toolbar = _panel_toolbar_html(id, _infer_panel_frame_count(sync_ids))
-      return pandoc.RawBlock("html",
-        '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-        lock_toolbar .. '\n' ..
-        '<div style="' .. sync_grid .. '">' .. table.concat(sync_cells) .. '</div>\n' ..
-        (caption ~= "" and
-          '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
-          or "") ..
-        '</figure>\n' .. relay_script)
+      return _build_sync_iframe_panel(id, caption, height, ncols, nrows, sync_ids, true, nil)
     end
 
     -- Independent mode: existing inline-subfigure grid below
@@ -999,58 +1018,9 @@ local function fourd_timeseries(args, kwargs)
         'click <strong>Rebuild HTML</strong> in the dashboard.</div>')
     end
 
-    -- Build frame cells (same as sync panel)
-    local ts_cells = {}
-    for _, sub_id in ipairs(subfig_ids) do
-      local fig_path = "state/figures/" .. sub_id .. ".html"
-      local exists = io.open(fig_path, "r")
-      if exists then exists:close() end
-
-      if exists then
-        local cell_iframe
-        if _app_mode then
-          cell_iframe = '<iframe src="/state/figures/' .. sub_id .. '.html" ' ..
-                        'data-panel="' .. id .. '" data-panel-time-sync="true" ' ..
-                        'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
-        else
-          cell_iframe = '<iframe data-fourd-inject="state/figures/' .. sub_id .. '.html" ' ..
-                        'data-panel="' .. id .. '" data-panel-time-sync="true" ' ..
-                        'style="width:100%;height:100%;border:none;" frameborder="0"></iframe>'
-        end
-        table.insert(ts_cells, cell_iframe)
-      else
-        table.insert(ts_cells,
-          '<div style="background:#222;display:flex;align-items:center;' ..
-          'justify-content:center;color:#888;font-family:sans-serif;font-size:0.85rem;">' ..
-          '⚠ ' .. sub_id .. ' not rendered</div>')
-      end
-    end
-
-    local relay_script = ""
-    if not _relay_injected then
-      _relay_injected = true
-      relay_script = _RELAY_SCRIPT
-    end
-
-    -- Use the same shared toolbar + relay path as sync panels so lock state,
-    -- timeline transport, and camera fan-out behave identically in preview
-    -- and exported standalone HTML.
-    local grid_style = (
-      'display:grid;' ..
-      'grid-template-columns:repeat(' .. ncols .. ',1fr);' ..
-      'grid-template-rows:1fr;' ..
-      'gap:4px;width:100%;height:' .. height .. ';background:#111;'
-    )
-    local lock_toolbar = _panel_toolbar_html(id, _infer_panel_frame_count(subfig_ids), time_indices, false)
-
-    return pandoc.RawBlock("html",
-      '<figure class="fourd-figure" style="margin:1.5rem 0;">\n' ..
-      lock_toolbar .. '\n' ..
-      '<div style="' .. grid_style .. '">' .. table.concat(ts_cells) .. '</div>\n' ..
-      (caption ~= "" and
-        '<figcaption style="text-align:center;font-style:italic;margin-top:0.5rem;">' .. caption .. '</figcaption>\n'
-        or "") ..
-      '</figure>\n' .. relay_script)
+    -- Reuse the exact same sync-panel iframe/relay wrapper as 4d-panel, but
+    -- disable the parent transport so each child frame keeps its own timeline.
+    return _build_sync_iframe_panel(id, caption, height, ncols, 1, subfig_ids, false, time_indices)
 
   else
     -- PDF: LaTeX minipage grid — timeseries is always Nx1, read manifest for IDs

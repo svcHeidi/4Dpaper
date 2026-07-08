@@ -29,9 +29,6 @@
     }
   ],
   "layout": {
-    "title": {
-      "text": "Synthetic Niederer Probe Signals"
-    },
     "xaxis": {
       "title": {
         "text": "Frame"

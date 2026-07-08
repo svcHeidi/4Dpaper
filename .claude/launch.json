@@ -6,6 +6,12 @@
       "runtimeExecutable": "true",
       "runtimeArgs": [],
       "port": 5099
+    },
+    {
+      "name": "niederer-output",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "5188", "--directory", "examples/niederer/_output"],
+      "port": 5188
     }
   ]
 }

@@ -31,8 +31,14 @@ _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent)
 _VERSION_FILE = Path(__file__).parent.parent / "VERSION"
 _APP_VERSION = _VERSION_FILE.read_text().strip() if _VERSION_FILE.exists() else "unknown"
 
+from collections import defaultdict
+
 # Global store for the live compilation logs so the frontend can poll them
 _active_build_log: list[str] = []
+
+# Rate limiting state (requests per minute per IP)
+_rate_limits: dict[str, list[float]] = defaultdict(list)
+_MAX_REQUESTS_PER_MINUTE = 5
 
 # Maximum total body size for the compile endpoint (50 MB across all files).
 _MAX_COMPILE_BODY_BYTES = 50 * 1024 * 1024
@@ -42,6 +48,18 @@ _PLACEHOLDER_MARKERS = (
     "run 'Export PDF'",
     "run 'Rebuild HTML'",
 )
+
+def _check_rate_limit(ip: str) -> bool:
+    """Returns True if the IP is allowed to make a request, False if rate limited."""
+    now = time.time()
+    # Keep only timestamps within the last 60 seconds
+    _rate_limits[ip] = [t for t in _rate_limits[ip] if now - t < 60]
+    
+    if len(_rate_limits[ip]) >= _MAX_REQUESTS_PER_MINUTE:
+        return False
+        
+    _rate_limits[ip].append(now)
+    return True
 
 
 def _find_main_qmd() -> Path:
@@ -194,6 +212,13 @@ class CompileHandler(SecureMixin, tornado.web.RequestHandler):
     async def post(self) -> None:
         if not self.check_auth():
             return
+            
+        client_ip = self.request.headers.get("X-Forwarded-For", self.request.remote_ip).split(',')[0].strip()
+        if not _check_rate_limit(client_ip):
+            self.set_status(429)
+            self.write({"error": "Too many requests. Please wait a minute before compiling again."})
+            return
+
         try:
             # Body size guard
             if len(self.request.body) > _MAX_COMPILE_BODY_BYTES:
@@ -327,6 +352,13 @@ class ExportHandler(SecureMixin, tornado.web.RequestHandler):
     async def post(self) -> None:
         if not self.check_auth():
             return
+            
+        client_ip = self.request.headers.get("X-Forwarded-For", self.request.remote_ip).split(',')[0].strip()
+        if not _check_rate_limit(client_ip):
+            self.set_status(429)
+            self.write({"error": "Too many requests. Please wait a minute before exporting again."})
+            return
+
         try:
             import weasyprint
         except ImportError:
