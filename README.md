@@ -2,7 +2,7 @@
 
 **Write scientific papers where the 3D figures stay alive.** Rotate them, switch fields, and scrub through time right in the browser — then export the whole paper to HTML or PDF.
 
-![A live Niederer cardiac slab figure rendered by 4Dpapers](examples/niederer/preview/slab.png)
+![A cardiac electrophysiology simulation — a translucent heart wall with its Purkinje conduction network, rendered as a live figure in 4Dpapers](media/heart-purkinje.png)
 
 ### ▶ [See a live paper in your browser](https://4dpapers.github.io/4dpapers/) — no install, just click
 
