@@ -624,10 +624,13 @@ local function fourd_panel(args, kwargs)
       end
 
       if #subfig_ids > 0 then
-        -- Build high-fidelity CSS grid of individual PNGs (PDF-like)
+        -- Build high-fidelity CSS grid of individual PNGs (PDF-like).
+        -- Each PNG is wrapped in a <div> so it is a block-container grid item:
+        -- WeasyPrint's grid layout asserts grid items are ParentBox instances,
+        -- and a bare replaced <img> is not one (crashes PDF export otherwise).
         local imgs = ""
         for _, sub_id in ipairs(subfig_ids) do
-          imgs = imgs .. '<img src="/state/figures/' .. sub_id .. '.png" style="width:100%;display:block;">\n'
+          imgs = imgs .. '<div><img src="/state/figures/' .. sub_id .. '.png" style="width:100%;display:block;"></div>\n'
         end
         local grid_style = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);gap:4px;width:100%;background:white;'
         return pandoc.RawBlock("html",
@@ -977,11 +980,13 @@ local function fourd_timeseries(args, kwargs)
           cap_html .. '</figure>')
       end
 
-      -- Build high-fidelity CSS grid (PDF-like)
+      -- Build high-fidelity CSS grid (PDF-like). Wrap each PNG in a <div> so
+      -- grid items are block containers — WeasyPrint's grid layout crashes on
+      -- bare replaced <img> children (asserts ParentBox).
       local ncols = #subfig_ids
       local imgs = ""
       for _, sub_id in ipairs(subfig_ids) do
-        imgs = imgs .. '<img src="/state/figures/' .. sub_id .. '.png" style="width:100%;display:block;">\n'
+        imgs = imgs .. '<div><img src="/state/figures/' .. sub_id .. '.png" style="width:100%;display:block;"></div>\n'
       end
       local grid_style = 'display:grid;grid-template-columns:repeat(' .. ncols .. ',1fr);gap:4px;width:100%;background:white;'
       return pandoc.RawBlock("html",
