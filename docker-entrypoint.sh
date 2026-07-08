@@ -166,11 +166,12 @@ if [ ! -d "$PROJECT_ROOT/_output" ]; then
     mkdir -p "$PROJECT_ROOT/_output"
 fi
 
-# Link app _extensions into workspace so Quarto can find them
-if [ ! -e "$PROJECT_ROOT/_extensions" ]; then
-    ln -s /app/_extensions "$PROJECT_ROOT/_extensions"
-    echo -e "${GREEN}✓ Linked _extensions into workspace${NC}"
-fi
+# Link app _extensions into workspace so Quarto can find them.
+# Use -sfn so an existing link (including a dangling one shipped inside an
+# example workspace, e.g. _extensions -> ../../_extensions) is replaced rather
+# than causing `ln` to fail with "File exists" and crash-loop the container.
+ln -sfn /app/_extensions "$PROJECT_ROOT/_extensions"
+echo -e "${GREEN}✓ Linked _extensions into workspace${NC}"
 
 # Link Quarto profile files into workspace
 for profile_file in /app/_quarto-apphtml.yml /app/_quarto-paperview.yml; do
@@ -179,10 +180,8 @@ for profile_file in /app/_quarto-apphtml.yml /app/_quarto-paperview.yml; do
     echo -e "${GREEN}✓ Linked $(basename $profile_file)${NC}"
 done
 
-if [ ! -e "$PROJECT_ROOT/scripts" ]; then
-    ln -s /app/scripts "$PROJECT_ROOT/scripts"
-    echo -e "${GREEN}✓ Linked scripts into workspace${NC}"
-fi
+ln -sfn /app/scripts "$PROJECT_ROOT/scripts"
+echo -e "${GREEN}✓ Linked scripts into workspace${NC}"
 
 # Ensure _quarto.yml exists with correct output-dir
 if [ ! -f "$PROJECT_ROOT/_quarto.yml" ]; then
