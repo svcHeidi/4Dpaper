@@ -1,1 +1,10 @@
-/app/_quarto-paperview.yml
+format:
+  html:
+    theme: none
+    toc: false
+    code-fold: false
+    code-tools: false
+    number-sections: true
+    embed-resources: false
+    css: _extensions/4dpaper/paperview.css
+    output-file: main-paperview.html

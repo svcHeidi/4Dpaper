@@ -1,1 +1,7 @@
-/app/_quarto-apphtml.yml
+# Quarto profile for dashboard HTML preview builds.
+# Disables embed-resources so pandoc doesn't try to inline vtk.js figures,
+# which would cause massive memory usage and multi-hour hangs.
+format:
+  html:
+    embed-resources: false
+    self-contained: false
