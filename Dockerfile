@@ -6,7 +6,7 @@ ARG APP_VERSION=dev
 LABEL org.opencontainers.image.title="4Dpapers" \
       org.opencontainers.image.description="Browser-based IDE for interactive scientific papers" \
       org.opencontainers.image.version="$APP_VERSION" \
-      org.opencontainers.image.source="https://github.com/svcHeidi/4Dpaper"
+      org.opencontainers.image.source="https://github.com/4dpapers/4dpapers"
 
 # Install system dependencies (Quarto, git, etc.)
 RUN apt-get update && apt-get install -y \
