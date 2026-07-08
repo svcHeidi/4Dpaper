@@ -466,12 +466,17 @@ class SimulationData:
         return "\n".join(lines)
 
     def cleanup(self):
-        """Removes temporary files and directories created for decomposed reads."""
-        for f in self._proc_foam_files:
+        """Removes temporary files and directories created for decomposed reads.
+
+        Uses ``getattr`` so a partially-constructed instance (``__init__`` raised
+        before these attributes were set) can still be finalized by ``__del__``
+        without masking the original error with a spurious ``AttributeError``.
+        """
+        for f in getattr(self, "_proc_foam_files", []):
             if os.path.exists(f):
                 os.remove(f)
         self._proc_foam_files = []
-        for stage_root in self._proc_stage_roots:
+        for stage_root in getattr(self, "_proc_stage_roots", []):
             if os.path.exists(stage_root):
                 shutil.rmtree(stage_root, ignore_errors=True)
         self._proc_stage_roots = []

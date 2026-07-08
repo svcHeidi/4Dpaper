@@ -48,6 +48,8 @@ scratch/
 *.md
 *.pdf
 *.html
+*.mov
+*.pptx
 example_heart*
 
 # ── macOS / IDE ───────────────────────────────────────────────────────────────
