@@ -48,26 +48,19 @@ def main() -> int:
             def repl(m: re.Match) -> str:
                 fig_path_rel = m.group(1)
                 fig_path_abs = _project_root / fig_path_rel
-                
+
                 if not fig_path_abs.exists():
                     print(f"  Warning: Figure not found at {fig_path_abs}", file=sys.stderr)
                     return 'data-fourd-inject-failed="true"'
-                
-                out_fig_path = output_dir / fig_path_rel
-                out_fig_path.parent.mkdir(parents=True, exist_ok=True)
-                
-                # We use shutil.copy2 to preserve file metadata
-                import shutil
-                shutil.copy2(fig_path_abs, out_fig_path)
-                
-                # Calculate relative path from html_path's directory to out_fig_path
-                try:
-                    rel_src = os.path.relpath(out_fig_path, html_path.parent)
-                except ValueError:
-                    # Fallback to absolute relative to root if relpath fails
-                    rel_src = f"/{fig_path_rel}"
-                    
-                return f'src="{rel_src}"'
+
+                # Inline the (already self-contained) figure HTML directly into the
+                # iframe as `srcdoc` so the exported document is a single portable
+                # file. Referencing a copied sibling file instead would break the
+                # moment the HTML is moved or shared on its own.
+                with open(fig_path_abs, "r", encoding="utf-8") as fig_f:
+                    fig_html = fig_f.read()
+
+                return 'srcdoc="' + html.escape(fig_html, quote=True) + '"'
 
             new_content = INJECT_PATTERN.sub(repl, content)
 
