@@ -65,8 +65,12 @@ jobs:
 
       - name: Boot container and verify health endpoint
         run: |
+          # No API key is configured for this throwaway health check, so opt
+          # into insecure mode explicitly — otherwise the startup guard
+          # (auth_startup_report) refuses to boot on a network address.
           docker run -d --name fourd-ci -p 5006:5006 \
-            -e PROJECT_ROOT=/workspace 4dpapers:ci
+            -e PROJECT_ROOT=/workspace \
+            -e FOURD_ALLOW_INSECURE=1 4dpapers:ci
           # Poll the healthcheck endpoint for up to ~60s.
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:5006/api/health >/dev/null; then

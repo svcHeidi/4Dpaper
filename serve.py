@@ -30,6 +30,12 @@ os.environ["PROJECT_ROOT"] = str(project_root)
 import tornado.web
 import panel as pn
 from dashboard.plugins import ROUTES as plugin_routes
+from dashboard.auth import auth_startup_report
+
+# Address the server binds to. Defaults to all interfaces (Bokeh/Panel default)
+# to preserve existing behaviour; set FOURD_BIND_ADDRESS=127.0.0.1 to restrict
+# to loopback (e.g. when a reverse proxy handles public ingress).
+bind_address = os.getenv("FOURD_BIND_ADDRESS", "0.0.0.0")
 
 # Static files directory (in app, not project)
 static_dir = app_root / "dashboard" / "static"
@@ -57,10 +63,18 @@ def main():
     port = args.port or os.getenv("PORT") or 5006
     port = int(port)
 
+    # Fail-open auth guard: refuse to boot unauthenticated on a network address.
+    level, message = auth_startup_report(bind_address)
+    if message:
+        print(message, file=sys.stderr)
+    if level == "refuse":
+        sys.exit(1)
+
     print(f"Starting 4Dpapers Dashboard...")
     print(f"Application root: {app_root}")
     print(f"Project root: {project_root}")
     print(f"Static files: {static_dir}")
+    print(f"Bind address: {bind_address}")
     print(f"API routes registered: {len(plugin_routes)}")
 
     # Serve with explicit static directory AND plugin routes
@@ -78,6 +92,7 @@ def main():
     pn.serve(
         {},  # No Panel apps, just static + API routes
         port=port,
+        address=bind_address,
         show=False,
         title="4Dpapers Dashboard",
         extra_patterns=extra_patterns,

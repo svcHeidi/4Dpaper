@@ -24,6 +24,7 @@ URL the dashboard is served from when deploying remotely.
 """
 from __future__ import annotations
 
+import ipaddress
 import os
 
 import tornado.web
@@ -41,6 +42,89 @@ _API_KEY_COOKIE = "fourd_api_key"
 
 #: The origin that is allowed to make cross-origin requests to this server.
 _ALLOWED_ORIGIN: str = os.getenv("FOURD_ALLOWED_ORIGIN", "http://localhost:5006")
+
+
+# ---------------------------------------------------------------------------
+# Startup security guard
+# ---------------------------------------------------------------------------
+#
+# Authentication is *fail-open*: with no ``FOURD_API_KEY`` set, every endpoint
+# is served unauthenticated (see ``SecureMixin.check_auth``). That is fine for
+# local development but catastrophic if the server is reachable from a network.
+# ``auth_startup_report`` lets the entry point refuse to boot in that case.
+
+
+def _is_loopback(address: str) -> bool:
+    """Return True if *address* is a loopback bind that is not network-reachable.
+
+    An empty address (Bokeh/Panel default) binds to all interfaces, so it is
+    treated as *not* loopback. ``"localhost"`` and any IPv4/IPv6 loopback
+    literal (``127.0.0.1``, ``::1``) count as loopback.
+    """
+    host = (address or "").strip().lower()
+    if host == "":
+        return False  # binds all interfaces
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def auth_startup_report(bind_address: str) -> tuple[str, str]:
+    """Assess whether it is safe to start with the current auth configuration.
+
+    Reads ``FOURD_API_KEY`` and ``FOURD_ALLOW_INSECURE`` fresh from the
+    environment (so it is testable) and returns ``(level, message)`` where
+    ``level`` is one of:
+
+    * ``"ok"``     — a key is configured; nothing to report.
+    * ``"warn"``   — no key, but the bind is loopback-only or the operator has
+      explicitly opted into insecure mode; caller should print and continue.
+    * ``"refuse"`` — no key and the server would be network-reachable; caller
+      must not start.
+    """
+    api_key = os.getenv("FOURD_API_KEY") or None
+    if api_key is not None:
+        return ("ok", "")
+
+    allow_insecure = os.getenv("FOURD_ALLOW_INSECURE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+    if _is_loopback(bind_address):
+        return (
+            "warn",
+            "WARNING: FOURD_API_KEY is not set — the dashboard is running "
+            "UNAUTHENTICATED. This is acceptable only because it is bound to "
+            f"the loopback address ({bind_address}). Do not expose this "
+            "process to a network without setting FOURD_API_KEY.",
+        )
+
+    if allow_insecure:
+        return (
+            "warn",
+            "WARNING: FOURD_API_KEY is not set and the server is bound to a "
+            f"network-reachable address ({bind_address}). Authentication is "
+            "DISABLED and every endpoint is public. Continuing only because "
+            "FOURD_ALLOW_INSECURE is set — never use this in production.",
+        )
+
+    return (
+        "refuse",
+        "REFUSING TO START: FOURD_API_KEY is not set but the server would bind "
+        f"to a network-reachable address ({bind_address}), which would expose "
+        "every endpoint (file read/write, compile, upload) without "
+        "authentication.\n"
+        "  Fix one of:\n"
+        "    • set FOURD_API_KEY to a long random secret (recommended), or\n"
+        "    • set FOURD_BIND_ADDRESS=127.0.0.1 to bind loopback-only, or\n"
+        "    • set FOURD_ALLOW_INSECURE=1 to override (unauthenticated — do "
+        "not use in production).",
+    )
 
 # ---------------------------------------------------------------------------
 # Mixin
