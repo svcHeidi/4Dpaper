@@ -53,7 +53,7 @@ The shipped example is a standalone Niederer slab workspace with one manuscript
 ## Use The Prebuilt Image
 
 ```bash
-IMAGE=ghcr.io/svcheidi/4dpaper:latest docker compose up
+IMAGE=ghcr.io/4dpapers/4dpapers:latest docker compose up
 ```
 
 Or run without Compose:
@@ -64,7 +64,7 @@ docker run -d \
   -p 5006:5006 \
   -v /path/to/your/project:/workspace \
   --env-file .env \
-  ghcr.io/svcheidi/4dpaper:latest
+  ghcr.io/4dpapers/4dpapers:latest
 ```
 
 ## Single-Host Production Deployment
