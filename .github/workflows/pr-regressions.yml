@@ -23,11 +23,23 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          # Pinned to match the runtime Python in the shipped Docker image
+          # (Dockerfile: python:3.11-slim). Keep these in lockstep.
+          python-version: "3.11"
           cache: "pip"
           cache-dependency-path: |
             requirements.txt
             requirements-e2e.txt
+
+      - name: Install headless OpenGL stack
+        # PyVista/VTK render figures through OpenGL. The bare runner has no GPU
+        # or display, so the render tests segfault without a software GL stack
+        # and a virtual framebuffer (the Docker image installs the same libs).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libglx-mesa0 libgl1-mesa-dri libglu1-mesa libosmesa6 \
+            libxrender1 libxext6 xvfb
 
       - name: Install dependencies
         run: |
@@ -35,5 +47,55 @@ jobs:
           python -m pip install -r requirements-e2e.txt
 
       - name: Run tests
+        env:
+          PYVISTA_OFF_SCREEN: "true"
         run: |
-          python -m pytest -q
+          xvfb-run -a python -m pytest -q
+
+  image-smoke:
+    name: Container smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (amd64, load locally)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: 4dpapers:ci
+          build-args: |
+            APP_VERSION=ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Boot container and verify health endpoint
+        run: |
+          # No API key is configured for this throwaway health check, so opt
+          # into insecure mode explicitly — otherwise the startup guard
+          # (auth_startup_report) refuses to boot on a network address.
+          docker run -d --name fourd-ci -p 5006:5006 \
+            -e PROJECT_ROOT=/workspace \
+            -e FOURD_ALLOW_INSECURE=1 4dpapers:ci
+          # Poll the healthcheck endpoint for up to ~60s.
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:5006/api/health >/dev/null; then
+              echo "Health endpoint is up."
+              curl -fsS http://localhost:5006/api/health
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "ERROR: /api/health did not become ready in time" >&2
+          docker logs fourd-ci
+          exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker rm -f fourd-ci || true
