@@ -29,6 +29,14 @@ local _RELAY_SCRIPT = [=[
 (function(){
   /* Debug bar removed — no on-page "[4d] …" message log, no console spam. */
   function _dbg(msg){}
+  var _CAN_PERSIST = /(^|\/)output\//.test(window.location.pathname);
+  function _persist(url, options) {
+    if (_CAN_PERSIST) return fetch(url, options);
+    return Promise.resolve({
+      ok: true,
+      json: function(){ return Promise.resolve({locked:false}); }
+    });
+  }
 
   /* ── Camera overlay: lives in this document (paper preview) ──────── */
   if (!document.getElementById('fourd-cam-overlay')) {
@@ -105,7 +113,7 @@ local _RELAY_SCRIPT = [=[
           }
         }
       }
-      fetch('/camera/'+camId,{
+      _persist('/camera/'+camId,{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(e.data.camera)
       }).catch(function(){});
@@ -155,7 +163,7 @@ local _RELAY_SCRIPT = [=[
       }
     } else if(e.data.type==="4dpaper-field-update"){
       var figId2=e.data.fig_id;
-      fetch('/field/'+figId2,{
+      _persist('/field/'+figId2,{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(e.data.data)
       }).then(function(r){
@@ -165,7 +173,7 @@ local _RELAY_SCRIPT = [=[
       });
     } else if(e.data.type==="4dpaper-lock-query"){
       var lockFigId=e.data.fig_id;
-      fetch("/camera-lock/"+lockFigId)
+      _persist("/camera-lock/"+lockFigId)
         .then(function(r){return r.json();})
         .then(function(d){
           if(e.source)e.source.postMessage(
@@ -176,7 +184,7 @@ local _RELAY_SCRIPT = [=[
         });
     } else if(e.data.type==="4dpaper-lock-toggle"){
       var lockFigId2=e.data.fig_id;
-      fetch("/camera-lock/"+lockFigId2,{
+      _persist("/camera-lock/"+lockFigId2,{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({locked:!!e.data.locked})
       }).then(function(r){
@@ -292,7 +300,7 @@ local function _panel_toolbar_html(id, frame_count, time_indices, show_transport
     transport ..
     '<button id="plb-btn-' .. id .. '" class="plb-lock" title="Lock / unlock panel cameras">&#x1F513;</button>' ..
     '<script>(function(){' ..
-    'var PID="' .. id .. '",N=' .. transport_count .. ',ACTUAL=' .. actual_json .. ',_pl=false,_idx=0,_tm=0;' ..
+    'var PID="' .. id .. '",N=' .. transport_count .. ',ACTUAL=' .. actual_json .. ',_pl=false,_idx=0,_tm=0,_persist=/(^|\\/)output\\//.test(window.location.pathname);' ..
     'function _fs(){return document.querySelectorAll("iframe[data-panel=\\""+PID+"\\"]");}' ..
     'function _bc(v){var f=_fs();for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-lock-all",locked:v},"*");}' ..
     'function _bh(){var f=_fs();for(var i=0;i<f.length;i++)f[i].contentWindow.postMessage({type:"4dpaper-hide-lock-btn"},"*");}' ..
@@ -306,9 +314,9 @@ local function _panel_toolbar_html(id, frame_count, time_indices, show_transport
     'window.addEventListener("message",function(e){if(!e.data||e.data.type!=="4dpaper-time")return;var v=e.data.source_idx!=null?e.data.source_idx:e.data.idx;_ui(_fromActual(parseInt(v||0,10)||0));});' ..
     'var _locked=false;' ..
     'function _spl(v){_locked=v;var b=document.getElementById("plb-btn-"+PID);if(b)b.innerHTML=v?"&#x1F512;":"&#x1F513;";_bc(v);}' ..
-    'fetch("/camera-lock/"+PID).then(function(r){return r.json();}).then(function(d){_spl(!!d.locked);}).catch(function(){});' ..
+    'if(_persist){fetch("/camera-lock/"+PID).then(function(r){return r.ok?r.json():{locked:false};}).then(function(d){_spl(!!d.locked);}).catch(function(){});}else{_spl(false);}' ..
     'var _iv=setInterval(_bh,500); setTimeout(function(){clearInterval(_iv);},8000);' ..
-    'var btn=document.getElementById("plb-btn-"+PID);if(btn)btn.addEventListener("click",function(){var nv=!_locked;_spl(nv);fetch("/camera-lock/"+PID,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({locked:nv})}).catch(function(){});});' ..
+    'var btn=document.getElementById("plb-btn-"+PID);if(btn)btn.addEventListener("click",function(){var nv=!_locked;_spl(nv);if(_persist)fetch("/camera-lock/"+PID,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({locked:nv})}).catch(function(){});});' ..
     '})();</script></div>'
 end
 

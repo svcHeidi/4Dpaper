@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and workflow help
+    url: https://github.com/4dpapers/4dpapers/discussions
+    about: Ask setup, format, and scientific-workflow questions in Discussions.
+  - name: Private security report
+    url: https://github.com/4dpapers/4dpapers/security/advisories/new
+    about: Report suspected vulnerabilities privately.

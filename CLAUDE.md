@@ -315,9 +315,9 @@ Use this status split when writing docs, release notes, or user-facing support c
 
 **Special PLY Handling:** Custom `_CustomPLYReader` handles ASCII and binary_little_endian formats with automatic fallback to PyVista. Utility function `SimulationData.compress_ply()` available for on-demand gzip compression of PLY files.
 
-### 6.5 Mesh Generation & CAD Formats (via meshio)
+### 6.5 Mesh Generation & CAD Formats (via bundled meshio)
 
-*Requires optional dependency: `pip install meshio`*
+*Bundled in the official Docker image; custom Python environments should install `meshio==5.3.5`.*
 
 | Format | Extensions | Time-Series | Scalar Fields | Notes |
 |--------|-----------|-------------|---------------|-------|
@@ -353,8 +353,8 @@ The upload handler also accepts for staging/documentation:
 | EnSight | PyVista | YES | YES | YES | YES | Reader path implemented; real local fixture coverage still pending |
 | XDMF | PyVista | YES | YES | YES | YES | Requires .h5 file |
 | STL/OBJ/PLY | PyVista | YES | LIMITED | NO | YES | No scalar animation |
-| Gmsh/MED | meshio | YES | LIMITED | MAYBE | YES | Requires optional dep |
-| Abaqus `.inp` | meshio | YES | NO | NO | YES | Mesh only; requires optional dep |
+| Gmsh/MED | meshio | YES | LIMITED | MAYBE | YES | Bundled in official image |
+| Abaqus `.inp` | meshio | YES | NO | NO | YES | Mesh only; experimental reader |
 | Plotly `.json` | Plotly | N/A | N/A | CONDITIONAL | YES | Chart format only |
 
 ### 6.9 Library Dependencies
@@ -362,7 +362,7 @@ The upload handler also accepts for staging/documentation:
 - **pyvista[jupyter]==0.47.3** — Primary mesh I/O & rendering (VTK wrapper)
 - **vtk==9.6.1** — Backend; pinned for `window.renderWindow` vtk.js export stability
 - **numpy** — Array operations for scalar field manipulation
-- **meshio** — Optional; unlocks `.med`, `.msh`, `.inp`, `.hdf5` support
+- **meshio** — Bundled in the official image; enables `.med`, `.msh`, `.inp`, `.hdf5` support
 - **plotly>=5.0.0** — Graph rendering
 
 ### 6.10 Size & Performance Constraints

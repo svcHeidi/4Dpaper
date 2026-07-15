@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the interactive HTML + static PNG preview for one uploaded case.
+"""Render preview artifacts for one uploaded case.
 
 Invoked as a subprocess by dashboard/upload_plugin.py on figure upload, so the
 figure-generation code runs in the same execution mode it is proven in (a
@@ -8,8 +8,9 @@ dashboard's live Tornado event loop.
 
 On success the final stdout line is a JSON status object:
     {"status": "ok", "field": "<field>", "fields": ["a", "b", ...]}
-Any exception prints to stderr and exits non-zero — either both artifacts
-render or the whole call is treated as failed.
+Any exception prints to stderr and exits non-zero. The normal upload path
+creates HTML and PNG; Quick Export passes ``--html-only`` because its temporary
+workspace only needs the interactive figure.
 """
 from __future__ import annotations
 
@@ -63,6 +64,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fig-id", required=True, help="Figure identifier")
     parser.add_argument("--decimate", default="auto", help="auto|none|<float-ratio>")
     parser.add_argument("--field", default="", help="Scalar field override")
+    parser.add_argument(
+        "--html-only",
+        action="store_true",
+        help="Generate the interactive HTML figure without a PNG companion",
+    )
     args = parser.parse_args(argv)
 
     # lib.* lives under _extensions/4dpaper; lib.utils imports
@@ -103,14 +109,15 @@ def main(argv: list[str] | None = None) -> int:
         available_fields=fields,
         decimate=args.decimate,
     )
-    generate_png_figure(
-        src_path=case,
-        field=field,
-        time_spec="mid",
-        output_path=output_dir / f"{args.fig_id}.png",
-        fig_id=args.fig_id,
-        decimate=args.decimate,
-    )
+    if not args.html_only:
+        generate_png_figure(
+            src_path=case,
+            field=field,
+            time_spec="mid",
+            output_path=output_dir / f"{args.fig_id}.png",
+            fig_id=args.fig_id,
+            decimate=args.decimate,
+        )
 
     print(json.dumps({"status": "ok", "field": field, "fields": fields}))
     return 0

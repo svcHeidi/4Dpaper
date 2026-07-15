@@ -16,13 +16,32 @@ You need [Docker](https://docs.docker.com/get-docker/). Then:
 git clone https://github.com/4dpapers/4dpapers.git
 cd 4dpapers
 cp .env.example .env
-IMAGE=ghcr.io/4dpapers/4dpapers:latest FOURD_WORKSPACE=./examples/niederer docker compose up
+IMAGE=ghcr.io/4dpapers/4dpapers:0.1.1 FOURD_WORKSPACE=./examples/niederer docker compose up
 ```
 
 Open **http://localhost:5006** — you'll land in the editor with the example cardiac
 paper already loaded and its 3D figures live. Rotate a figure, switch its field, press ▶ to animate.
 
 That's the whole app: a file tree, a Markdown editor, and a live preview, in one browser tab.
+
+---
+
+## Export one result without creating a paper (beta)
+
+Quick Export accepts one supported simulation file or OpenFOAM case and keeps
+only two artifacts: the interactive figure HTML and a self-contained document
+HTML. Its generated Quarto project, cache, and state live in a temporary
+workspace; the source directory is mounted read-only.
+
+```bash
+docker pull ghcr.io/4dpapers/4dpapers:0.1.1
+IMAGE=ghcr.io/4dpapers/4dpapers:0.1.1 \
+  ./development/quick-export/4d-quick.sh /path/to/result.vtu
+```
+
+The retained files go to `4dpapers-exports/` beside the source by default. See
+the [Quick Export reference](development/quick-export/README.md) for a custom
+output directory and the current verification evidence.
 
 ---
 
@@ -44,9 +63,10 @@ A paper is a Quarto Markdown file (`.qmd`). Drop your data under `data/`, then a
 Click **Compile** in the dashboard and the figure appears — interactive in HTML, a static
 snapshot in PDF. That's the core loop: **add data → write a shortcode → compile.**
 
-Supported data: `.foam`, `.vtu`, `.vtp`, `.pvd`, `.vtk`, `.xdmf`, `.stl`, `.obj`, `.ply`,
-`.cgns`, `.exo`, `.case`, `.msh`, `.med`, `.inp`, and Plotly `.json`.
-See the [full shortcode & format reference](AGENTS.md).
+The strongest v0.1 support is backed by committed fixtures: VTK/VTU/VTP/PVD/VTK-series,
+XDMF + HDF5, STL/OBJ/PLY, Gmsh/MED, generic HDF5, and Plotly JSON. OpenFOAM has
+external/manual validation. Exodus, CGNS, EnSight, and Abaqus remain experimental and
+need more real-world fixtures. See the [full format evidence reference](AGENTS.md).
 
 ---
 
@@ -57,6 +77,10 @@ See the [full shortcode & format reference](AGENTS.md).
 - **Multi-panel and time-series layouts** with synchronized cameras
 - **HTML and PDF export** from the same source
 - Optional AI sidebar and signed HTML output
+
+AI is opt-in. Prompts and selected paper context go to the provider you
+configure; do not send private or embargoed research without reviewing that
+provider's data policy. Ollama is available for a local-model workflow.
 
 ---
 
@@ -141,3 +165,7 @@ Source-available under a dual-license model:
 - Paid commercial license required for company/internal commercial use
 
 See [LICENSE.md](LICENSE.md).
+
+Questions and setup help belong in [GitHub Discussions](https://github.com/4dpapers/4dpapers/discussions).
+For bugs, security reports, and contributions, see [SUPPORT.md](SUPPORT.md),
+[SECURITY.md](SECURITY.md), and [CONTRIBUTING.md](CONTRIBUTING.md).

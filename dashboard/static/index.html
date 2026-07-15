@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-    <title>4DPaper Code Editor</title>
+    <title>4Dpapers Research Paper IDE</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <script>
         tailwind.config = {
@@ -406,7 +406,6 @@
     <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
     <!-- Marked for Markdown parsing -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
     <!-- CodeMirror for code editing -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material-darker.min.css">
@@ -432,11 +431,18 @@
                 <i class="ph-duotone ph-cube text-app-accent text-xl"></i>
             </div>
             <div>
-                <h1 class="text-app-textLight font-semibold text-lg leading-tight">4DPaper</h1>
+                <h1 class="text-app-textLight font-semibold text-lg leading-tight">4Dpapers</h1>
                 <p class="text-xs text-app-text opacity-75">Research Paper IDE</p>
             </div>
         </div>
         <div class="flex items-center space-x-3">
+            <a href="https://github.com/4dpapers/4dpapers#readme"
+               target="_blank" rel="noopener noreferrer"
+               class="bg-transparent hover:bg-app-bg border border-app-border text-app-textLight px-3 py-1.5 rounded-md text-sm font-medium flex items-center space-x-2 transition-colors"
+               title="Open the 4Dpapers documentation">
+                <i class="ph-duotone ph-book-open-text"></i>
+                <span>Docs</span>
+            </a>
             <button class="bg-app-accent hover:bg-blue-600 text-white px-4 py-1.5 rounded-md text-sm font-medium flex items-center space-x-2 transition-colors shadow-sm" data-purpose="compile-button">
                 <i class="ph-fill ph-play text-white"></i>
                 <span>Compile</span>
@@ -569,6 +575,7 @@
 
                 <!-- Inline settings panel (hidden until toggle) -->
                 <div id="aiSettingsPanel" class="hidden border-b border-app-border bg-app-panelBg px-3 py-2 flex-shrink-0 space-y-2 text-xs text-app-text">
+                    <p class="text-[11px] leading-snug opacity-80">Prompts and selected paper context are sent to the configured provider. Avoid private or embargoed data unless its policy is acceptable; use Ollama for a local model.</p>
                     <div class="flex items-center gap-2">
                         <label class="w-16 flex-shrink-0 text-app-textLight font-medium" for="aiProviderSelect">Provider</label>
                         <div class="flex items-center gap-1.5 flex-1 min-w-0">
@@ -822,10 +829,19 @@
         const statusBar = document.querySelector('.status-bar .status-left');
         if (!statusBar) return;
         const spinClass = spinning ? ' animate-spin' : '';
-        const iconHtml = iconClass
-            ? `<i class="${iconClass}${spinClass}" style="color: ${color};"></i>`
-            : '';
-        statusBar.innerHTML = `<span>Status: <span style="color: ${color};">${label}</span></span>${iconHtml}`;
+        const wrapper = document.createElement('span');
+        wrapper.append('Status: ');
+        const value = document.createElement('span');
+        value.textContent = String(label);
+        value.style.color = color;
+        wrapper.appendChild(value);
+        statusBar.replaceChildren(wrapper);
+        if (iconClass) {
+            const icon = document.createElement('i');
+            icon.className = `${iconClass}${spinClass}`;
+            icon.style.color = color;
+            statusBar.appendChild(icon);
+        }
     }
 
     function refreshBuildLogToggle() {
@@ -1538,11 +1554,16 @@
                 const toggleEl = document.createElement('span');
                 toggleEl.style.cursor = 'pointer';
                 toggleEl.style.marginRight = '6px';
-                toggleEl.innerHTML = '<i class="ph-duotone ph-caret-right"></i>';
+                const toggleIcon = document.createElement('i');
+                toggleIcon.className = 'ph-duotone ph-caret-right';
+                toggleEl.appendChild(toggleIcon);
 
                 const labelEl = document.createElement('span');
                 labelEl.style.cursor = 'pointer';
-                labelEl.innerHTML = `<i class="ph-duotone ph-folder" style="margin-right:6px;"></i>${name}`;
+                const folderIcon = document.createElement('i');
+                folderIcon.className = 'ph-duotone ph-folder';
+                folderIcon.style.marginRight = '6px';
+                labelEl.append(folderIcon, document.createTextNode(name));
 
                 item.appendChild(toggleEl);
                 item.appendChild(labelEl);
@@ -1570,9 +1591,9 @@
                 const toggleFolder = () => {
                     const isOpen = childrenDiv.style.display !== 'none';
                     childrenDiv.style.display = isOpen ? 'none' : 'block';
-                    toggleEl.innerHTML = isOpen ?
-                        '<i class="ph-duotone ph-caret-right"></i>' :
-                        '<i class="ph-duotone ph-caret-down"></i>';
+                    toggleIcon.className = isOpen ?
+                        'ph-duotone ph-caret-right' :
+                        'ph-duotone ph-caret-down';
                     item.classList.toggle('expanded', !isOpen);
                 };
 
@@ -1589,8 +1610,12 @@
             } else {
                 // File
                 item.classList.add('file');
-                item.classList.add(node.ext);
-                item.innerHTML = `<i class="ph-duotone ph-file" style="margin-right:6px;"></i>${name}`;
+                const safeExtension = String(node.ext || '').replace(/[^A-Za-z0-9_-]/g, '');
+                if (safeExtension) item.classList.add(safeExtension);
+                const fileIcon = document.createElement('i');
+                fileIcon.className = 'ph-duotone ph-file';
+                fileIcon.style.marginRight = '6px';
+                item.append(fileIcon, document.createTextNode(name));
                 item.addEventListener('click', () => openFile(node.path));
             }
 
@@ -1649,7 +1674,7 @@
     // Update tab bar
     function updateTabBar() {
         const tabBar = document.querySelector('.tab-bar');
-        tabBar.innerHTML = '';
+        tabBar.replaceChildren();
 
         state.openTabs.forEach(tab => {
             const tabEl = document.createElement('div');
@@ -1658,13 +1683,22 @@
             const icon = tab.name.endsWith('.qmd') ? 'ph-file-code' : 'ph-file-text';
             const color = tab.name.endsWith('.qmd') ? 'text-blue-400' : 'text-gray-400';
 
-            tabEl.innerHTML = `
-                <i class="ph ${icon} ${color}"></i>
-                <span>${tab.name}</span>
-                <button class="ml-2 hover:bg-gray-700 rounded p-0.5" onclick="event.stopPropagation(); closeTab('${tab.path}')">
-                    <i class="ph-duotone ph-x text-xs"></i>
-                </button>
-            `;
+            const fileIcon = document.createElement('i');
+            fileIcon.className = `ph ${icon} ${color}`;
+            const name = document.createElement('span');
+            name.textContent = tab.name;
+            const close = document.createElement('button');
+            close.className = 'ml-2 hover:bg-gray-700 rounded p-0.5';
+            close.type = 'button';
+            close.setAttribute('aria-label', `Close ${tab.name}`);
+            const closeIcon = document.createElement('i');
+            closeIcon.className = 'ph-duotone ph-x text-xs';
+            close.appendChild(closeIcon);
+            close.addEventListener('click', (event) => {
+                event.stopPropagation();
+                closeTab(tab.path);
+            });
+            tabEl.append(fileIcon, name, close);
             tabEl.addEventListener('click', () => activateTab(tab.path));
             tabBar.appendChild(tabEl);
         });
@@ -2124,7 +2158,10 @@
                     // The API returns a flat list of files. Filter for main documents only (root level)
                     const qmds = files.filter(f => !f.is_dir && f.path && f.path.endsWith('.qmd') && !f.path.includes('/'));
                     if (qmds.length === 0) {
-                        listEl.innerHTML = '<div class="text-xs text-app-text p-4 text-center">No .qmd papers found in workspace.</div>';
+                        const empty = document.createElement('div');
+                        empty.className = 'text-xs text-app-text p-4 text-center';
+                        empty.textContent = 'No .qmd papers found in workspace.';
+                        listEl.replaceChildren(empty);
                         return;
                     }
                     // Default the active paper to main.qmd (or the first paper) so Compile
@@ -2133,17 +2170,29 @@
                         const def = qmds.find(f => f.path === 'main.qmd') || qmds[0];
                         state.activePaper = def.path;
                     }
-                    const hint = '<div class="text-[11px] text-app-text opacity-60 px-2 pb-2 leading-snug">Click a paper to make it the Compile / Export target.</div>';
-                    listEl.innerHTML = hint + qmds.map(f => {
+                    listEl.replaceChildren();
+                    const hint = document.createElement('div');
+                    hint.className = 'text-[11px] text-app-text opacity-60 px-2 pb-2 leading-snug';
+                    hint.textContent = 'Click a paper to make it the Compile / Export target.';
+                    listEl.appendChild(hint);
+                    qmds.forEach(f => {
                         const path = f.path;
                         const name = path.split('/').pop();
                         const active = path === state.activePaper;
-                        return `<div class="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-app-tabBg group paper-item ${active ? 'bg-app-tabBg ring-1 ring-app-accent' : ''}" data-path="${path}" title="${path}">
-                            <i class="ph-duotone ph-file-text text-app-accent flex-shrink-0"></i>
-                            <span class="text-xs text-app-textLight truncate flex-1">${name}</span>
-                            <i class="ph-fill ph-check-circle text-app-accent text-xs paper-active-mark ${active ? '' : 'hidden'}"></i>
-                        </div>`;
-                    }).join('');
+                        const item = document.createElement('div');
+                        item.className = `flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-app-tabBg group paper-item${active ? ' bg-app-tabBg ring-1 ring-app-accent' : ''}`;
+                        item.dataset.path = path;
+                        item.title = path;
+                        const paperIcon = document.createElement('i');
+                        paperIcon.className = 'ph-duotone ph-file-text text-app-accent flex-shrink-0';
+                        const paperName = document.createElement('span');
+                        paperName.className = 'text-xs text-app-textLight truncate flex-1';
+                        paperName.textContent = name;
+                        const activeMark = document.createElement('i');
+                        activeMark.className = `ph-fill ph-check-circle text-app-accent text-xs paper-active-mark${active ? '' : ' hidden'}`;
+                        item.append(paperIcon, paperName, activeMark);
+                        listEl.appendChild(item);
+                    });
                     // Click selects the paper as the Compile/Export target and opens it.
                     listEl.querySelectorAll('.paper-item').forEach(item => {
                         item.addEventListener('click', () => {
@@ -2161,7 +2210,10 @@
                     });
                 })
                 .catch(() => {
-                    listEl.innerHTML = '<div class="text-xs text-app-text p-4 text-center">Could not load papers.</div>';
+                    const error = document.createElement('div');
+                    error.className = 'text-xs text-app-text p-4 text-center';
+                    error.textContent = 'Could not load papers.';
+                    listEl.replaceChildren(error);
                 });
         }
 

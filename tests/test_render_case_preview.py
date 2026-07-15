@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import dashboard.upload_plugin as upload_plugin
 from scripts.render_case_preview import _fields_at_step, _select_field
 
 _PROJECT_ROOT = Path(__file__).parent.parent
@@ -56,6 +57,21 @@ def test_fields_at_step_empty_when_mesh_missing():
             return None
 
     assert _fields_at_step(_NoMeshSim(), 0) == []
+
+
+def test_preview_subprocess_adds_html_only_flag_when_requested(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    upload_plugin._run_preview_subprocess(
+        tmp_path / "case.vtu", "fig-case", "auto", html_only=True
+    )
+
+    assert captured["command"][-1] == "--html-only"
 
 
 @pytest.mark.skipif(

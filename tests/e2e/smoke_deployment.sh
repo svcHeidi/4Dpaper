@@ -19,7 +19,7 @@ trap cleanup EXIT
 cd "${ROOT_DIR}"
 
 echo "[smoke] Building image ${IMAGE_TAG}"
-docker build -t "${IMAGE_TAG}" .
+docker build --build-arg "APP_VERSION=$(cat VERSION)" -t "${IMAGE_TAG}" .
 
 echo "[smoke] Starting container ${CONTAINER_NAME}"
 docker run -d --rm \
@@ -72,5 +72,7 @@ test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${HOST_PORT}/ou
 test "$(curl -s -o /dev/null -w '%{http_code}' --cookie "fourd_api_key=${API_KEY}" "http://127.0.0.1:${HOST_PORT}/output/main.html")" = "200"
 test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${HOST_PORT}/state/upload_tmp/probe/secret.txt")" = "401"
 test "$(curl -s -o /dev/null -w '%{http_code}' --cookie "fourd_api_key=${API_KEY}" "http://127.0.0.1:${HOST_PORT}/state/upload_tmp/probe/secret.txt")" = "403"
+test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${HOST_PORT}/quick.html")" = "404"
+test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${HOST_PORT}/api/quick-target")" = "404"
 
 echo "[smoke] Deployment smoke test passed"

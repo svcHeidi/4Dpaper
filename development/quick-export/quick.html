@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>4Dpapers — Quick Export</title>
+
+  <!-- Phosphor Icons (same CDN as main IDE) -->
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1/src/index.js"></script>
+
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #141725;
+      --editor-bg: #0D1117;
+      --panel:     #1B1F30;
+      --tab-bg:    #121521;
+      --border:    #2A3047;
+      --border2:   #2A3047;
+      --accent:    #138a7c;
+      --accent2:   #138a7c;
+      --text:      #E5E7EB;
+      --text-dim:  #9CA3AF;
+      --text-mute: #6B7280;
+      --success:   #22c55e;
+      --error:     #ef4444;
+      --warn:      #f59e0b;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────── */
+    .shell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* Top bar */
+    .topbar {
+      height: 48px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      flex-shrink: 0;
+      gap: 12px;
+    }
+
+    .topbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .topbar-brand-icon {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .topbar-brand-icon i { font-size: 22px; }
+
+    .topbar-brand-copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+      line-height: 1.15;
+    }
+
+    .topbar-brand-title {
+      color: var(--text);
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .topbar-brand-subtitle {
+      color: var(--text-dim);
+      font-size: 12px;
+      opacity: 0.75;
+    }
+
+    .topbar-actions { display: flex; align-items: center; gap: 10px; }
+
+    /* Main content area */
+    .content {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Form panel ───────────────────────────────────────────────── */
+    .form-panel {
+      width: 300px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+      min-height: 0;
+    }
+
+    .form-inner {
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-mute);
+    }
+
+    .field-input, .field-textarea {
+      width: 100%;
+      background: var(--tab-bg);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      padding: 9px 12px;
+      font-size: 13px;
+      color: var(--text);
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .field-input::placeholder,
+    .field-textarea::placeholder { color: var(--text-mute); }
+
+    .field-input:focus,
+    .field-textarea:focus { border-color: var(--accent); }
+
+    #f-title { font-size: 15px; font-weight: 600; }
+
+    .description-group {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .field-textarea {
+      resize: vertical;
+      line-height: 1.6;
+      min-height: 220px;
+      flex: 1;
+    }
+
+    /* ── Preview panel ────────────────────────────────────────────── */
+    .preview-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--editor-bg);
+    }
+
+    .preview-header {
+      height: 36px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 16px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-mute);
+      flex-shrink: 0;
+    }
+
+    .preview-status {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text-dim);
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 500;
+    }
+
+    #preview-iframe {
+      flex: 1;
+      border: none;
+      width: 100%;
+      display: block;
+    }
+
+    /* ── Buttons ──────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      outline: none;
+      transition: opacity 0.15s, background 0.15s, transform 0.1s;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-export {
+      background: var(--accent2);
+      color: #fff;
+    }
+    .btn-export:hover:not(:disabled) { background: #0f766e; }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border2);
+      color: var(--text-dim);
+    }
+    .btn-ghost:hover:not(:disabled) { border-color: #4B5563; color: var(--text); }
+
+    /* ── Error / loading overlay in preview ──────────────────────── */
+    .preview-placeholder {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      color: var(--text-mute);
+      padding: 40px;
+      text-align: center;
+    }
+
+    .preview-placeholder i { font-size: 48px; opacity: 0.4; }
+
+    .preview-placeholder h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-dim);
+    }
+
+    .preview-placeholder p {
+      font-size: 13px;
+      line-height: 1.6;
+      max-width: 340px;
+    }
+
+    /* Spinner */
+    .spin { animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Inline error message (below export button) */
+    #export-error {
+      font-size: 11px;
+      color: var(--error);
+      display: none;
+      margin-top: 4px;
+    }
+
+    /* Download flash */
+    #dl-flash {
+      font-size: 11px;
+      color: var(--success);
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── Top bar ───────────────────────────────────────────────────── -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="topbar-brand-icon">
+        <i class="ph-duotone ph-cube"></i>
+      </div>
+      <div class="topbar-brand-copy">
+        <span class="topbar-brand-title">4Dpapers</span>
+        <span class="topbar-brand-subtitle">Quick Export</span>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <div id="dl-flash">
+        <i class="ph-bold ph-check-circle"></i>
+        <span>Saved and downloaded</span>
+      </div>
+      <span id="export-error"></span>
+      <button class="btn btn-export" id="btn-export" disabled>
+        <i class="ph-duotone ph-download-simple"></i>
+        Export HTML
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Main ──────────────────────────────────────────────────────── -->
+  <div class="content">
+
+    <!-- Form panel -->
+    <div class="form-panel">
+      <div class="form-inner">
+
+        <div class="field-group">
+          <label class="field-label" for="f-title">Title</label>
+          <input id="f-title" class="field-input" type="text"
+                 placeholder="Document title…" autocomplete="off">
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="f-author">Author <span style="color:var(--text-mute);font-weight:400;text-transform:none">(optional)</span></label>
+          <input id="f-author" class="field-input" type="text"
+                 placeholder="Your name…" autocomplete="off">
+        </div>
+
+        <div class="field-group description-group">
+          <label class="field-label" for="f-desc">Description <span style="color:var(--text-mute);font-weight:400;text-transform:none">(optional)</span></label>
+          <textarea id="f-desc" class="field-textarea"
+                    placeholder="Describe your simulation result…"></textarea>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Preview panel -->
+    <div class="preview-panel" id="preview-panel">
+
+      <div class="preview-header">
+        <span>Interactive Preview</span>
+        <span class="preview-status" id="status-text">Loading…</span>
+      </div>
+
+      <!-- Placeholder shown until figure is ready -->
+      <div class="preview-placeholder" id="preview-placeholder">
+        <i class="ph-duotone ph-spinner-gap spin"></i>
+        <h3>Rendering figure…</h3>
+        <p>This may take up to a minute for the first run. The interactive preview will appear here once ready.</p>
+      </div>
+
+      <!-- Figure iframe (hidden until ready) -->
+      <iframe id="preview-iframe" style="display:none"
+              title="Interactive figure preview"
+              sandbox="allow-scripts allow-same-origin">
+      </iframe>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── State ──────────────────────────────────────────────────────────
+  var quickState = {
+    figId:  '',
+    src:    '',
+    field:  '',
+    fields: [],
+    ready:  false,
+  };
+
+  // ── DOM refs ────────────────────────────────────────────────────────
+  var btnExport      = document.getElementById('btn-export');
+  var statusText     = document.getElementById('status-text');
+  var placeholder    = document.getElementById('preview-placeholder');
+  var iframe         = document.getElementById('preview-iframe');
+  var exportError    = document.getElementById('export-error');
+  var dlFlash        = document.getElementById('dl-flash');
+
+  // ── Status helpers ──────────────────────────────────────────────────
+  function setStatus(dot, text, filename) {
+    var label = text || '';
+    if (filename) label += ' · ' + filename;
+    statusText.textContent = label;
+  }
+
+  function showError(msg) {
+    setStatus('error', msg);
+    placeholder.innerHTML =
+      '<i class="ph-duotone ph-warning-circle"></i>' +
+      '<h3>Something went wrong</h3>' +
+      '<p>' + escHtml(msg) + '</p>';
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── Show figure in iframe ───────────────────────────────────────────
+  function showFigure(figId) {
+    var src = '/state/figures/' + encodeURIComponent(figId) + '.html?t=' + Date.now();
+    iframe.src = src;
+    iframe.style.display = 'block';
+    placeholder.style.display = 'none';
+  }
+
+  // ── Load sequence ───────────────────────────────────────────────────
+
+  // Step 1: get target info
+  fetch('/api/quick-target')
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data.active) {
+        showError('No simulation target set. See development/quick-export/README.md.');
+        return;
+      }
+
+      var basename = data.target.split('/').pop();
+      setStatus('loading', 'Rendering figure…', basename);
+
+      // Step 2: render the figure
+      return fetch('/api/quick-init', { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (init) {
+          if (!init || init.status !== 'ok') {
+            throw new Error(init && init.detail ? init.detail : 'Init failed');
+          }
+
+          quickState.figId  = init.fig_id;
+          quickState.src    = init.src;
+          quickState.field  = init.field;
+          quickState.fields = init.fields || [];
+          quickState.ready  = true;
+
+          var fieldLabel = init.field ? ' · Field: ' + init.field : '';
+          setStatus('ready', '● Ready' + fieldLabel, basename);
+
+          showFigure(init.fig_id);
+          btnExport.disabled = false;
+        });
+    })
+    .catch(function (err) {
+      showError(err && err.message ? err.message : String(err));
+    });
+
+  // ── Export button ───────────────────────────────────────────────────
+  btnExport.addEventListener('click', function () {
+    if (!quickState.ready) return;
+
+    exportError.style.display = 'none';
+    dlFlash.style.display = 'none';
+    btnExport.disabled = true;
+    btnExport.innerHTML =
+      '<i class="ph-bold ph-spinner-gap spin"></i> Exporting…';
+
+    var payload = {
+      fig_id:      quickState.figId,
+      field:       quickState.field,
+      fields:      quickState.fields,
+      title:       document.getElementById('f-title').value.trim(),
+      author:      document.getElementById('f-author').value.trim(),
+      description: document.getElementById('f-desc').value.trim(),
+    };
+
+    fetch('/api/quick-export', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    })
+      .then(function (r) {
+        if (!r.ok) {
+          return r.json().then(function (e) {
+            throw new Error(e.error || ('Server error ' + r.status));
+          });
+        }
+        // Extract filename from Content-Disposition header if available
+        var cd = r.headers.get('Content-Disposition') || '';
+        var fnMatch = cd.match(/filename="([^"]+)"/);
+        var filename = fnMatch ? fnMatch[1] : 'quick-export-standalone.html';
+
+        return r.blob().then(function (blob) {
+          // Trigger browser download
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function () {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }, 200);
+        });
+      })
+      .then(function () {
+        dlFlash.style.display = 'flex';
+        setTimeout(function () { dlFlash.style.display = 'none'; }, 3000);
+      })
+      .catch(function (err) {
+        exportError.textContent = err && err.message ? err.message : 'Export failed';
+        exportError.style.display = 'block';
+      })
+      .finally(function () {
+        btnExport.disabled = false;
+        btnExport.innerHTML =
+          '<i class="ph-duotone ph-download-simple"></i> Export HTML';
+      });
+  });
+
+})();
+</script>
+
+</body>
+</html>

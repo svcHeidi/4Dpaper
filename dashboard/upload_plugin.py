@@ -99,16 +99,23 @@ def _preview_python() -> str:
 
 
 def _run_preview_subprocess(
-    case_path: Path, fig_id: str, decimate: str
+    case_path: Path,
+    fig_id: str,
+    decimate: str,
+    *,
+    html_only: bool = False,
 ) -> subprocess.CompletedProcess:
     """Render the HTML + PNG preview for one case in a subprocess."""
+    command = [
+        _preview_python(), str(_PREVIEW_SCRIPT),
+        "--case", str(case_path),
+        "--fig-id", fig_id,
+        "--decimate", decimate,
+    ]
+    if html_only:
+        command.append("--html-only")
     return subprocess.run(
-        [
-            _preview_python(), str(_PREVIEW_SCRIPT),
-            "--case", str(case_path),
-            "--fig-id", fig_id,
-            "--decimate", decimate,
-        ],
+        command,
         capture_output=True,
         text=True,
         timeout=_PREVIEW_TIMEOUT_S,

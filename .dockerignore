@@ -48,6 +48,7 @@ scratch/
 *.md
 *.pdf
 *.html
+!development/quick-export/quick.html
 *.mov
 *.pptx
 example_heart*
