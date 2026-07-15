@@ -1,0 +1,43 @@
+name: Dataset compatibility
+description: Report a scientific-data format that fails to import or render.
+title: "[Format]: "
+labels:
+  - compatibility
+body:
+  - type: input
+    id: extension
+    attributes:
+      label: File format and producing application
+      placeholder: ".vtu from ParaView 5.x"
+    validations:
+      required: true
+  - type: dropdown
+    id: behavior
+    attributes:
+      label: Failure stage
+      options:
+        - Upload or file discovery
+        - Data loading
+        - Interactive HTML render
+        - PDF render
+        - Field or timestep selection
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Reproduction details and logs
+    validations:
+      required: true
+  - type: textarea
+    id: fixture
+    attributes:
+      label: Redistributable sample
+      description: Link a minimal public sample if its license permits redistribution.
+  - type: checkboxes
+    id: permission
+    attributes:
+      label: Data handling
+      options:
+        - label: Any linked data can legally be accessed and used to reproduce this report.
+          required: true

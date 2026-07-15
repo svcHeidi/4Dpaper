@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use 4Dpapers in research, please cite the software."
+title: "4Dpapers"
+abstract: "A local research-paper IDE for interactive scientific figures in HTML and static figures in PDF."
+type: software
+authors:
+  - family-names: "Nieto de Castro"
+    given-names: "Simão"
+version: 0.1.1
+repository-code: "https://github.com/4dpapers/4dpapers"
+url: "https://4dpapers.github.io/4dpapers/"
+license: "PolyForm-Noncommercial-1.0.0"

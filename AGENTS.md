@@ -48,7 +48,7 @@ Treat the first group as the strongest v1 evidence. Treat the second and third g
 - `.obj` → Wavefront OBJ (3D models)
 - `.ply` → Polygon File Format (ASCII, binary_LE, or `.ply.gz` gzip-compressed)
 
-**Mesh Generation (requires `pip install meshio`):**
+**Mesh Generation (meshio is bundled in the official image):**
 - `.msh` → Gmsh mesh file
 - `.med` → Salome MED format
 - `.inp` → Abaqus mesh topology (not `.odb` results)
@@ -163,8 +163,8 @@ pip install pyvista[jupyter]==0.47.3
 pip install vtk==9.6.1
 pip install plotly>=5.0.0
 
-# Optional (enables `.med`, `.msh`, `.inp`, `.hdf5`)
-pip install meshio
+# Included by requirements.txt; install explicitly in custom Python environments
+pip install meshio==5.3.5
 
 # For PDF export (PNG rasterization)
 pip install weasyprint>=60.0
@@ -172,7 +172,7 @@ pip install weasyprint>=60.0
 
 If a format fails to load, check:
 1. File extension matches documented format
-2. Dependencies installed (meshio for `.med`/`.msh`/`.inp`)
+2. Dependencies installed (the official image includes meshio for `.med`/`.msh`/`.inp`; custom environments may not)
 3. File size < 5GB (dashboard upload limit)
 4. XDMF files have co-located `.h5` companion
 

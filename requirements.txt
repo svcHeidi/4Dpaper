@@ -15,3 +15,6 @@ plotly>=5.0.0
 kaleido==0.2.1
 cryptography>=41.0.0
 numpy
+# Official images include meshio so the Gmsh, MED, experimental Abaqus mesh,
+# and generic HDF5 readers work without modifying a running container.
+meshio==5.3.5

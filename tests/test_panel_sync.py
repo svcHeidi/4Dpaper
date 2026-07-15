@@ -225,7 +225,7 @@ class TestStandaloneRelay:
         content = (Path(__file__).parent.parent / "_extensions" / "4dpaper" / "shortcodes.lua").read_text()
         camera_idx = content.index('} else if(e.data.type==="4dpaper-camera"){')
         apply_idx = content.index("liveFrames[_pl].contentWindow.postMessage({type:'4dpaper-camera-apply',camera:e.data.camera},'*');", camera_idx)
-        fetch_idx = content.index("fetch('/camera/'+camId,{", camera_idx)
+        fetch_idx = content.index("_persist('/camera/'+camId,{", camera_idx)
         assert apply_idx < fetch_idx
 
 

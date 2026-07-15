@@ -2,6 +2,14 @@
 
   /* ── Allowed postMessage origin: the server that served this page ──── */
   var _SELF_ORIGIN = window.location.origin;
+  var _CAN_PERSIST = /(^|\/)output\//.test(window.location.pathname);
+  function _persist(url, options) {
+    if (_CAN_PERSIST) return fetch(url, options);
+    return Promise.resolve({
+      ok: true,
+      json: function(){ return Promise.resolve({locked:false}); }
+    });
+  }
 
   /**
    * Return true if a postMessage event should be trusted.
@@ -89,7 +97,7 @@
           }
         }
       }
-      fetch('/camera/'+camId,{
+      _persist('/camera/'+camId,{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(e.data.camera)
       }).then(function(r){
@@ -156,7 +164,7 @@
 
     } else if(e.data.type==="4dpaper-field-update"){
       var figId2=e.data.fig_id;
-      fetch('/field/'+figId2,{
+      _persist('/field/'+figId2,{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(e.data.data)
       }).then(function(r){
@@ -167,7 +175,7 @@
 
     } else if(e.data.type==="4dpaper-lock-query"){
       var lockFigId=e.data.fig_id;
-      fetch("/camera-lock/"+lockFigId)
+      _persist("/camera-lock/"+lockFigId)
         .then(function(r){return r.ok ? r.json() : {locked:false};})
         .then(function(d){
           if(e.source)e.source.postMessage(
@@ -179,7 +187,7 @@
 
     } else if(e.data.type==="4dpaper-lock-toggle"){
       var lockFigId2=e.data.fig_id;
-      fetch("/camera-lock/"+lockFigId2,{
+      _persist("/camera-lock/"+lockFigId2,{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({locked:!!e.data.locked})
       }).then(function(r){

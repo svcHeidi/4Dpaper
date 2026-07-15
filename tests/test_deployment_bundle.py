@@ -46,3 +46,12 @@ def test_container_files_define_non_root_runtime_strategy():
     assert 'RUNTIME_HOME="${FOURD_RUNTIME_HOME:-/home/fourd}"' in entrypoint
     assert 'export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"' in entrypoint
     assert 'exec gosu "${RUNTIME_USER}:${RUNTIME_GROUP}" python serve.py --port "$PORT"' in entrypoint
+
+
+def test_container_bundles_opt_in_quick_export_page():
+    root = Path(__file__).parent.parent
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    dockerignore = (root / ".dockerignore").read_text(encoding="utf-8")
+
+    assert "COPY development/quick-export /app/development/quick-export" in dockerfile
+    assert "!development/quick-export/quick.html" in dockerignore

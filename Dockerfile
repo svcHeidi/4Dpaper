@@ -45,6 +45,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy application code (changes more frequently — after pip for cache efficiency)
 COPY dashboard /app/dashboard
+COPY development/quick-export /app/development/quick-export
 COPY _extensions /app/_extensions
 COPY scripts /app/scripts
 COPY serve.py /app/serve.py

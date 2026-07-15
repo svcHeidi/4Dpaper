@@ -134,7 +134,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 : 'bg-app-tabBg text-app-textLight rounded-bl-none border border-app-border'
         }`;
 
-        bubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(content) : content.replace(/\n/g, '<br>');
+        // Treat both user and model output as text. Model responses are untrusted
+        // input and must never become same-origin active HTML.
+        bubble.textContent = String(content || '');
+        bubble.style.whiteSpace = 'pre-wrap';
         msgDiv.appendChild(bubble);
         chatMessages.appendChild(msgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -162,7 +165,8 @@ document.addEventListener('DOMContentLoaded', () => {
         isWaitingForResponse = true;
         chatSendBtn.innerHTML = '<i class="ph-fill ph-spinner animate-spin text-lg"></i>';
 
-        const aiBubble = appendMessage('assistant', '<span class="animate-pulse">...</span>');
+        const aiBubble = appendMessage('assistant', '...');
+        aiBubble.classList.add('animate-pulse');
 
         try {
             const persona  = 'default';
@@ -186,13 +190,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
-            const parsedHTML = typeof marked !== 'undefined' ? marked.parse(data.reply) : data.reply.replace(/\n/g, '<br>');
-            aiBubble.innerHTML = parsedHTML;
+            aiBubble.classList.remove('animate-pulse');
+            aiBubble.textContent = String(data.reply || '');
             chatHistory.push({ role: 'assistant', content: data.reply });
 
         } catch (err) {
             console.error('Chat error:', err);
-            aiBubble.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
+            aiBubble.classList.remove('animate-pulse');
+            aiBubble.classList.add('text-red-400');
+            aiBubble.textContent = `Error: ${String(err.message || err)}`;
             chatHistory.pop(); // Remove failed user message so they can retry
         } finally {
             isWaitingForResponse = false;

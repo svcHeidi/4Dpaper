@@ -14,6 +14,7 @@ Then visit the server at the URL shown in console output.
 """
 
 import argparse
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -40,13 +41,37 @@ bind_address = os.getenv("FOURD_BIND_ADDRESS", "0.0.0.0")
 # Static files directory (in app, not project)
 static_dir = app_root / "dashboard" / "static"
 
+
+def _load_opt_in_quick_routes(root: Path) -> list:
+    """Load development Quick Export routes only for an explicit Quick launch."""
+    if not os.getenv("FOURD_QUICK_TARGET", "").strip():
+        return []
+
+    module_path = root / "development" / "quick-export" / "backend_handlers.py"
+    if not module_path.is_file():
+        raise RuntimeError(
+            "FOURD_QUICK_TARGET is set but this image does not contain the "
+            "Quick Export development module"
+        )
+
+    spec = importlib.util.spec_from_file_location("fourd_quick_export", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load the Quick Export development module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return list(module.ROUTES)
+
 class IndexHandler(tornado.web.StaticFileHandler):
     """Serve index.html for root path."""
-    def get(self, path=""):
+    def get(self, path="", include_body=True):
         if path == "" or not path:
             self.path = str(static_dir)
             path = "index.html"
-        return super().get(path)
+        return super().get(path, include_body=include_body)
+
+    def head(self, path=""):
+        return self.get(path, include_body=False)
 
 def main():
     """Start the dashboard server."""
@@ -70,12 +95,16 @@ def main():
     if level == "refuse":
         sys.exit(1)
 
+    quick_routes = _load_opt_in_quick_routes(app_root)
+
     print(f"Starting 4Dpapers Dashboard...")
     print(f"Application root: {app_root}")
     print(f"Project root: {project_root}")
     print(f"Static files: {static_dir}")
     print(f"Bind address: {bind_address}")
-    print(f"API routes registered: {len(plugin_routes)}")
+    print(f"API routes registered: {len(plugin_routes) + len(quick_routes)}")
+    if quick_routes:
+        print("Quick Export mode: enabled")
 
     # Serve with explicit static directory AND plugin routes
     # Map /assets/ to dashboard/static/ (Panel reserves /static/ for internal use)
@@ -87,6 +116,7 @@ def main():
         (r"^/assets/(.*)", tornado.web.StaticFileHandler, {"path": str(static_dir)}),  # Asset files
         (r"^/dashboard/static/(.*)", tornado.web.StaticFileHandler, {"path": str(static_dir)}),  # JS/CSS files
         *plugin_routes,  # API routes from plugins
+        *quick_routes,  # Opt-in development Quick Export routes
     ]
 
     pn.serve(
