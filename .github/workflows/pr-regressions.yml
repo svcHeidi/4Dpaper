@@ -41,6 +41,12 @@ jobs:
             libgl1 libglx-mesa0 libgl1-mesa-dri libglu1-mesa libosmesa6 \
             libxrender1 libxext6 xvfb
 
+      - name: Install Quarto
+        # The real compile/export tests (tests/test_export_pipeline.py) shell out
+        # to `quarto render`; without Quarto on PATH they skip, which would let a
+        # broken HTML/PDF export slip through CI (the original regression).
+        uses: quarto-dev/quarto-actions/setup@v2
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

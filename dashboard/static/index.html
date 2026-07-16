@@ -4,7 +4,7 @@
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>4Dpapers Research Paper IDE</title>
-    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script src="/assets/vendor/tailwind/tailwind.min.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -399,21 +399,18 @@
         }
 
     </style>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-    <!-- Phosphor Icons -->
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <!-- MathJax for LaTeX rendering -->
-    <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
-    <!-- Marked for Markdown parsing -->
-    <!-- CodeMirror for code editing -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material-darker.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/markdown/markdown.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/yaml/yaml.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/show-hint.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/show-hint.min.css">
+    <!-- Self-hosted webfonts (Outfit + JetBrains Mono) — vendored for offline use -->
+    <link href="/assets/vendor/fonts/fonts.css" rel="stylesheet"/>
+    <!-- Phosphor Icons (duotone/fill/bold) — vendored for offline use -->
+    <link href="/assets/vendor/phosphor/phosphor.css" rel="stylesheet"/>
+    <!-- CodeMirror 5.65.2 — vendored for offline use -->
+    <link rel="stylesheet" href="/assets/vendor/codemirror/codemirror.min.css">
+    <link rel="stylesheet" href="/assets/vendor/codemirror/theme/material-darker.min.css">
+    <link rel="stylesheet" href="/assets/vendor/codemirror/addon/hint/show-hint.min.css">
+    <script src="/assets/vendor/codemirror/codemirror.min.js"></script>
+    <script src="/assets/vendor/codemirror/mode/markdown/markdown.min.js"></script>
+    <script src="/assets/vendor/codemirror/mode/yaml/yaml.min.js"></script>
+    <script src="/assets/vendor/codemirror/addon/hint/show-hint.min.js"></script>
     <!-- Local scripts -->
     <script src="/assets/js/shortcuts-graph.js"></script>
     <script src="dashboard/static/js/auth.js"></script>

@@ -90,3 +90,96 @@ def test_rewrite_paperview_asset_urls_for_pdf_converts_state_root_url():
 
     assert 'src="../state/figures/fig-vm.png"' in rewritten
     assert 'src="../state/figures/fig-at.png"' in rewritten
+
+
+def test_pdf_url_fetcher_blocks_remote_and_logs():
+    """The offline PDF fetcher refuses remote URLs and records them in the log."""
+    from dashboard.compile_plugin import _make_pdf_url_fetcher
+
+    log: list[str] = []
+    fetch = _make_pdf_url_fetcher(log)
+
+    for url in ("http://example.com/a.png", "https://cdn.x/y.css", "ftp://h/f"):
+        with pytest.raises(ValueError, match="[Rr]emote"):
+            fetch(url)
+
+    assert len(log) == 3
+    assert all("example.com" in m or "cdn.x" in m or "ftp://h" in m for m in log)
+
+
+def test_pdf_url_fetcher_allows_data_uri():
+    """`data:` URIs are local content and must pass through to WeasyPrint."""
+    pytest.importorskip("weasyprint")
+    from dashboard.compile_plugin import _make_pdf_url_fetcher
+
+    log: list[str] = []
+    fetch = _make_pdf_url_fetcher(log)
+    # A 1x1 transparent PNG data URI — the default fetcher decodes it locally.
+    data_uri = (
+        "data:image/png;base64,"
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42m"
+        "NkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    )
+    result = fetch(data_uri)  # must not raise; return shape varies by version
+    assert result is not None
+    assert log == []
+
+
+def test_pdf_url_fetcher_opt_in_allows_remote(monkeypatch):
+    """FOURD_PDF_ALLOW_REMOTE escape hatch lets remote URLs reach the default fetcher."""
+    weasyprint = pytest.importorskip("weasyprint")
+    from dashboard.compile_plugin import _make_pdf_url_fetcher
+
+    # Stub the default fetcher so we prove delegation happens without any network.
+    seen: list[str] = []
+    monkeypatch.setattr(
+        weasyprint,
+        "default_url_fetcher",
+        lambda url, *a, **k: seen.append(url) or {"string": b"", "mime_type": "text/plain"},
+    )
+
+    log: list[str] = []
+    fetch = _make_pdf_url_fetcher(log, allow_remote=True)
+    fetch("http://example.com/remote.png")
+
+    assert seen == ["http://example.com/remote.png"]  # delegated, not blocked
+    assert log == []
+
+
+def test_pdf_render_with_remote_reference_does_not_hang():
+    """A paper referencing an unreachable remote asset still renders a valid PDF fast.
+
+    The remote host (a TEST-NET address that black-holes connections) would hang
+    WeasyPrint's default fetcher on a connect timeout — the original silent
+    'PDF export does nothing' symptom. With the offline fetcher the reference is
+    dropped and the render completes near-instantly.
+    """
+    import time
+
+    weasyprint = pytest.importorskip("weasyprint")
+    from dashboard.compile_plugin import _make_pdf_url_fetcher
+
+    html = (
+        '<html><body><h1>Sentinel</h1>'
+        '<img src="http://192.0.2.1/never.png">'
+        '<link rel="stylesheet" href="http://192.0.2.1/never.css">'
+        '</body></html>'
+    )
+    log: list[str] = []
+    fetcher = _make_pdf_url_fetcher(log)
+
+    t0 = time.monotonic()
+    pdf = weasyprint.HTML(string=html, url_fetcher=fetcher).write_pdf()
+    elapsed = time.monotonic() - t0
+
+    assert pdf[:5] == b"%PDF-"
+    assert len(pdf) > 500
+    assert elapsed < 15, f"render took {elapsed:.1f}s — remote fetch likely hung"
+    assert any("192.0.2.1" in m for m in log)
+
+
+def test_pdf_render_timeout_is_bounded():
+    """The export timeout must be a sane backstop, not a 15-minute network wait."""
+    from dashboard.compile_plugin import _PDF_RENDER_TIMEOUT_S
+
+    assert 30 <= _PDF_RENDER_TIMEOUT_S <= 300
