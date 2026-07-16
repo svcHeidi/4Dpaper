@@ -42,6 +42,13 @@ _MAX_REQUESTS_PER_MINUTE = 5
 
 # Maximum total body size for the compile endpoint (50 MB across all files).
 _MAX_COMPILE_BODY_BYTES = 50 * 1024 * 1024
+
+# Backstop for the WeasyPrint PDF render (run off the event loop). With the
+# offline url_fetcher below the render is network-free, so this only guards
+# against a pathological local case (huge mesh PNGs, a slow bind mount) — it is
+# NOT a network wait, so it stays short enough that a stuck export surfaces a
+# 504 long before the browser/reverse-proxy gives up on the request.
+_PDF_RENDER_TIMEOUT_S = 180
 _PLACEHOLDER_MARKERS = (
     "not yet rendered",
     "not rendered — click Rebuild HTML",
@@ -153,6 +160,36 @@ def _validate_paperview_html_output(html_path: Path) -> None:
 def _rewrite_paperview_asset_urls_for_pdf(html_text: str) -> str:
     """Convert app-root `/state/...` asset URLs to project-relative paths for WeasyPrint."""
     return html_text.replace('"/state/figures/', '"../state/figures/')
+
+
+def _make_pdf_url_fetcher(log_lines: list, allow_remote: bool = False):
+    """Build a WeasyPrint ``url_fetcher`` that keeps PDF rendering network-free.
+
+    WeasyPrint resolves every referenced stylesheet, image, and font by URL.
+    Inside an egress-restricted container a remote (``http``/``https``/``ftp``)
+    reference blocks the render on a connect timeout — the original "PDF export
+    silently does nothing" symptom, since one hung fetch stalls the whole
+    export with no error. This fetcher refuses remote URLs (WeasyPrint logs the
+    skipped resource and continues rendering, so the PDF still completes, just
+    without that asset) while letting local ``file:`` and inline ``data:``
+    content through the default fetcher untouched.
+
+    Set ``FOURD_PDF_ALLOW_REMOTE=1`` (``allow_remote=True``) to opt back into
+    fetching remote assets on an online deployment.
+    """
+    import weasyprint
+
+    def _fetch(url, *args, **kwargs):
+        if not allow_remote and url.lower().startswith(("http://", "https://", "ftp://")):
+            log_lines.append(
+                f"WARNING: blocked remote resource during offline PDF render: {url}"
+            )
+            raise ValueError(
+                f"Remote resources are disabled during offline PDF export: {url}"
+            )
+        return weasyprint.default_url_fetcher(url, *args, **kwargs)
+
+    return _fetch
 
 
 def _health_payload() -> tuple[int, dict]:
@@ -435,10 +472,39 @@ class ExportHandler(SecureMixin, tornado.web.RequestHandler):
             html_text = _rewrite_paperview_asset_urls_for_pdf(
                 html_path.read_text(encoding="utf-8")
             )
-            pdf_bytes = weasyprint.HTML(
-                string=html_text,
-                base_url=str(html_path.parent),
-            ).write_pdf()
+
+            # Keep the render network-free: refuse remote asset URLs so a paper
+            # referencing an unreachable host can't hang WeasyPrint offline.
+            allow_remote = os.getenv("FOURD_PDF_ALLOW_REMOTE", "").strip().lower() in {
+                "1", "true", "yes",
+            }
+            pdf_url_fetcher = _make_pdf_url_fetcher(log_lines, allow_remote=allow_remote)
+
+            def _render_pdf() -> bytes:
+                return weasyprint.HTML(
+                    string=html_text,
+                    base_url=str(html_path.parent),
+                    url_fetcher=pdf_url_fetcher,
+                ).write_pdf()
+
+            # Run off the event loop, like the Quarto render above: WeasyPrint
+            # is synchronous and can run long on large/figure-heavy papers or
+            # a slow bind-mounted filesystem. Without this, a slow render
+            # blocks every other request on this single-threaded server,
+            # including its own /api/health — the whole container looks dead.
+            # Timeout is a local backstop (see _PDF_RENDER_TIMEOUT_S); the
+            # url_fetcher above removes the network as a source of hangs.
+            try:
+                pdf_bytes = await asyncio.wait_for(
+                    loop.run_in_executor(None, _render_pdf), timeout=_PDF_RENDER_TIMEOUT_S
+                )
+            except asyncio.TimeoutError:
+                self.set_status(504)
+                self.set_header("Content-Type", "application/json")
+                self.write({
+                    "error": f"PDF rendering (WeasyPrint) timed out after {_PDF_RENDER_TIMEOUT_S}s",
+                })
+                return
 
             # Step 3: stream to client
             self.set_header("Content-Type", "application/pdf")

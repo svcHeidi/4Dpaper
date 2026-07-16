@@ -6,7 +6,7 @@ type: software
 authors:
   - family-names: "Nieto de Castro"
     given-names: "Simão"
-version: 0.1.1
+version: 0.1.2
 repository-code: "https://github.com/4dpapers/4dpapers"
 url: "https://4dpapers.github.io/4dpapers/"
 license: "PolyForm-Noncommercial-1.0.0"

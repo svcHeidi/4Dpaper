@@ -16,7 +16,7 @@ You need [Docker](https://docs.docker.com/get-docker/). Then:
 git clone https://github.com/4dpapers/4dpapers.git
 cd 4dpapers
 cp .env.example .env
-IMAGE=ghcr.io/4dpapers/4dpapers:0.1.1 FOURD_WORKSPACE=./examples/niederer docker compose up
+IMAGE=ghcr.io/4dpapers/4dpapers:0.1.2 FOURD_WORKSPACE=./examples/niederer docker compose up
 ```
 
 Open **http://localhost:5006** — you'll land in the editor with the example cardiac
@@ -34,8 +34,8 @@ HTML. Its generated Quarto project, cache, and state live in a temporary
 workspace; the source directory is mounted read-only.
 
 ```bash
-docker pull ghcr.io/4dpapers/4dpapers:0.1.1
-IMAGE=ghcr.io/4dpapers/4dpapers:0.1.1 \
+docker pull ghcr.io/4dpapers/4dpapers:0.1.2
+IMAGE=ghcr.io/4dpapers/4dpapers:0.1.2 \
   ./development/quick-export/4d-quick.sh /path/to/result.vtu
 ```
 
