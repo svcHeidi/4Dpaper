@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.2 — Unreleased
+## 0.1.2 — 2026-07-16
 
 Offline-hardening patch: the dashboard UI and PDF export now work with no
 network access, which the first public build did not.
